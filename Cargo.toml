@@ -1,0 +1,10 @@
+[package]
+name = "avrio-core"
+version = "0.1.0"
+authors = ["Arielh25 <areilhurdle@gmail.com>"]
+edition = "2018"
+description = "Avrio's core code written in rust."
+repository = "https://github.com/avrio-project/avrio-core"
+readme = "README.md"
+keywords = ["avrio", "blockchain", "block lattice", "crypto"]
+[dependencies]
