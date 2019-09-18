@@ -8,3 +8,5 @@ repository = "https://github.com/avrio-project/avrio-core"
 readme = "README.md"
 keywords = ["avrio", "blockchain", "block lattice", "crypto"]
 [dependencies]
+secp256k1 = "0.15.5"
+magic-crypt = "2.1.7"
