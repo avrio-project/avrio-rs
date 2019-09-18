@@ -1,0 +1,6 @@
+[package]
+name = "avrio-rpc"
+version = "0.1.0"
+authors = ["Arielh25 <areilhurdle@gmail.com>"]
+edition = "2018"
+[dependencies] 
