@@ -1,22 +1,55 @@
-pub struct Block {
+use config::config;
+use std::sync::mutex;
+use std::sync::once;
+
+assert_eq!(true as i32, 1);
+assert_eq!(false as i32, 0);
+
+pub struct Transaction {
+    amount: u64,
+    sender_key: String,
+    gas_price: u64,
+    max_gas: u64,
+    gas: u64, // gas used
+    nonce: u8,
+    signature: String,
+}
+pub struct TxStore { // remove data not needed to be stored
+    amount: u64,
+    sender_key: String,
+    fee: u64, // fee in AIO
+    nonce: u8,
+    signature: String,
+}    
+pub struct Header {
     version_major: u8,
     version_minor: u8,
     chain_key: String,
     prev_hash: String,
     timestamp: u64,
-    hash: String,
+}
+pub struct Block {
+    header: Header,
     txns: Vec<Transaction>,
+    txnc: u64;
+    hash: String,
     signature: String,
-    node_signature: String,
+    node_signatures:Vec<String>, // a block must be signed by at least (c / 2) + 1 nodes to be valid (ensures at least ne honest node has singed it)
 }
 
-pub struct Transaction {
-    amount: u64,
-    sender_key: String,
-    reciever_key: String,
-    unlock_time: u64,
-    gas_price: u64,
-    max_gas: u64,
-    nonce: u64,
-    signature: String,
+
+fn check_block(Block blk) -> bool {
+    if (blk.header.version_major > config.version_major) {
+        false
+    }else if (blk.header.prev_hash != get_last_block(blk.header.chain_key) {
+        false
+    }else if (!check_signature(blk.signature,blk.header.chain_key) {
+        false
+    }
+    for (i in blk.txnc) {
+        if (!validate_transaction(blk.txns[i])) {
+            false
+        }
+    }
+    // Todo continue blk validation
 }
