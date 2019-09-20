@@ -41,17 +41,17 @@ pub struct Block {
 }
 
 
-fn check_block(Block blk) -> bool {
-    if (blk.header.version_major > config.version_major) {
+fn check_block(blk: Block) -> bool {
+    if blk.header.version_major > config.version_major {
         return false;
-    } else if (blk.header.prev_hash != get_last_block(blk.header.chain_key) {
+    } else if blk.header.prev_hash != get_last_block(blk.header.chain_key) {
         return false;
-    } else if (!check_signature(blk.signature,blk.header.chain_key) {
+    } else if !check_signature(blk.signature,blk.header.chain_key) {
         return false;
     }
 
-    for (i in blk.txnc) {
-        if (!validate_transaction(blk.txns[i])) {
+    for (txn in blk.txns) {
+        if !validate_transaction(txn) {
             return false;
         }
     }
