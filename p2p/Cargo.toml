@@ -1,5 +1,5 @@
 [package]
 name = "avrio-p2p"
 version = "0.1.0"
-authors = ["Arielh25 <areilhurdle@gmail.com>"]
+authors = ["Arielh25 <areilhurdle@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
 edition = "2018"
