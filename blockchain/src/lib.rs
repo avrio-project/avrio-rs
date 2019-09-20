@@ -14,6 +14,7 @@ pub struct Transaction {
     nonce: u8,
     signature: String,
 }
+
 pub struct TxStore { // remove data not needed to be stored
     amount: u64,
     sender_key: String,
@@ -21,6 +22,7 @@ pub struct TxStore { // remove data not needed to be stored
     nonce: u8,
     signature: String,
 }    
+
 pub struct Header {
     version_major: u8,
     version_minor: u8,
@@ -28,6 +30,7 @@ pub struct Header {
     prev_hash: String,
     timestamp: u64,
 }
+
 pub struct Block {
     header: Header,
     txns: Vec<Transaction>,
@@ -40,16 +43,18 @@ pub struct Block {
 
 fn check_block(Block blk) -> bool {
     if (blk.header.version_major > config.version_major) {
-        false
-    }else if (blk.header.prev_hash != get_last_block(blk.header.chain_key) {
-        false
-    }else if (!check_signature(blk.signature,blk.header.chain_key) {
-        false
+        return false;
+    } else if (blk.header.prev_hash != get_last_block(blk.header.chain_key) {
+        return false;
+    } else if (!check_signature(blk.signature,blk.header.chain_key) {
+        return false;
     }
+
     for (i in blk.txnc) {
         if (!validate_transaction(blk.txns[i])) {
-            false
+            return false;
         }
     }
+
     // Todo continue blk validation
 }
