@@ -2,9 +2,6 @@ use config::config;
 use std::sync::mutex;
 use std::sync::once;
 
-assert_eq!(true as i32, 1);
-assert_eq!(false as i32, 0);
-
 pub struct Transaction {
     amount: u64,
     sender_key: String,
@@ -34,7 +31,7 @@ pub struct Header {
 pub struct Block {
     header: Header,
     txns: Vec<Transaction>,
-    txnc: u64;
+    txnc: u64,
     hash: String,
     signature: String,
     node_signatures:Vec<String>, // a block must be signed by at least (c / 2) + 1 nodes to be valid (ensures at least ne honest node has singed it)
@@ -50,11 +47,13 @@ pub fn check_block(blk: Block) -> bool {
         return false;
     }
 
-    for (txn in blk.txns) {
+    for txn in blk.txns {
         if !validate_transaction(txn) {
             return false;
         }
     }
 
     // Todo continue blk validation
+
+    return false;
 }
