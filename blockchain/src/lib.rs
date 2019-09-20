@@ -41,7 +41,7 @@ pub struct Block {
 }
 
 
-fn check_block(blk: Block) -> bool {
+pub fn check_block(blk: Block) -> bool {
     if blk.header.version_major > config.version_major {
         return false;
     } else if blk.header.prev_hash != get_last_block(blk.header.chain_key) {
