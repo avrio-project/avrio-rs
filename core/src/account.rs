@@ -1,9 +1,13 @@
+use serde::{Serialize, Deserialize};
+use database::{setAccount, getAccount}
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Accesskey{ // Access keys are keys that provide limited access to a wallet - it allows one wallet to be split
   key: String,        // into many. You can also assign a code to the key indicating what the account can and cant do.
   allowance: u64,
   code: u16,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Account {  // A account is a representaion of a wallet - it includes balance, a public 
   public_key: String, // key (which is used as a index for storing) and the list of access keys.
   balance: u64,

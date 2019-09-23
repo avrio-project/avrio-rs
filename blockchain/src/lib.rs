@@ -1,7 +1,9 @@
 use config::config;
 use std::sync::mutex;
 use std::sync::once;
+use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Transaction {
     amount: u64,
     sender_key: String,
@@ -12,6 +14,7 @@ pub struct Transaction {
     signature: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TxStore { // remove data not needed to be stored
     amount: u64,
     sender_key: String,
@@ -20,6 +23,7 @@ pub struct TxStore { // remove data not needed to be stored
     signature: String,
 }    
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Header {
     version_major: u8,
     version_minor: u8,
@@ -28,6 +32,7 @@ pub struct Header {
     timestamp: u64,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Block {
     header: Header,
     txns: Vec<Transaction>,
