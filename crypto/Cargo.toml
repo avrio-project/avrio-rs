@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = ["Arielh25 <areilhurdle@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
 edition = "2018"
 
-[dependencies]
+[dependencys]
+serde = { version = "1.0", features = ["derive"] }
 arrayref = "0.3"
 blake-hash = "0.3"
 bincode = "1.1"
