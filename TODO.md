@@ -1,4 +1,5 @@
 # TODO
-(these tasks need doing (in context to avrio core)
-- [ ] example task for avrio core
-- [ ] example compleated task
+Name | Status 
+:------------ | :-------------
+test1 | :heavy_check_mark:
+test2 | :x:
