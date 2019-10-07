@@ -11,6 +11,7 @@ use libsodium_sys::{
     crypto_secretbox_MACBYTES,
     sodium_memzero,
 };
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct keypair{
     publickey: [u8; crypto_box_PUBLICKEYBYTES],
@@ -18,11 +19,10 @@ pub struct keypair{
 }
 
 fn generateKeys()-> keypair {
-
+    let out: keypair;
     if (sodium_init() == -1) {
-        return null;
+        return out;
     }else {
-        let out: keypair;
         crypto_box_keypair(out.publickey, out.privatekey);
         return out;
     }
