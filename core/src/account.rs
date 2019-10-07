@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
-use database::{setAccount, getAccount}
+use database::{setAccount, getAccount};
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Accesskey{ // Access keys are keys that provide limited access to a wallet - it allows one wallet to be split
   key: String,        // into many. You can also assign a code to the key indicating what the account can and cant do.
@@ -14,14 +15,14 @@ pub struct Account {  // A account is a representaion of a wallet - it includes 
   access_keys: Vec<Accesskey>,
 }
 
-fn deltaFunds(public_key: String, amount: u64, mode : u8, access_key: String) -> bool {
+pub fn deltaFunds(public_key: String, amount: u64, mode: u8, access_key: String) -> bool {
   let mut acc = getAccount(public_key);
-  if mode = 0 { // minus funds
-    if access_key == "") { // none provdied/ using main key
-      let after_change == acc.balance - amount;
+  if mode == 0 { // minus funds
+    if access_key == "" { // none provdied/ using main key
+      let after_change = acc.balance - amount;
       if after_change < 0 { // insufffient funds
         println!("ERROR: changing funds for account {} would produce negative balance!",acc.public_key);
-        return 0;
+        return true;
       } else {
         acc.balance = acc.balance - amount;
         return setAccount(public_key,acc);
