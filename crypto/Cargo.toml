@@ -23,3 +23,4 @@ rand = "0.7.2"
 serde = { version = "1.0", features = ["derive"] }
 skein-hash = "0.3"
 sha3 = "0.8"
+libsodium-sys = "0.2.4"
