@@ -47,7 +47,7 @@ pub fn deltaFunds(public_key: String, amount: u64, mode: u8, access_key: String)
        return false;
      } else 
      {
-       let after_change = acc.access_keys[i].allowance. - amount;
+       let after_change = acc.access_keys[i].allowance - amount;
        if after_change < 0 
        { // can access key allowance cover this?
          println!("ERROR: changing funds for account {0} with access key {1} would produce negative allowance!",acc.public_key, access_key);
@@ -95,8 +95,11 @@ fn validateTransaction(tx: Transaction) -> bool {
         if acc.balance < tx.amount {
             return false;
         }else {
-            if (checkSignature())
+            if checkSignature(){
+              return true;
+            }
         }
         
     }
+}
 }
