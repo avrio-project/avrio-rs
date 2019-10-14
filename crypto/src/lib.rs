@@ -28,3 +28,7 @@ fn generateKeys()-> keypair {
     }
 
 }
+
+fn hash(msg: String) -> String {
+    
+}
