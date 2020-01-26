@@ -25,8 +25,10 @@ fn handle_client(mut stream: TcpStream) {
     let mut data = [0 as u8; buffer_bytes]; // using a config_self.buffer_bytes buffer
     while match stream.read(&mut data) {
         Ok(size) => {
+            //TODO: Code to verify handshake and then send our handshake needs to go HERE
             // Proccesss data recieved
             let mut data: P2pdata = serde_json::from_str(&data[0..size]);
+            
 
             true
         },
@@ -46,7 +48,6 @@ fn rec_server() -> u8{
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                //TODO: Code to verify handshake and then send our handshake needs to go HERE
                 println!("[INFO] New connection: {0}", stream.peer_addr().unwrap());
                 thread::spawn(move|| {
                     // connection succeeded
@@ -74,7 +75,7 @@ fn new_connection(socket: Socket) -> Peer { // This Fucntion handles all the det
     If they are are equal to or higher than our block count then they verify that the top bock hash is correct, if it is they send
     the same hand shake back to us;
     */
-    let mut msg = config.network_id + serde_json::to_string(&self_config.identity).unwrap() + Peer + getBlockHeight() + getTopBlock().hash + config.network_id;
+    let mut msg = config.network_id + "," + serde_json::to_string(&self_config.identity).unwrap() + "," + Peer + "," + getBlockHeight() + "," + getTopBlock().hash + "," + config.network_id+ ";";
     stream.write(serde_json::to_string(msg); // send our handshake
     stream.read(&mut [0; 128])?;
     Ok(())
