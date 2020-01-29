@@ -1,27 +1,26 @@
-use std::io::{self, Write};
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+extern crate ansi_term;
 
-fn write_green(text: String) -> io::Result<()> {
-    let mut stdout = StandardStream::stdout(ColorChoice::Always);
-    stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)))?;
-    writeln!(&mut stdout, text)
+use ansi_term::Colour;
+
+fn red(text) {
+    println!(Colour::Red.paint(text))
 }
-fn write_red(text: String) -> io::Result<()> {
-    let mut stdout = StandardStream::stdout(ColorChoice::Always);
-    stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)))?;
-    writeln!(&mut stdout, text)
+fn blue(text) {
+    println!(Colour::Blue.paint(text))
 }
-fn write_white(text: String) -> io::Result<()> {
-    let mut stdout = StandardStream::stdout(ColorChoice::Always);
-    stdout.set_color(ColorSpec::new().set_fg(Some(Color::White)))?;
-    writeln!(&mut stdout, text)
+fn green(text) {
+    println!(Colour::Green.paint(text))
 }
-fn write_yellow(text: String) -> io::Result<()> {
-    let mut stdout = StandardStream::stdout(ColorChoice::Always);
-    stdout.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)))?;
-    writeln!(&mut stdout, text)
+fn white(text) {
+    println!(Colour::White.paint(text))
 }
-write_green("test");
-write_white("test");
-write_red("test");
-write_yellow("test");
+fn yellow(text) {
+    println!(Colour::Yellow.paint(text))
+}
+
+fn main() {
+    white('test white');
+    red('test red');
+    blue('test blue');
+    white('test white repeat');
+    green('test green');
