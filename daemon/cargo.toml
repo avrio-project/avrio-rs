@@ -2,5 +2,6 @@
 name = "avrio_daemon"
 version = "0.0.1"
 authors = ["Leo Cornelius <leocornelius019@gmail.com>"]
+edition = 2018
 [dependencies]
 termcolor = "1.1"
