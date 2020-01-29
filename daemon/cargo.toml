@@ -1,0 +1,6 @@
+[package]
+name = "avrio_daemon"
+version = "0.0.1"
+authors = ["Leo Cornelius <leocornelius019@gmail.com>"]
+[dependencies]
+termcolor = "1.1"
