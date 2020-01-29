@@ -75,7 +75,10 @@ fn new_connection(socket: Socket) -> Peer { // This Fucntion handles all the det
     If they are are equal to or higher than our block count then they verify that the top bock hash is correct, if it is they send
     the same hand shake back to us;
     */
-    let mut msg = config.network_id + "," + serde_json::to_string(&self_config.identity).unwrap() + "," + Peer + "," + getBlockHeight() + "," + getTopBlock().hash + "," + config.network_id+ ";";
+    if(!fullNode()) {
+        let mut msg = config.network_id + "," + serde_json::to_string(&self_config.identity).unwrap() + "," + Peer + "," + getBlockHeight() + "," + getTopBlock().hash + "," + config.network_id+ ";";
+    }else {
+        let mut msg = config.commitee_id + "," + serde_json::to_string(&self_config.identity).unwrap() + "," + Peer + "," + getBlockHeight() + "," + getTopBlock().hash + "," + config.network_id+ ";";
     stream.write(serde_json::to_string(msg); // send our handshake
     stream.read(&mut [0; 128])?;
     Ok(())
