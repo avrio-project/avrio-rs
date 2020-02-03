@@ -9,6 +9,7 @@ use std::hash::{Hash, Hasher};
 pub struct Transaction {
     hash: String,
     amount: u64,
+    extra: String,
     sender_key: String,
     access_key: String,
     gas_price: u64,
@@ -30,6 +31,7 @@ impl Hash for Transaction {
 pub struct TxStore { // remove data not needed to be stored
     hash: String,
     amount: u64,
+    extra: String,
     sender_key: String,
     access_key: String
     fee: u64, // fee in AIO
