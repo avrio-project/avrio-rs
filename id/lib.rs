@@ -40,7 +40,7 @@ pub fn check_difficulty (hash: &Hash, difficulty: u128) -> bool {
     difficulty > difficulty_bytes_as_u128(&hash)
 }
 
-calculate hash_params(PrevBlockHash: String) -> HashParams {
+fn calculate_hash_params(PrevBlockHash: String) -> HashParams {
   let mut cu = PrevBlockHash.as_bytes();
   let mut b: Vec<u8> = cu.iter().cloned().collect();
   let mut a: u32 =0;
@@ -51,20 +51,36 @@ calculate hash_params(PrevBlockHash: String) -> HashParams {
   return HashParams{iterations: a * 10, memory: a * 20);  
 }
 
-
+fn hash_string(params: HashParams, s: String) -> String {
+  unsafe 
+  {
+    let in = s.as_bytes();
+    cryptonight::set_params(params.memory, params.iterations);
+    let out = cryptonight(&in, in.len(), 0);
+    let mut out_abs: Vec<u8> = vec![];
+    for x in out {
+        if x < 0 {
+            let x_pos = x + (x*2);
+            out_abs.push(x_pos);
+        }else {
+            out_abs.push(x);
+        }
+    }
+    return hex::encode(out_abs);
+  }
+}
 
 }
 pub fn generateId(k: String, public_key: String, private_key, difficulty: u128) -> IdDetails
 {
   let mut struct_ =  new IdDetails;
+  let params = calculate_hash_params(getLastBlockHash());
   let mut nonce: u32 = 0;
   let mut hashed: String = "";
-  let mut c = 0;
-    struct_.start_t = SystemTime::now().as_millis();
+  struct_.start_t = SystemTime::now().as_millis();
   while true {
       nonce = nonce + 1;
-      c = 0;
-      hashed = hash(k + public_key + nonce);
+      hashed = hash_string(params, k + public_key + nonce);
       // check difficulty
       if (check_difficulty(&hashed, difficulty) {
           struct_.nonce = nonce;
