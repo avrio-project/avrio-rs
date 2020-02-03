@@ -43,6 +43,7 @@ pub struct Header {
     version_minor: u8,
     chain_key: String,
     prev_hash: String,
+    height: u64,
     timestamp: u64,
 }
 
@@ -50,7 +51,6 @@ pub struct Header {
 pub struct Block {
     header: Header,
     txns: Vec<Transaction>,
-    txnc: u64,
     hash: String,
     signature: String,
     node_signatures:Vec<String>, // a block must be signed by at least (c / 2) + 1 nodes to be valid (ensures at least ne honest node has singed it)
@@ -60,7 +60,7 @@ pub struct Block {
 pub fn check_block(blk: Block) -> bool {
     if blk.header.version_major > config.version_major {
         return false;
-    } else if blk.header.prev_hash != get_last_block(blk.header.chain_key) {
+    } else if blk.header.prev_hash != get_block(blk.header.chain_key, blk.header.height ) {
         return false;
     } else if !check_signature(blk.signature,blk.header.chain_key) {
         return false;
