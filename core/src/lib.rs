@@ -81,8 +81,30 @@ pub fn deltaFunds(public_key: String, amount: u64, mode: u8, access_key: String)
        return setAccount(public_key,acc);
      }
   }
+ }
 }
 
+fn coinbase(tx: Transaction) -> bool {
+    if tx.senderKey == "" {
+        if validateSignature(tx.receive_key, tx.signature) {
+            return true;
+        }else return false;
+    }else return false;
+}
+    
+fn typeTransaction(tx: Transaction) -> String 
+{
+    return match(tx.extra)  {
+        ""=>"normal",
+        "r" => "reward",
+        "fnr" => "fullnode registration",
+        "unr" => "username registraion",
+        "l" => "fund lock",
+        "b" => "burn",
+        _ => "message",
+    };
+} 
+    
 fn validateTransaction(tx: Transaction) -> bool {
     let mut acc = getAccount(tx.sender_key);
     if acc.balance == 0 {
