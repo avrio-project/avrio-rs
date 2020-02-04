@@ -3,13 +3,14 @@ use std::sync::mutex;
 use std::sync::once;
 use serde::{Serialize, Deserialize};
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use crypto::hashable;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Transaction {
     hash: String,
     amount: u64,
     extra: String,
+    flag: byte,
     sender_key: String,
     receive_key: String,
     access_key: String,
@@ -19,12 +20,18 @@ pub struct Transaction {
     nonce: u8,
     signature: String,
 }
-impl Hash for Transaction {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.amount.hash(state);
-        self.sender_key.hash(state);
-        self.access_key.hash(state);
-        self.nonce.hash(state);
+impl Hashable for Transaction { // TXN CREATION 101: run this then do tx.hash(); then sign the hash provided
+    fn bytes (&self) -> Vec<u8> {
+        let mut bytes = vec![];
+
+        bytes.extend(self.ammount);
+        bytes.extend(self.extra);
+        bytes.extend(self.flag);
+        bytes.extend(self.sender_key);
+        bytes.extend(self.receive_key);
+        bytes.extend(self.gas * self.gas_price); // aka fee
+        bytes.extend(self.nonce);
+        bytes
     }
 }
 
@@ -36,7 +43,7 @@ pub struct TxStore { // remove data not needed to be stored
     sender_key: String,
     receive_key: String,
     access_key: String
-    fee: u64, // fee in AIO
+    fee: u64, // fee in AIO (gas_used * gas_price)
     nonce: u8,
     signature: String,
 }    
@@ -82,7 +89,5 @@ pub fn check_block(blk: Block) -> bool {
 }
 
 fn hashTransaction(tx: Transaction) -> String {
-    let h = DefaultHasher::new();
-    tx.hash(&mut h);
-    return h.finish();
+    retrun tx.hash();
 }
