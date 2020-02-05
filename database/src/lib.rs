@@ -13,7 +13,7 @@ fn getData(path: String, key: String) -> String {
     let db = DB::open_default(path).unwrap();
     let mut data = "error no data";
     match db.get(key) {
-        Ok(Some(value) => data);
+        Ok(Some(value)) => data);
         Ok(None) => data = "-1",
         Err(e) => data = "0",
     }
@@ -21,7 +21,7 @@ fn getData(path: String, key: String) -> String {
 }
 
 fn setAccount(acc: Account) -> u8 {
-    let path = config.path +"/db/accountdb"
+    let path = config.path +"/db/accountdb";
     let serialized = serde_json::to_string(&acc).unwrap();
     saveData(serialized, path, acc.public_key);
     return 1;
