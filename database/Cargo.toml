@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Leo Cornelius <leocornelius019@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
 edition = "2018"
 [lib] 
-name = "avrio_database"
+name = "avrio_db"
 path = "src/lib.rs" 
 [dependencys]
 serde = { version = "1.0", features = ["derive"] }
