@@ -1,0 +1,18 @@
+language: rust
+
+sudo: required
+
+rust:
+  - stable
+  - beta
+  - nightly
+
+matrix:
+  allow_failures:
+    - rust: nightly
+
+
+after_success: |
+  wget https://github.com/avrio-project/avrio-core/ &&
+  cd avrio-core &&
+  cargo check
