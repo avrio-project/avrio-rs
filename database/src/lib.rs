@@ -1,5 +1,7 @@
 use serde::{Serialize, Deserialize};
 use rocksdb::{DB, Options};
+extern crate avrio_core;
+extern crate avrio_config;
 use avrio_core::*;
 use avrio_config::*;
 
