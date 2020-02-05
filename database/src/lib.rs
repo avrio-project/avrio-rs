@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use rocksdb::{DB, Options};
-use account::Account;
-use config::config;
+use core::Account;
+use config::*;
 
 fn saveData(serialized: String, path: String, key: String) -> u8 { // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
     let db = DB::open_default(path).unwrap();
@@ -13,7 +13,7 @@ fn getData(path: String, key: String) -> String {
     let db = DB::open_default(path).unwrap();
     let mut data = "error no data";
     match db.get(key) {
-        Ok(Some(value)) => data);
+        Ok(Some(value)) => data = value,
         Ok(None) => data = "-1",
         Err(e) => data = "0",
     }
