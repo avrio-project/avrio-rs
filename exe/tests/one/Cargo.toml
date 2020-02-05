@@ -1,11 +1,11 @@
 [package]
-name = "avrio-testnet"
+name = "avrio_testnet"
 version = "1"
 edition = "2018"
 authors = ["Leo Cornelius <leocornelius019@gmail.com>"]
 license = "MIT OR Apache-2.0"
 homepage = "http://testnet.avrio.network"
-repository = "https://github.com/avrio-project/avrio-testnet"
+repository = "https://github.com/avrio_project/avrio_testnet"
 readme = "README.md"
 description = """
 Testnet one, aimed at P2p + block/ txn code testing

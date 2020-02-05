@@ -1,11 +1,11 @@
 [package]
-name = "avrio-db"
+name = "avrio_db"
 version = "0.1.0"
 authors = ["Leo Cornelius <leocornelius019@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
 edition = "2018"
 [dependencys]
 serde = { version = "1.0", features = ["derive"] }
 rocksdb = "0.12.3"
-avrio-blockchain = { path = "../blockchain/" }
-avrio-core = { path = "../core/" }
-avrio-config = { path = "../config/" }
+avrio_blockchain = { path = "../blockchain/" }
+avrio_core = { path = "../core/" }
+avrio_config = { path = "../config/" }
