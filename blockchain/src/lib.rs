@@ -42,7 +42,7 @@ pub struct TxStore { // remove data not needed to be stored
     extra: String,
     sender_key: String,
     receive_key: String,
-    access_key: String
+    access_key: String,
     fee: u64, // fee in AIO (gas_used * gas_price)
     nonce: u8,
     signature: String,
@@ -89,5 +89,5 @@ pub fn check_block(blk: Block) -> bool {
 }
 
 fn hashTransaction(tx: Transaction) -> String {
-    retrun tx.hash();
+    return tx.hash();
 }
