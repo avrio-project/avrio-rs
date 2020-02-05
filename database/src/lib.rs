@@ -1,9 +1,7 @@
 use serde::{Serialize, Deserialize};
 use rocksdb::{DB, Options};
-extern crate avrio_core;
-extern crate avrio_config;
-use avrio_core::*;
-use avrio_config::*;
+extern crate core;
+extern crate config;
 
 fn saveData(serialized: String, path: String, key: String) -> u8 { // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
     let db = DB::open_default(path).unwrap();
@@ -19,7 +17,7 @@ fn getData(path: String, key: String) -> String {
         Ok(None) => data = "-1",
         Err(e) => data = "0",
     }
-    return data;
+    return data.to_string();
 }
 
 fn setAccount(acc: Account) -> u8 {
