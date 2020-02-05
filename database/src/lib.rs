@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use rocksdb::{DB, Options};
-use core::Account;
-use config::*;
+use avrio-core::*;
+use avrio-config::*;
 
 fn saveData(serialized: String, path: String, key: String) -> u8 { // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
     let db = DB::open_default(path).unwrap();
