@@ -55,7 +55,7 @@ fn rec_server() -> u8{
                 });
             }
             Err(e) => {
-                println!("[ERROR] handling peer connection to {0} resulted in  error {1}: {}", stream.peer_addr().unwrap(), e);
+                println!("[ERROR] handling peer connection to {:?} resulted in  error: {:?}", stream.peer_addr().unwrap(), e);
                 /* connection failed */
             }
         }
@@ -70,10 +70,10 @@ fn new_connection(socket: Socket) -> Peer { // This Fucntion handles all the det
     let self_config = config().unwrap();
     /*Once we have established a connection over TCP we now send vital data as a hanshake,
     This is in the following format 
-    0x1a, network id,our peer id, their peer id, our node type, ox1b;
+    0x1a, network id,our peer id, our node type, ox1b;
     The recipitent then verifyes this then they send the same hand shake back to us;
     */
-    let mut msg = "0x1a," + config.network_id + "," + serde_json::to_string(&self_config.identity).unwrap() + "," + Peer + "," + self_config.node_type + "," + config.network_id+ "0x1b";
+    let mut msg = "0x1a," + self_config.network_id + "," + serde_json::to_string(&self_config.identity).unwrap() + "," + self_config.node_type + "," + "0x1b";
     stream.write(serde_json::to_string(msg); // send our handshake
     stream.read(&mut [0; 128])?;
     Ok(())
