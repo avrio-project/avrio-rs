@@ -22,24 +22,27 @@ let mut genesis_txns: Vec<Transactions> = vec![ // any txns to be in the genesis
     }
 ];
 
-fn generateGenesisBlock() -> Block{
+fn generateGenesisBlock(chainKey: String, private_key: String) -> Block{
+    let mut my_genesis_txns: Vec<Transactions> = vec![];
     for tx in genesis_txns {
-        tx.hash = tx.hash();
-        tx.signature = sign(hex::encode(vec![0, 32]).to_owned(), tx.hash);
+        if tx.receive_key == chainKey {
+            tx.hash = tx.hash();
+            tx.signature = sign(hex::encode(private_key, tx.hash);
+            my_genesis_txns.push(tx);
     }
     let mut genesis_block = Block {
         header: Header {
             version_major: 0,
             version_minor: 0
-            chain_key: hex::encode(vec![0, 32]).to_owned(),
+            chain_key: chainKey,
             prev_hash: hex::encode(vec![0, 32]).to_owned(),
             height: 0,
             timestamp: 0,
         },
-        txns: genesis_txns,
+        txns: my_genesis_txns,
     }
     genesis_block.hash = genesis_block.hash();
-    genesis_block.signature = genesis_block.sign(hex::encode(vec![0, 32]).to_owned(), genesis_block.hash);
+    genesis_block.signature = genesis_block.sign(private_key, genesis_block.hash);
     return genesis_block;
 }
         
