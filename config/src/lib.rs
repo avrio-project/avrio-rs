@@ -20,6 +20,10 @@ pub struct Config {
     p2p_port: u16,
     rpc_port: u16,
     allow_cors: String,
+    buffer_bytes: u16,
+    network_id: String,
+    node_type: char,
+    identitiy: String,
 }  
 
 pub fn config() -> Config {
