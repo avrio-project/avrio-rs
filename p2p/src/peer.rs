@@ -1,13 +1,10 @@
 
-use crate::tracker::*;
-use crate::core::identity::*;
+use crate::tracker::*;;
 use rand::{Rand, Rng};
-use crate::config::*;
+extern crate config;
 use std::thread;
 use std::net::{TcpListener, TcpStream, Shutdown};
 use std::io::{Read, Write};
-use std::fs::*;
-use std::io::prelude::*;
 
 pub struct Peer {
     id: Id,
@@ -45,17 +42,11 @@ fn handle_client(mut stream: TcpStream) {
 fn rec_server() -> u8{
     let mut self_config = config();
     let listener = TcpListener::bind(self_config.bind_socket).unwrap();
-    let mut file = OpenOptions::new()
-        .write(true)
-        .append(true)
-        .open("peerlist.aio")
-        .unwrap();
     // accept connections and process them, spawning a new thread for each one
     println!("[INFO] P2p incoming server launched on {0}", self_config.bind_socket);
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                writeln!(file, stream.peer_addr().unwrap());
                 println!("[INFO] New incoming connection: {0}", stream.peer_addr().unwrap());
                 
                 thread::spawn(move|| {
