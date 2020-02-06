@@ -1,5 +1,6 @@
-//
 use serde::{Serialize, Deserialize};
+extern use crate database;
+extern use crate crypto;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Transaction {
@@ -16,6 +17,63 @@ pub struct Transaction {
     nonce: u8,
     signature: String,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TxStore { // remove data not needed to be stored
+    hash: String,
+    amount: u64,
+    extra: String,
+    sender_key: String,
+    receive_key: String,
+    access_key: String,
+    fee: u64, // fee in AIO (gas_used * gas_price)
+    nonce: u8,
+    signature: String,
+}
+
+impl Transaction {
+    fn coinbase(tx: Transaction) -> bool {
+        if tx.senderKey == "" {
+            if validateSignature(tx.receive_key, tx.signature) {
+                return true;
+            } else return false;
+        }else return false;
+    }
+    
+    fn typeTransaction(&self) -> String 
+    {
+        return match(self.extra)  
+        {
+            ""=>"normal",
+            "r" => "reward",
+            "fnr" => "fullnode registration",
+            "unr" => "username registraion",
+            "l" => "fund lock",
+            "b" => "burn",
+            _ => "message",
+        };
+    }
+    
+    fn validateTransaction(&self) -> bool {
+        let mut acc = getAccount(self.sender_key);
+        if acc.balance == 0 {
+            return false;
+        }
+        if self.amount < 0.0001 { // the min amount sendable (1 miao)
+            return false;
+        }
+        if self.access_key != sender_key {
+            if acc.balance < self.amount {
+                return false;
+            }else {
+                if checkSignature(){
+                    return true;
+                }
+            }
+        }
+    }
+}
+
 impl Hashable for Transaction { // TXN CREATION 101: run this then do tx.hash(); then sign the hash provided
     fn bytes (&self) -> Vec<u8> {
         let mut bytes = vec![];
@@ -33,60 +91,4 @@ impl Hashable for Transaction { // TXN CREATION 101: run this then do tx.hash();
 
 fn hashTransaction(tx: Transaction) -> String {
     return tx.hash();
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TxStore { // remove data not needed to be stored
-    hash: String,
-    amount: u64,
-    extra: String,
-    sender_key: String,
-    receive_key: String,
-    access_key: String,
-    fee: u64, // fee in AIO (gas_used * gas_price)
-    nonce: u8,
-    signature: String,
-}    
-
-
-fn coinbase(tx: Transaction) -> bool {
-    if tx.senderKey == "" {
-        if validateSignature(tx.receive_key, tx.signature) {
-            return true;
-        }else return false;
-    }else return false;
-}
-    
-fn typeTransaction(tx: Transaction) -> String 
-{
-    return match(tx.extra)  {
-        ""=>"normal",
-        "r" => "reward",
-        "fnr" => "fullnode registration",
-        "unr" => "username registraion",
-        "l" => "fund lock",
-        "b" => "burn",
-        _ => "message",
-    };
-} 
-    
-fn validateTransaction(tx: Transaction) -> bool {
-    let mut acc = getAccount(tx.sender_key);
-    if acc.balance == 0 {
-        return false;
-    }
-    if tx.amount < 0.0001 { // the min amount sendable (1 miao)
-        return false;
-    }
-    if tx.access_key != sender_key {
-        if acc.balance < tx.amount {
-            return false;
-        }else {
-            if checkSignature(){
-              return true;
-            }
-        }
-        
-    }
-}
 }
