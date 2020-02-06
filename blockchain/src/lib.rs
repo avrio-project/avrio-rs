@@ -1,16 +1,14 @@
-use config::config;
-use std::sync::mutex;
-use std::sync::once;
+extern crate config;
+extern crate core;
+extern crate crypto
 use serde::{Serialize, Deserialize};
-use std::collections::hash_map::DefaultHasher;
-use crypto::hashable;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Transaction {
     hash: String,
     amount: u64,
     extra: String,
-    flag: byte,
+    flag: char,
     sender_key: String,
     receive_key: String,
     access_key: String,
