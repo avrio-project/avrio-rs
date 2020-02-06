@@ -1,6 +1,6 @@
 extern crate config;
 extern crate core;
-extern crate crypto
+extern crate crypto;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
