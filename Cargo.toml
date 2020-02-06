@@ -1,7 +1,11 @@
 [workspace]
 members = [
+  "blockchain",
+  "config",
   "core",
+  "crypto",
   "database",
+  "id",
   "p2p",
-  "rpc"
+  "rpc",
 ]
