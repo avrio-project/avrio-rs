@@ -53,22 +53,23 @@ impl Hashable for Block {
 }
 
 pub fn check_block(blk: Block) -> bool {
-    if blk.header.version_major > config.version_major {
-        return false;
-    } else if blk.header.prev_hash != get_block(blk.header.chain_key, blk.header.height ) {
-        return false;
-    } else if !check_signature(blk.signature,blk.header.chain_key) {
-        return false;
-    }
-
-    for txn in blk.txns {
-        if !validate_transaction(txn) {
+    if blk.header.height == 0 { // genesis block
+        if blk != generateGenesisBlock() {
+            return false
+        }
+    } else { // not genesis block
+        if blk.header.prev_hash != get_block(blk.header.chain_key, blk.header.height -1) {
+            return false;
+        } else if !check_signature(blk.signature,blk.header.chain_key) {
             return false;
         }
+    
+        for txn in blk.txns {
+            if !validate_transaction(txn) {
+                return false;
+            }
+        }
+        return false;
     }
-
-    // Todo continue blk validation
-
-    return false;
 }
 
