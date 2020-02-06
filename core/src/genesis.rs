@@ -7,7 +7,7 @@ extern crate rand;
 use rand::Rng;
 extern crate hex;
 
-let mut genesis_txns: Vec<Transactions> = vec![
+let mut genesis_txns: Vec<Transactions> = vec![ // any txns to be in the genesis block are defined here, below is a template for one.
     Transaction {
         amount: 0,
         extra: "",
@@ -18,7 +18,7 @@ let mut genesis_txns: Vec<Transactions> = vec![
         gas_price: 1,
         gas: 0,
         max_gas: u64::max_value(),
-        nonce: rng.gen::<u8>(),
+        nonce: 192,
     }
 ];
 
