@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use database::{setAccount, getAccount};
-use blockchain::*;
+extern crate blockchain;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Accesskey{ // Access keys are keys that provide limited access to a wallet - it allows one wallet to be split
