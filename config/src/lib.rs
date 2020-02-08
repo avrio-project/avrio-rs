@@ -1,7 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::prelude::*;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
@@ -24,10 +24,10 @@ pub struct Config {
     network_id: String,
     node_type: char,
     identitiy: String,
-}  
+}
 
 pub fn config() -> Config {
-  let mut file = File::open("node.conf").unwrap();
+    let mut file = File::open("node.conf").unwrap();
     let mut data: String = "";
     file.read_to_string(&mut data).unwrap();
     let conf: Config = serde_json::from_str(&data).unwrap();
