@@ -1,15 +1,16 @@
-use serde::{Serialize, Deserialize};
-use rocksdb::{DB, Options};
-extern crate core;
+use rocksdb::{Options, DB};
+use serde::{Deserialize, Serialize};
 extern crate config;
+extern crate core;
 
-fn saveData(serialized: String, path: String, key: String) -> u8 { // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
+fn saveData(serialized: String, path: String, key: String) -> u8 {
+    // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
     let db = DB::open_default(path).unwrap();
     db.put(key, serialized);
     return 1;
 }
 
-fn getData(path: String, key: String) -> String { 
+fn getData(path: String, key: String) -> String {
     let db = DB::open_default(path).unwrap();
     let mut data = "error no data";
     match db.get(key) {
@@ -21,15 +22,15 @@ fn getData(path: String, key: String) -> String {
 }
 
 fn setAccount(acc: Account) -> u8 {
-    let path = config.path +"/db/accountdb";
+    let path = config.path + "/db/accountdb";
     let serialized = serde_json::to_string(&acc).unwrap();
     saveData(serialized, path, acc.public_key);
     return 1;
 }
 
-fn getAccount(public_key: String) -> Account{
+fn getAccount(public_key: String) -> Account {
     let path = config.path + "/bd/accountdb";
-    let mut data = getData(path,public_key);
+    let mut data = getData(path, public_key);
     let db = DB::open_default(path).unwrap();
     if state != "1" {
         return nullAcc;
