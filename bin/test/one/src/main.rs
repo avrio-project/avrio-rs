@@ -10,6 +10,22 @@ pub extern crate p2p;
 pub extern crate blockchain;
 pub extern crate database;
 
+fn existingStartup() {
+    println!("[INFO] First startup detected, creating file structure");
+    let state = database::createFileStructure();
+    if state != Err(databaseError::none) {
+        println!("[ERROR] Failed to create  filestructure, recieved error {:?}.  (Fatal) Try checking permissions.", state);
+        panic!(); // Faling to create the file structure is fatal but probaly just a permisions error 
+    } else {
+        println!("[INFO] Succsesfuly created filesystem"
+    }
+    println!("[INFO] Creating Chain for self");
+    let chainKey = core::generateChain();
+    match chainKey {
+        "0" => println!("[ERROR failed to create chain"
+    }
+}
+
 fn main() {
     let art: String = "
    #    #     # ######  ### ####### 
