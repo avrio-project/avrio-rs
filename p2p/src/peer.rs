@@ -1,5 +1,5 @@
 
-use crate::tracker::*;;
+use crate::tracker::*;
 use rand::{Rand, Rng};
 extern crate config;
 use std::thread;
@@ -13,7 +13,7 @@ pub struct Peer {
 }
 
 pub struct P2pdata {
-    type: String, // The type of data in this message (eg Block would mean the deserialized data is a block struct)
+    data_type: String, // The type of data in this message (eg Block would mean the deserialized data is a block struct)
     message_bytes: u64, // The lenght in bytes of this message
     message: String, // The serialized data
 }
@@ -74,7 +74,7 @@ fn new_connection(socket: Socket) -> Peer { // This Fucntion handles all the det
     The recipitent then verifyes this then they send the same hand shake back to us;
     */
     let mut msg = "0x1a," + self_config.network_id + "," + serde_json::to_string(&self_config.identity).unwrap() + "," + self_config.node_type + "," + "0x1b";
-    stream.write(serde_json::to_string(msg); // send our handshake
+    stream.write(serde_json::to_string(msg)); // send our handshake
     stream.read(&mut [0; 128])?;
     Ok(())
 }
