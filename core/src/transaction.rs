@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-extern use crate database;
-extern use crate crypto;
+use serde::{Deserialize, Serialize};
+extern crate crypto;
+extern crate database;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Transaction {
@@ -19,7 +19,8 @@ pub struct Transaction {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct TxStore { // remove data not needed to be stored
+pub struct TxStore {
+    // remove data not needed to be stored
     hash: String,
     amount: u64,
     extra: String,
@@ -36,15 +37,17 @@ impl Transaction {
         if tx.senderKey == "" {
             if validateSignature(tx.receive_key, tx.signature) {
                 return true;
-            } else return false;
-        }else return false;
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
     }
-    
-    fn typeTransaction(&self) -> String 
-    {
-        return match(self.extra)  
-        {
-            ""=>"normal",
+
+    fn typeTransaction(&self) -> String {
+        return match (self.extra) {
+            "" => "normal",
             "r" => "reward",
             "fnr" => "fullnode registration",
             "unr" => "username registraion",
@@ -53,20 +56,21 @@ impl Transaction {
             _ => "message",
         };
     }
-    
+
     fn validateTransaction(&self) -> bool {
         let mut acc = getAccount(self.sender_key);
         if acc.balance == 0 {
             return false;
         }
-        if self.amount < 0.0001 { // the min amount sendable (1 miao)
+        if self.amount < 0.0001 {
+            // the min amount sendable (1 miao)
             return false;
         }
         if self.access_key != sender_key {
             if acc.balance < self.amount {
                 return false;
-            }else {
-                if checkSignature(){
+            } else {
+                if checkSignature() {
                     return true;
                 }
             }
@@ -74,8 +78,9 @@ impl Transaction {
     }
 }
 
-impl Hashable for Transaction { // TXN CREATION 101: run this then do tx.hash(); then sign the hash provided
-    fn bytes (&self) -> Vec<u8> {
+impl Hashable for Transaction {
+    // TXN CREATION 101: run this then do tx.hash(); then sign the hash provided
+    fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
         bytes.extend(self.ammount);
