@@ -1,5 +1,5 @@
 #[derive(Serialize, Deserialize, Debug)]
-struct Tracker { 
+struct Tracker {
     sent_bytes: u32,
     received_bytes: u32,
     peers: u32,
