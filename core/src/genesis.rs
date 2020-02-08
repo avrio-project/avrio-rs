@@ -27,8 +27,9 @@ fn generateGenesisBlock(chainKey: String, private_key: String) -> Block{
     for tx in genesis_txns {
         if tx.receive_key == chainKey {
             tx.hash = tx.hash();
-            tx.signature = sign(hex::encode(private_key, tx.hash);
+            tx.signature = sign(hex::encode(private_key, tx.hash));
             my_genesis_txns.push(tx);
+        }
     }
     let mut genesis_block = Block {
         header: Header {
@@ -45,4 +46,3 @@ fn generateGenesisBlock(chainKey: String, private_key: String) -> Block{
     genesis_block.signature = genesis_block.sign(private_key, genesis_block.hash);
     return genesis_block;
 }
-        
