@@ -3,7 +3,7 @@
 // get the peer list and connect to the other nodes on this peerlist. Then every 5 mins they 
 //generate a block and release it (to test the p2p propigation code). 
 
-pub extern crate config;
+//pub extern crate config;
 pub extern crate core;
 pub extern crate crypto;
 pub extern crate p2p;
@@ -25,7 +25,7 @@ fn connectSeednodes(seednodes: Vec<IpAddr::V4> -> u8 {
     return conn_count;
 }
     
-fn existingStartup() {
+fn existingStartup() -> u8{
     println!("[INFO] First startup detected, creating file structure");
     let mut state = database::createFileStructure();
     if state != Err(databaseError::none) {
@@ -37,6 +37,7 @@ fn existingStartup() {
     delete(state)
     println!("[INFO] Creating Chain for self");
     let chainKey = core::generateChain();
+    database::saveChain(chainKey);
     match chainKey[0] {
         "0" => println!("[ERROR failed to create chain (Fatal)") => panic!(),
         _ => println("[INFO] Succsessfully created chain with chain key {}", chainKey[0]),
@@ -77,7 +78,11 @@ fn existingStartup() {
         panic!();
     } 
     println("[INFO] Succsessfuly synced with network!");
+    println!("[INFO] Generating Node Cerificate (for self)");
+    // generate node certificate;
     
+    println!("[INFO] REgistering with network");
+    return 1;
 }
 
 fn main() {
