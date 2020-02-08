@@ -9,21 +9,75 @@ pub extern crate crypto;
 pub extern crate p2p;
 pub extern crate blockchain;
 pub extern crate database;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+fn connectSeednodes(seednodes: Vec<IpAddr::V4> -> u8 {
+    let mut i = 0;
+    let mut conn_count = 0;
+    while i < seednodes.iter.count() - 1 { 
+        let mut error = p2p::connect(seednodes[i]);
+        match error {
+            Err(p2p::none) => println("[INFO] Connected and handshaked to {:?}::{:?}", seednode[i], 11523) => conn_count += 1,
+            _ => println!("[WARN] Failed to connect to {:?}:: {:?}, returned error {:?}", seednode[i], 11523, error),
+        };
+        i += 1;
+    }
+    return conn_count;
+}
+    
 fn existingStartup() {
     println!("[INFO] First startup detected, creating file structure");
-    let state = database::createFileStructure();
+    let mut state = database::createFileStructure();
     if state != Err(databaseError::none) {
         println!("[ERROR] Failed to create  filestructure, recieved error {:?}.  (Fatal) Try checking permissions.", state);
         panic!(); // Faling to create the file structure is fatal but probaly just a permisions error 
     } else {
         println!("[INFO] Succsesfuly created filesystem"
     }
+    delete(state)
     println!("[INFO] Creating Chain for self");
     let chainKey = core::generateChain();
-    match chainKey {
-        "0" => println!("[ERROR failed to create chain"
+    match chainKey[0] {
+        "0" => println!("[ERROR failed to create chain (Fatal)") => panic!(),
+        _ => println("[INFO] Succsessfully created chain with chain key {}", chainKey[0]),
     }
+    let genesis_block: Block = core::generateGenesisBlock(chainKey[0], chainKey[1]);
+    match blockchain::check_block(genesis_block) {
+        false => println!("[ERROR] Failed to create genesis block, block dump: {:?} (Fatal)", genesis_block) => panic!(),
+        _ => println!("[INFO] Succsessfully generated genesis block with hash {}", genesis_block.hash.to_owned()),
+    }
+    println!("[INFO] Launching P2p server on 127.0.0.1::{:?}", 11523); // Parsing config and having custom p2p ports to be added in 1.1.0 - 2.0.0
+    match p2p::launchServer(11523) {
+        0 => println!("[ERROR] Error launching P2p server on 127.0.0.1::{:?} (Fatal)", 11523) => panic!(),
+        1 => println!("[INFO] Launched P2p server on 127.0.0.1::{:?}" 11523),
+    }
+    // [TODO
+    // Now we must prepare our node registration certificate
+    // that will go here
+    let node_reg_certi: core::NodeRegistartionCertifcate;
+    // COnect to seed nodes are and get peerlist
+    let mut peerlist: Vec<IpAddr::V4>;
+    let seednodes: Vec<IpAddr::V4> = vec![
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+    ]
+    let mut conn_nodes =0;
+    while (conn_nodes < 1) {
+        println!("[WARN] Failed to connect to any seednodes, retrying");
+        conn_nodes = connectSeednodes(seednodes);
+    }
+    println("[INFO] Connected to seednode(s), polling for peerlist (this may take some time)");
+    delete(state);
+    peerlist = p2p::getPeerList();
+    conn_nodes += connectNodes(peerlist);
+    println!("[INFO] Started syncing");
+    let mut sync = p2p::sync();
+    if sync == 0 { // fatal
+        panic!();
+    } 
+    println("[INFO] Succsessfuly synced with network!");
+    
 }
 
 fn main() {
@@ -45,11 +99,14 @@ fn main() {
     if startup_state == 1 { // succsess
         println!("[INFO] Avrio Daemon succsessfully launched");
         match p2p::sync_needed() { // do we need to sync
-            true => sync();
-            false => fullySynced();
+            true => p2p::sync() => println("[INFO] Successfully synced with the network!") => synced = true,;
+            false => println("[INFO] Succsessfully synced with the network!") => synced = true,
         }
+    }else {
+        println!("[ERROR] Failed to start avrio daemon (Fatal)");
+        panic!();
     }
-    if synced() == true 
+    if p2p::sync_needed == false // check in case a new block has been released since we syned 
     {
         if p2p::message_buffer.len() != 0 {
             handle_new_messages(message_buffer);
@@ -80,5 +137,10 @@ fn main() {
                 }
             }
         }
-   }  
+   }else {
+       match p2p::sync_needed() { // do we need to sync
+            true => p2p::sync() => println("[INFO] Successfully synced with the network!") => synced = true,;
+            false => println("[INFO] Succsessfully synced with the network!") => synced = true,
+        }
+  }
 }
