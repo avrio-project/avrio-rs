@@ -27,35 +27,6 @@ pub struct Config {
     identitiy: String,
 }
 
-/* impl Serialize for Config {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("Config", 19)?;
-        state.serialize_field("version_major", &self.version_major)?;
-        state.serialize_field("version_minor", &self.version_minor)?;
-        state.serialize_field("coin_name", &self.coin_name)?;
-        state.serialize_field("node_drop_off_threshold", &self.node_drop_off_threshold)?;
-        state.serialize_field("decimal_places", &self.decimal_places)?;
-        state.serialize_field("max_connections", &self.max_connections)?;
-        state.serialize_field("max_threads", &self.max_threads)?;
-        state.serialize_field("chain_key", &self.chain_key)?;
-        state.serialize_field("state", &self.state)?;
-        state.serialize_field("host", &self.host)?;
-        state.serialize_field("seednodes", &self.seednodes)?;
-        state.serialize_field("ignore_minor_updates", &self.ignore_minor_updates)?;
-        state.serialize_field("p2p_port", &self.p2p_port)?;
-        state.serialize_field("rpc_port", &self.rpc_port)?;
-        state.serialize_field("allow_cors", &self.allow_cors)?;
-        state.serialize_field("buffer_bytes", &self.buffer_bytes)?;
-        state.serialize_field("network_id", &self.network_id)?;
-        state.serialize_field("node_type", &self.node_type)?;
-        state.serialize_field("identitiy", &self.identitiy)?;
-        state.end()
-    }
-} */
-
 pub fn config() -> Config {
     let mut file = File::open("node.conf").unwrap();
     let mut data: String = String::from("");
