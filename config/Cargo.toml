@@ -6,5 +6,5 @@ edition = "2018"
 [lib]
 name = "avrio_config"
 path = "src/lib.rs"
-[dependencys]
+[dependencies]
 serde = { version = "1.0", features = ["derive"] }
