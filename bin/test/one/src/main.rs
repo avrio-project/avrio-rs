@@ -9,7 +9,7 @@ pub extern crate crypto;
 pub extern crate p2p;
 pub extern crate blockchain;
 pub extern crate database;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use libp2p::{Multiaddr, Transport, tcp::TcpConfig};
 
 fn connectSeednodes(seednodes: Vec<IpAddr::V4> -> u8 {
     let mut i = 0;
@@ -57,11 +57,11 @@ fn existingStartup() -> u8{
     // that will go here
     let node_reg_certi: core::NodeRegistartionCertifcate;
     // COnect to seed nodes are and get peerlist
-    let mut peerlist: Vec<IpAddr::V4>;
-    let seednodes: Vec<IpAddr::V4> = vec![
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+    let mut peerlist: Vec<Multiaddr>;
+    let seednodes: Vec<Multiaddr> = vec![
+        "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
+        "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
+        "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
     ]
     let mut conn_nodes =0;
     while (conn_nodes < 1) {
@@ -71,7 +71,7 @@ fn existingStartup() -> u8{
     println("[INFO] Connected to seednode(s), polling for peerlist (this may take some time)");
     delete(state);
     peerlist = p2p::getPeerList();
-    conn_nodes += connectNodes(peerlist);
+    conn_nodes += connectSeednodes(peerlist);
     println!("[INFO] Started syncing");
     let mut sync = p2p::sync();
     if sync == 0 { // fatal
@@ -81,7 +81,7 @@ fn existingStartup() -> u8{
     println!("[INFO] Generating Node Cerificate (for self)");
     // generate node certificate;
     
-    println!("[INFO] REgistering with network");
+    println!("[INFO] Registering with network");
     return 1;
 }
 
