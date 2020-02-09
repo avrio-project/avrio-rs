@@ -6,25 +6,25 @@ use std::io::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
-    version_major: u32,
-    version_minor: u32,
-    coin_name: String,
-    node_drop_off_threshold: u64, // percent of online nodes that can go offline before a rearrange
-    decimal_places: u8,
-    max_connections: u16,
-    max_threads: u8,
-    chain_key: String,
-    state: u8,
-    host: u64,
-    seednodes: Vec<Vec<u8>>,
-    ignore_minor_updates: bool,
-    p2p_port: u16,
-    rpc_port: u16,
-    allow_cors: String,
-    buffer_bytes: u16,
-    network_id: String,
-    node_type: char,
-    identitiy: String,
+    pub version_major: u32,
+    pub version_minor: u32,
+    pub coin_name: String,
+    pub node_drop_off_threshold: u64, // percent of online nodes that can go offline before a rearrange
+    pub decimal_places: u8,
+    pub max_connections: u16,
+    pub max_threads: u8,
+    pub chain_key: String,
+    pub state: u8,
+    pub host: u64,
+    pub seednodes: Vec<Vec<u8>>,
+    pub ignore_minor_updates: bool,
+    pub p2p_port: u16,
+    pub rpc_port: u16,
+    pub allow_cors: String,
+    pub buffer_bytes: u16,
+    pub network_id: String,
+    pub node_type: char,
+    pub identitiy: String,
 }
 
 pub fn config() -> Config {
