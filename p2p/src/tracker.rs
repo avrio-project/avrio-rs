@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Tracker {
     sent_bytes: u32,
@@ -7,7 +9,7 @@ struct Tracker {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct peer_tracker {
+struct PeerTracker {
     sent_bytes: u32,
-    sent_bytes: u32,
+    recieved_bytes: u32,
 }
