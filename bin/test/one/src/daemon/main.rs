@@ -15,9 +15,9 @@ fn connectSeednodes(seednodes: Vec<IpAddr::V4> -> u8 {
     let mut i = 0;
     let mut conn_count = 0;
     while i < seednodes.iter.count() - 1 { 
-        let mut error = p2p::connect(seednodes[i]);
+        let mut error: p2p_error = p2p::connect(seednodes[i]);
         match error {
-            Err(p2p::none) => println("[INFO] Connected and handshaked to {:?}::{:?}", seednode[i], 11523) => conn_count += 1,
+            Err(p2p_errors::none) => println("[INFO] Connected and handshaked to {:?}::{:?}", seednode[i], 11523) => conn_count += 1,
             _ => println!("[WARN] Failed to connect to {:?}:: {:?}, returned error {:?}", seednode[i], 11523, error),
         };
         i += 1;
