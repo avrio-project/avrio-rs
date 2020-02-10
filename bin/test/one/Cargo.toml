@@ -1,5 +1,5 @@
 [package]
-name = "avrio_testnet"
+name = "avrio_testnet_one"
 version = "1"
 edition = "2018"
 authors = ["Leo Cornelius <leocornelius019@gmail.com>"]
@@ -10,4 +10,7 @@ readme = "README.md"
 description = """
 Testnet one, aimed at P2p + block/ txn code testing
 """
+[bin]
+name = "avrio-daemon"
+source = "src/daemon"
 [dependencies]
