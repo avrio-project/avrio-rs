@@ -15,7 +15,17 @@ pub enum p2p_errors {
   InvalidMultiAdrr,
   Other
 }
-
+function formMsg(data_s: String, network_id: Vec<byte>) -> Vec<bytes> {
+    let mut msg: Vec<bytes>;
+    for byte_ in network_id {
+        msg.push(byte);
+    }
+    for byte_ in data_s.as_bytes() {
+        msg.push(byte_);
+    }
+    msg.push(0x00);
+    return msg;
+}
 function handleConn(sock: UdpSocket) {
   let (mut reader, mut writer) = sock.split(); 
   let data = reader.blah(); // todo
