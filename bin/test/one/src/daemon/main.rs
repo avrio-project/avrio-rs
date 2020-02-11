@@ -32,9 +32,9 @@ fn existingStartup() -> u8{
         println!("[ERROR] Failed to create  filestructure, recieved error {:?}.  (Fatal) Try checking permissions.", state);
         panic!(); // Faling to create the file structure is fatal but probaly just a permisions error 
     } else {
-        println!("[INFO] Succsesfuly created filesystem"
+        println!("[INFO] Succsesfuly created filestructure");
     }
-    delete(state)
+    drop(state)
     println!("[INFO] Creating Chain for self");
     let chainKey = core::generateChain();
     database::saveChain(chainKey);
@@ -69,15 +69,11 @@ fn existingStartup() -> u8{
         conn_nodes = connectSeednodes(seednodes);
     }
     println("[INFO] Connected to seednode(s), polling for peerlist (this may take some time)");
-    delete(state);
+    drop(state);
     peerlist = p2p::getPeerList();
     conn_nodes += connectSeednodes(peerlist);
     println!("[INFO] Started syncing");
     let mut sync = p2p::sync();
-    if sync == 0 { // fatal
-        panic!();
-    } 
-    println("[INFO] Succsessfuly synced with network!");
     println!("[INFO] Generating Node Cerificate (for self)");
     // generate node certificate;
     
