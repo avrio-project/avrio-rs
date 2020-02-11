@@ -13,30 +13,30 @@ use std::str;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct P2pdata {
-    message_bytes: usize, // The length in bytes of message
-    message_type: u16, // The type of data
-    message: String,   // The serialized data
+    pub message_bytes: usize, // The length in bytes of message
+    pub message_type: u16, // The type of data
+    pub message: String,   // The serialized data
 }
 
 
 pub struct Peer {
-    id: String,
-    socket: Socket,     // socket (ip, port) of a peer
-    info: PeerTracker, // stats about recived and sent bytes from this peer
+    pub id: String,
+    pub socket: Socket,     // socket (ip, port) of a peer
+    pub info: PeerTracker, // stats about recived and sent bytes from this peer
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Tracker {
-    sent_bytes: u32,
-    received_bytes: u32,
-    peers: u32,
-    uptime: u64,
+    pub tracker sent_bytes: u32,
+    pub  received_bytes: u32,
+    pub peers: u32,
+    pub uptime: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct PeerTracker {
-    sent_bytes: u32,
-    recieved_bytes: u32,
+    pub sent_bytes: u32,
+    pub recieved_bytes: u32,
 }
 fn handle_client(mut stream: TcpStream) {
     let mut self_config: Config = config().unwrap();
