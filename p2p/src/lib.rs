@@ -2,119 +2,125 @@
 extern crate log;
 #[macro_use]
 extern crate unwrap;
-use clap;
-use crust;
-use maidsafe_utilities;
-use rand;
-use serde_json;
-
-use clap::{App, AppSettings, Arg, SubCommand};
-
-use crust::{read_config_file, ConnectionInfoResult, PeerId, PrivConnectionInfo, Service};
-use rand::Rng;
-use safe_crypto::{gen_encrypt_keypair, gen_sign_keypair, SecretEncryptKey};
-use std::cmp;
-use std::collections::{BTreeMap, HashMap};
-use std::io;
-use std::str::FromStr;
-use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
+use crate::tracker::*;
+use rand::{Rand, Rng};
+extern crate config;
+use std::io::{Read, Write};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::thread;
-use std::time::{Duration, Instant};
-use serde::{Serialize, Deserialize};
-// Thanks Crust example :)
-struct Network {
-    nodes: HashMap<usize, PeerId>,
-    our_connection_infos: BTreeMap<u32, PrivConnectionInfo>,
-    performance_start: Instant,
-    performance_interval: Duration,
-    received_msgs: u32,
-    received_bytes: usize,
-    peer_index: usize,
-    connection_info_index: u32,
-}
+use std::str;
 
-// simple "routing table" without any structure
-impl Network {
-    pub fn new() -> Network {
-        Network {
-            nodes: HashMap::new(),
-            our_connection_infos: BTreeMap::new(),
-            performance_start: Instant::now(),
-            performance_interval: Duration::from_secs(10),
-            received_msgs: 0,
-            received_bytes: 0,
-            peer_index: 0,
-            connection_info_index: 0,
-        }
-    }
-
-    pub fn next_peer_index(&mut self) -> usize {
-        let ret = self.peer_index;
-        self.peer_index += 1;
-        ret
-    }
-
-    pub fn next_connection_info_index(&mut self) -> u32 {
-        let ret = self.connection_info_index;
-        self.connection_info_index += 1;
-        ret
-    }
-
-    pub fn print_connected_nodes(&self, service: &Service) {
-        println!("Node count: {}", self.nodes.len());
-        for (id, node) in &self.nodes {
-            let status = if service.is_connected(node) {
-                "Connected   "
-            } else {
-                "Disconnected"
-            };
-
-            println!("[{}] {} {:?}", id, status, node);
-        }
-
-        println!();
-    }
-
-    pub fn get_peer_id(&self, n: usize) -> Option<&PeerId> {
-        self.nodes.get(&n)
-    }
-
-    pub fn record_received(&mut self, msg_size: usize) {
-        self.received_msgs += 1;
-        self.received_bytes += msg_size;
-        if self.received_msgs == 1 {
-            self.performance_start = Instant::now();
-        }
-        if self.performance_start + self.performance_interval < Instant::now() {
-            println!(
-                "\nReceived {} messages with total size of {} bytes in last {} seconds.",
-                self.received_msgs,
-                self.received_bytes,
-                self.performance_interval.as_secs()
-            );
-            self.received_msgs = 0;
-            self.received_bytes = 0;
-        }
-    }
-}
-
-fn handle_new_peer(
-    service: &Service,
-    protected_network: Arc<Mutex<Network>>,
-    peer_id: PeerId,
-) -> usize {
-    let mut network = unwrap!(protected_network.lock());
-    let peer_index = network.next_peer_index();
-    let _ = network.nodes.insert(peer_index, peer_id);
-    peer_index
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct P2pdata {
     message_bytes: usize, // The length in bytes of message
     message_type: u16, // The type of data
     message: String,   // The serialized data
+}
+
+
+pub struct Peer {
+    id: String,
+    socket: Socket,     // socket (ip, port) of a peer
+    info: PeerTracker, // stats about recived and sent bytes from this peer
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Tracker {
+    sent_bytes: u32,
+    received_bytes: u32,
+    peers: u32,
+    uptime: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct PeerTracker {
+    sent_bytes: u32,
+    recieved_bytes: u32,
+}
+fn handle_client(mut stream: TcpStream) {
+    let mut self_config: Config = config().unwrap();
+    let buffer_bytes = 128;
+    let mut data = [0 as u8; buffer_bytes]; 
+    while match stream.read(&mut data) {
+        Ok(size) => {
+            deformMsg(str::from_utf8(&data).unwrap());
+            true
+        }
+        Err(_) => {
+            println!(
+                "[ERROR] Terminating connection with {}",
+                stream.peer_addr().unwrap()
+            );
+            stream.shutdown(Shutdown::Both).unwrap();
+            false
+        }
+    } {}
+}
+
+fn rec_server() -> u8 {
+    let mut self_config = config();
+    let listener = TcpListener::bind(self_config.bind_socket).unwrap();
+    // accept connections and process them, spawning a new thread for each one
+    println!(
+        "[INFO] P2P Server Launched on 127.0.0.1:{:?}",
+        self_config.bind_socket
+    );
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                println!(
+                    "[INFO] New incoming connection: {}",
+                    stream.peer_addr().unwrap()
+                );
+
+                thread::spawn(move || {
+                    // connection succeeded
+                    handle_client(stream)
+                });
+            }
+            Err(e) => {
+                println!(
+                    "[ERROR] handling peer connection to {:?} resulted in  error: {:?}",
+                    stream.peer_addr().unwrap(),
+                    e
+                );
+                /* connection failed */
+            }
+        }
+    }
+    // close the socket server
+    drop(listener);
+    return 1;
+}
+fn new_connection(socket: Socket) -> Peer {
+    // This Fucntion handles all the details of conecting to a peer, geting id and constructing a Peer struct
+    let mut peer = Peer;
+    let mut peer_stream = TcpStream::connect(socket)?;
+    let self_config = config().unwrap();
+    /*Once we have established a connection over TCP we now send vital data as a hanshake,
+    This is in the following format
+    0x1a, network id,our peer id, our node type, ox1b;
+    The recipitent then verifyes this then they send the same hand shake back to us;
+    */
+    let mut msg = String::from( self_config.network_id
+        + ","
+        + self_config.id
+        + ","
+        + self_config.node_type  );
+    stream.write(formMsg(msg,0x1a)); // send our handshake
+    let mut buffer = [0; 128];
+    let _ = stream.read(&mut buffer);
+    let pid: String = process_handshake(str::from_utf8(&buffer).unwrap());
+    let mut info = PeerTracker {
+        sent_bytes: 128,
+        recieved_bytes: 128,
+    }
+    return Peer {
+        id: pid,
+        socket: socket,
+        info: info,
+    }
 }
 
 fn process_block(s: String) {hanks cust
@@ -129,8 +135,8 @@ fn process_registration(s: String) {
     println!("Certificate");
 }
 
-fn process_handshake(s: String) {
-    println!("handshake");
+fn process_handshake(s: String) -> String {
+    return id;
 }
 
 
