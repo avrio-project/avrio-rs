@@ -10,6 +10,23 @@ pub struct P2pdata {
     message: String,   // The serialized data
 }
 
+function process_block(s: String) {
+    println!("Block");
+}
+
+function process_transaction(s: String) {
+    println!("Transaction");
+}
+
+function process_registration(s: String) {
+    println!("Certificate");
+}
+
+function process_handshake(s: String) {
+    println!("handshake");
+}
+
+
 pub enum p2p_errors {
   None,
   TimeOut,
