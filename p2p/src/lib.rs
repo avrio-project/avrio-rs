@@ -9,6 +9,8 @@ use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::thread;
 use std::str;
+extern crate hex;
+use hex::*;
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -28,7 +30,7 @@ pub struct Peer {
 #[derive(Serialize, Deserialize, Debug)]
 struct Tracker {
     pub tracker sent_bytes: u32,
-    pub  received_bytes: u32,
+    pub received_bytes: u32,
     pub peers: u32,
     pub uptime: u64,
 }
@@ -95,7 +97,7 @@ fn rec_server() -> u8 {
 }
 fn new_connection(socket: Socket) -> Peer {
     // This Fucntion handles all the details of conecting to a peer, geting id and constructing a Peer struct
-    let mut peer = Peer;
+    let mut peer: Peer;
     let mut peer_stream = TcpStream::connect(socket)?;
     let self_config = config().unwrap();
     /*Once we have established a connection over TCP we now send vital data as a hanshake,
@@ -108,19 +110,19 @@ fn new_connection(socket: Socket) -> Peer {
         + self_config.id
         + ","
         + self_config.node_type  );
-    stream.write(formMsg(msg,0x1a)); // send our handshake
-    let mut buffer = [0; 128];
+    let _ = stream.write(formMsg(msg,0x1a)); // send our handshake
+    let mut buffer: u8 = [];
     let _ = stream.read(&mut buffer);
     let pid: String = process_handshake(str::from_utf8(&buffer).unwrap());
     let mut info = PeerTracker {
         sent_bytes: 128,
         recieved_bytes: 128,
-    }
+    };
     return Peer {
         id: pid,
         socket: socket,
         info: info,
-    }
+    };
 }
 
 fn process_block(s: String) {hanks cust
@@ -136,6 +138,7 @@ fn process_registration(s: String) {
 }
 
 fn process_handshake(s: String) -> String {
+    let id: String = String::from(hex::encode(s)); // logicly incorect!!!! just to make code compile 
     return id;
 }
 
