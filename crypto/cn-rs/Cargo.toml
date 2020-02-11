@@ -1,0 +1,30 @@
+[package]
+name = "cryptonight-rs"
+description = "Cryptonight-rs is a Rust wrapper around Cryptonight hash function from Monero."
+version = "0.2.1"
+authors = ["Dulguun <dulguun@glosfer.com>", "Tang Wei <maxtang@glosfer.com>"]
+homepage = "https://github.com/Team-Hycon/cryptonight-rs/"
+repository = "https://github.com/Team-Hycon/cryptonight-rs/"
+documentation = "https://team-hycon.github.io/cryptonight-rs/0_2/cryptonight/" 
+keywords = [ "Crypto", "Cryptonight" ]
+readme = "README.md"
+build = "build.rs"
+license = "MIT"
+
+[lib]
+name = "cryptonight"
+
+[build-dependencies]
+cc = "^1.0"
+
+[dependencies]
+libc = "^0.2"
+rustc-serialize = "^0.3"
+hex = "0.4.0"
+
+[dev-dependencies]
+bencher = "0.1.5"
+
+[[bench]]
+name = "cryptonight"
+harness = false

@@ -1,0 +1,54 @@
+TARGET = Some("x86_64-unknown-linux-gnu")
+OPT_LEVEL = Some("0")
+HOST = Some("x86_64-unknown-linux-gnu")
+CC_x86_64-unknown-linux-gnu = None
+CC_x86_64_unknown_linux_gnu = None
+HOST_CC = None
+CC = None
+CFLAGS_x86_64-unknown-linux-gnu = None
+CFLAGS_x86_64_unknown_linux_gnu = None
+HOST_CFLAGS = None
+CFLAGS = None
+CRATE_CC_NO_DEFAULTS = None
+DEBUG = Some("true")
+CARGO_CFG_TARGET_FEATURE = Some("fxsr,sse,sse2")
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/aesb.o" "-c" "src/vendor/aesb.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/blake256.o" "-c" "src/vendor/blake256.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/chacha.o" "-c" "src/vendor/chacha.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/crypto-ops-data.o" "-c" "src/vendor/crypto-ops-data.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/crypto-ops.o" "-c" "src/vendor/crypto-ops.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/groestl.o" "-c" "src/vendor/groestl.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash-extra-blake.o" "-c" "src/vendor/hash-extra-blake.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash-extra-groestl.o" "-c" "src/vendor/hash-extra-groestl.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash-extra-jh.o" "-c" "src/vendor/hash-extra-jh.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash-extra-skein.o" "-c" "src/vendor/hash-extra-skein.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash.o" "-c" "src/vendor/hash.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/jh.o" "-c" "src/vendor/jh.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/keccak.o" "-c" "src/vendor/keccak.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/oaes_lib.o" "-c" "src/vendor/oaes_lib.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/skein.o" "-c" "src/vendor/skein.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-m64" "-I" "src/vendor/crypto" "-I" "src/vendor/common" "-Wall" "-Wextra" "-maes" "-Ofast" "-fexceptions" "-o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/slow-hash.o" "-c" "src/vendor/slow-hash.c"
+exit code: 0
+AR_x86_64-unknown-linux-gnu = None
+AR_x86_64_unknown_linux_gnu = None
+HOST_AR = None
+AR = None
+running: "ar" "crs" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/libcryptonight.a" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/aesb.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/blake256.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/chacha.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/crypto-ops-data.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/crypto-ops.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/groestl.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash-extra-blake.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash-extra-groestl.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash-extra-jh.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash-extra-skein.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/hash.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/jh.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/keccak.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/oaes_lib.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/skein.o" "/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out/src/vendor/slow-hash.o"
+exit code: 0
+cargo:rustc-link-lib=static=cryptonight
+cargo:rustc-link-search=native=/home/leo/cn-rs/lib/target/debug/build/cryptonight-rs-03442724014af994/out

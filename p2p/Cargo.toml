@@ -10,3 +10,4 @@ serde_json = "1.0.47"
 rand = "0.7"
 tokio = { version = "0.2", features = ["full"] }
 libp2p = "0.15.0"
+futures = "0.3.4"
