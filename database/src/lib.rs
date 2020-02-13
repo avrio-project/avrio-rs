@@ -10,9 +10,22 @@ fn saveData(serialized: String, path: String, key: String) -> u8 {
     return 1;
 }
 
+fn savePeerlist(list: &Vec<Vec<u8>>, path) {
+    let peerlist_s: String;
+    let ips: Vec<String>;
+    let ip_curr: String;
+    for ip in list {
+        for ip_seg in ip {
+            ip_curr = &ip_curr + "." + String::from(ip_seg);
+        }
+        ips.push(String:from(ip_curr));
+    }
+    saveData(ips, path, "peerlist");
+}
+
 fn getData(path: String, key: String) -> String {
     let db = DB::open_default(path).unwrap();
-    let mut data = "error no data";
+    let mut data: String;
     match db.get(key) {
         Ok(Some(value)) => data = value,
         Ok(None) => data = "-1",
