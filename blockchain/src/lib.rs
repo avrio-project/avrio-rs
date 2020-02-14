@@ -3,6 +3,15 @@ extern crate core;
 extern crate crypto;
 use serde::{Deserialize, Serialize};
 
+enum blockValidationErrors {
+    invalidBlockhash,
+    badSignature,
+    indexMissmatch,
+    invalidPreviousBlockhash,
+    invalidTransaction,
+    genesisBlockMissmatch,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Header {
     version_major: u8,
@@ -52,25 +61,30 @@ impl Hashable for Block {
     }
 }
 
-pub fn check_block(blk: Block) -> bool {
+pub fn check_block(blk: Block) -> Result<(), blockValidationErrors> {
     if blk.header.height == 0 {
         // genesis block
         if blk != generateGenesisBlock() {
-            return false;
+            return Err(blockValidationErrors::genesisBlockMissmatch);
+        }
+        else {
+            return Ok(());
         }
     } else {
         // not genesis block
         if blk.header.prev_hash != get_block(blk.header.chain_key, blk.header.height - 1) {
-            return false;
+            return Err(blockValidationErrors::invalidPreviousBlockhash);
         } else if !check_signature(blk.signature, blk.header.chain_key) {
-            return false;
-        }
+            return Err(blockValidationErrors::badSignature);
+        } else {
 
-        for txn in blk.txns {
-            if !validate_transaction(txn) {
-                return false;
+            for txn in blk.txns {
+                if !validate_transaction(txn) {
+                    return Err(blockValidationErrors::invalidTransaction);
+                } else {
+                    ();
+                }
             }
-        }
-        return false;
+        return Ok(());
     }
 }
