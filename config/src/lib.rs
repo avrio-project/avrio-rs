@@ -6,17 +6,17 @@ use std::io::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Config {
-    pub version_major: u32,
-    pub version_minor: u32,
+    pub version_major: u8,
+    pub version_minor: u8,
     pub coin_name: String,
-    pub node_drop_off_threshold: u64,
+    pub node_drop_off_threshold: u8,
     pub decimal_places: u8,
     pub max_connections: u16,
     pub max_threads: u8,
     pub chain_key: String,
     pub state: u8,
-    pub ip_host: Vec<u8>,
-    pub seednodes: Vec<Vec<u8>>,
+    pub ip_host: Vec<u16>,
+    pub seednodes: Vec<Vec<u16>>,
     pub ignore_minor_updates: bool,
     pub p2p_port: u16,
     pub rpc_port: u16,
@@ -27,10 +27,10 @@ pub struct Config {
     pub identitiy: String,
     pub key_file_path: String,
     pub log_level: u8, 
-    pub min_intrest: u32,
-    pub max_intrest: u32,
-    pub max_reward: u64,
-    pub min_vote: u64,
+    pub min_intrest: f8,
+    pub max_intrest: f8,
+    pub max_reward: u32,
+    pub min_vote: u8,
     pub probatory_epoch_count: u8,
     
 }
@@ -48,12 +48,46 @@ pub fn config() -> Config {
     });
     return conf;
 }
-impl Config {
-    pub fn new_default() -> Config { // creates a config struct with default value (using Config::new_default()) // TODO
-        return Config {
-            //
+impl Default for Point {
+    fn default () -> Config {
+        Config
+        {
+             version_major: 0,
+             version_breaking: 0
+             version_minor: 1,
+             coin_name: String::from("Avrio"),
+             node_drop_off_threshold: 30,
+             decimal_places: 4,
+             max_connections: 50,
+             max_threads: 4,
+             chain_key: "",
+             state: 0,
+             ip_host: vec![127,0,0,1,12345],
+             seednodes: vec![
+                 vec![127,0,0,1],
+                 vec![127,0,0,1],
+             ],
+             ignore_minor_updates: false,
+             p2p_port: 12345,
+             rpc_port: 54321,
+             allow_cors: 'n',
+             buffer_bytes: 128,
+             network_id: vec![
+                 61, 76, 72, 69, 6f, 20, 6e, 6f, 6f, 64, 6c, 65,
+             ],
+             node_type: 'n',
+             identitiy: String:;from(""),
+             key_file_path: "wallet.keys".to_string(),
+             log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
+             min_intrest: 0.5,
+             max_intrest: 3.0,
+             max_reward: 25000,
+             min_vote: 65, // min vote to not be banned
+             probatory_epoch_count: 10,
         };
     }
+}
+impl Config {
     pub fn create(&self) -> io::Result<()> { // create file
         let mut file = File::create("node.conf")?;
         file.write_all(serde_json::to_string(&conf).unwrap().as_bytes())?;
