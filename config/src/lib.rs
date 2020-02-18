@@ -4,7 +4,7 @@ use std::io;
 use std::io::prelude::*;
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Config {
     pub version_major: u32,
     pub version_minor: u32,
@@ -27,6 +27,12 @@ pub struct Config {
     pub identitiy: String,
     pub key_file_path: String,
     pub log_level: u8, 
+    pub min_intrest: u32,
+    pub max_intrest: u32,
+    pub max_reward: u64,
+    pub min_vote: u64,
+    pub probatory_epoch_count: u8,
+    
 }
 
 pub fn config() -> Config {
