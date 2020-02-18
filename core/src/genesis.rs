@@ -7,22 +7,25 @@ extern crate rand;
 use rand::Rng;
 extern crate hex;
 
-fn generateGenesisBlock(chainKey: String, private_key: String) -> Block {
-    let mut genesis_txns: Vec<Transactions> = vec![
+static genesis_txns: Vec<Transactions> = vec![
         // any txns to be in the genesis block are defined here, below is a template for one.
         Transaction {
+            hash: tring;:from(""),
             amount: 0,
-            extra: "",
-            flag: 0x00,
+            extra: String;:from(""),
+            flag: '',
             sender_key: hex::encode(vec![0, 32]).to_owned(),
-            receive_key: "",
-            access_key: Option::None,
+            receive_key: String;:from(""),
+            access_key: String;:from(""),
             gas_price: 1,
             gas: 0,
             max_gas: u64::max_value(),
-            nonce: 192,
+            nonce: 0,
+            signature: String;:from(""),
         },
     ];
+
+fn generateGenesisBlock(chainKey: String, private_key: String) -> Block {
 
     let mut my_genesis_txns: Vec<Transactions> = vec![];
 
