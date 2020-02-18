@@ -28,17 +28,18 @@ pub struct Config {
     pub identitiy: String,
     pub key_file_path: String,
     pub log_level: u8, 
-    pub min_intrest: f8,
-    pub max_intrest: f8,
+    pub min_intrest: f32,
+    pub max_intrest: f32,
     pub max_reward: u32,
     pub min_vote: u8,
     pub probatory_epoch_count: u8,
     
 }
 
+
 pub fn config() -> Config {
     let mut file = File::open("node.conf").unwrap_or_else(|e| {
-        errror!("Failed to Open Config file: {}", e);
+        error!("Failed to Open Config file: {}", e);
         panic!();
     });
     let mut data: String = String::from("");
@@ -49,12 +50,13 @@ pub fn config() -> Config {
     });
     return conf;
 }
+
 impl Default for Config {
     fn default () -> Config {
         Config
         {
              version_major: 0,
-             version_breaking: 0
+             version_breaking: 0,
              version_minor: 1,
              coin_name: String::from("Avrio"),
              node_drop_off_threshold: 30,
@@ -74,10 +76,10 @@ impl Default for Config {
              allow_cors: 'n',
              buffer_bytes: 128,
              network_id: vec![
-                 61, 76, 72, 69, 6f, 20, 6e, 6f, 6f, 64, 6c, 65,
+                 0x61, 0x76, 0x72, 0x69, 0x6f, 0x20, 0x6e, 0x6f, 0x6f, 0x64, 0x6c, 0x65,
              ],
              node_type: 'n',
-             identitiy: String:;from(""),
+             identitiy: String::from(""),
              key_file_path: "wallet.keys".to_string(),
              log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
              min_intrest: 0.5,
@@ -85,18 +87,21 @@ impl Default for Config {
              max_reward: 25000,
              min_vote: 65, // min vote to not be banned
              probatory_epoch_count: 10,
-        };
+        }
     }
 }
+
+
+
 impl Config {
     pub fn create(&self) -> io::Result<()> { // create file
         let mut file = File::create("node.conf")?;
-        file.write_all(serde_json::to_string(&conf).unwrap().as_bytes())?;
+        file.write_all(serde_json::to_string(self).unwrap().as_bytes())?;
         Ok(())
     }
     pub fn save(&self) -> io::Result<()> { // save to exisiting/ update
         let mut file = File::open("node.conf")?;
-        file.write_all(serde_json::to_string(&conf).unwrap().as_bytes())?;
+        file.write_all(serde_json::to_string(self).unwrap().as_bytes())?;
         Ok(())
     }
 }
