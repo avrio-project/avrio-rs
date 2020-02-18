@@ -4,7 +4,7 @@ use std::io;
 use std::io::prelude::*;
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub version_major: u8,
     pub version_minor: u8,
