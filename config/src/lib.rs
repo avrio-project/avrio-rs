@@ -61,7 +61,7 @@ impl Default for Config {
              decimal_places: 4,
              max_connections: 50,
              max_threads: 4,
-             chain_key: "",
+             chain_key: "".to_string(),
              state: 0,
              ip_host: vec![127,0,0,1,12345],
              seednodes: vec![
