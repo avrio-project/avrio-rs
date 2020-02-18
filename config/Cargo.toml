@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Arielh25 <areilhurdle@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
 edition = "2018"
 
-[lib]
-name = "avrio_config"
-path = "src/lib.rs"
 
 [dependencies]
 serde = { version = "1.0.104", features = ["derive"] }
