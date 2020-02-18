@@ -7,6 +7,7 @@ use std::io::prelude::*;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub version_major: u8,
+    pub version_breaking: u8,
     pub version_minor: u8,
     pub coin_name: String,
     pub node_drop_off_threshold: u8,
@@ -48,7 +49,7 @@ pub fn config() -> Config {
     });
     return conf;
 }
-impl Default for Point {
+impl Default for Config {
     fn default () -> Config {
         Config
         {
