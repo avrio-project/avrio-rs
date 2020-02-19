@@ -64,10 +64,11 @@ impl Transaction {
         return match (self.flag) {
             'n' => "normal",
             'r' => "reward",
-            'n' => "fullnode registration",
+            'f' => "fullnode registration",
             'u' => "username registraion",
             'l' => "fund lock",
             'b' => "burn",
+            'w' => "burn with return",
             'm' => "message",
             _ => "unknown",
         };
