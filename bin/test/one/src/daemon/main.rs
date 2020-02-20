@@ -51,11 +51,6 @@ fn existingStartup() -> u8 {
         0 => { println!("[ERROR] Error launching P2p server on 127.0.0.1::{:?} (Fatal)", 11523); panic!();},
         1 => println!("[INFO] Launched P2p server on 127.0.0.1::{:?}" 11523),
     }
-    // [TODO
-    // Now we must prepare our node registration certificate
-    // that will go here
-    let node_reg_certi: core::NodeRegistartionCertifcate;
-    // COnect to seed nodes are and get peerlist
     let mut peerlist: Vec<Multiaddr>;
     let seednodes: Vec<Multiaddr> = vec![
         "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
@@ -74,22 +69,21 @@ fn existingStartup() -> u8 {
     println!("[INFO] Started syncing");
     let mut sync = p2p::sync();
     println!("[INFO] Generating Node Cerificate (for self)");
-    // generate node certificate;
-    
+    // generate node certificate
     println!("[INFO] Registering with network");
     return 1;
 }
 
 fn main() {
     let art: String = "
-   #    #     # ######  ### ####### 
-  # #   #     # #     #  #  #     # 
- #   #  #     # #     #  #  #     # 
-#     # #     # ######   #  #     # 
-#######  #   #  #   #    #  #     # 
-#     #   # #   #    #   #  #     # 
+   #    #     # ######  ### #######
+  # #   #     # #     #  #  #     #
+ #   #  #     # #     #  #  #     #
+#     # #     # ######   #  #     #
+#######  #   #  #   #    #  #     #
+#     #   # #   #    #   #  #     #
 #     #    #    #     # ### ####### ";
-    print!("{}", art);
+    println!("{}", art);
     println!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
     println!("[INFO] Checking for previous startup");
     let startup_state: u16 = match database::new_startup() {
