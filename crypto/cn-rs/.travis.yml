@@ -1,0 +1,24 @@
+language: rust
+rust: 
+  - stable
+
+cache:
+  cargo
+
+addons:
+  apt:
+    sources:
+    - ubuntu-toolchain-r-test
+    packages:
+    - libboost-dev
+    - clang
+
+script:
+  - cargo test --all
+  - cargo build --release
+  - cargo bench --all
+
+env:
+  global:
+  - RUST_BACKTRACE=1
+  - CC="clang"

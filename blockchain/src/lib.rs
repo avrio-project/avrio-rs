@@ -1,6 +1,5 @@
-extern crate config;
-extern crate core;
-extern crate crypto;
+extern crate avrio_config;
+extern crate avrio_core;
 use serde::{Deserialize, Serialize};
 
 enum blockValidationErrors {
@@ -32,7 +31,7 @@ pub struct Block {
     node_signatures: Vec<String>, // a block must be signed by at least (c / 2) + 1 nodes to be valid (ensures at least ne honest node has singed it)
 }
 
-impl Hashable for Header {
+impl Header {
     fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
@@ -46,9 +45,12 @@ impl Hashable for Header {
         bytes.extend(self.timestamp.to_string());
         bytes
     }
+    fn hash(&self) {
+        //TODO
+    }
 }
 
-impl Hashable for Block {
+impl Block {
     fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
@@ -59,6 +61,9 @@ impl Hashable for Block {
                 .collect::<Vec<u8>>(),
         );
         bytes
+    }
+    fn hash(&self) {
+        // TODO
     }
 }
 
@@ -90,3 +95,5 @@ pub fn check_block(blk: Block) -> Result<(), blockValidationErrors> {
         }
     }
 }
+
+mod genesis;

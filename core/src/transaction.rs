@@ -5,15 +5,12 @@ use cryptonight::cryptonight;
 extern crate rand;
 use rand::Rng;
 use std::time::{Duration, Instant};
-use indicatif::ProgressBar;                                                                                       
 use ring::{
     rand as randc,
     signature::{self, KeyPair},
 };
 extern crate database;
 use database::getAccount;
-
-static TC:u64 = 2000;                                                                                              
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Transaction {
