@@ -11,21 +11,20 @@ pub extern crate blockchain;
 pub extern crate database;
 use libp2p::{Multiaddr, Transport, tcp::TcpConfig};
 
-fn connectSeednodes(seednodes: Vec<IpAddr::V4> -> u8 {
+fn connectSeednodes(seednodes: Vec<IpAddr::V4>) -> u8 {
     let mut i = 0;
     let mut conn_count = 0;
-    while i < seednodes.iter.count() - 1 { 
+    while i < seednodes.iter.count() - 1 {
         let mut error: p2p_error = p2p::connect(seednodes[i]);
         match error {
-            Err(p2p_errors::none) => println("[INFO] Connected and handshaked to {:?}::{:?}", seednode[i], 11523) => conn_count += 1,
+            Err(p2p_errors::none) =>  { println("[INFO] Connected and handshaked to {:?}::{:?}", seednode[i], 11523); conn_count += 1; },
             _ => println!("[WARN] Failed to connect to {:?}:: {:?}, returned error {:?}", seednode[i], 11523, error),
         };
         i += 1;
     }
     return conn_count;
 }
-    
-fn existingStartup() -> u8{
+fn existingStartup() -> u8 {
     println!("[INFO] First startup detected, creating file structure");
     let mut state = database::createFileStructure();
     if state != Err(databaseError::none) {
@@ -34,22 +33,22 @@ fn existingStartup() -> u8{
     } else {
         println!("[INFO] Succsesfuly created filestructure");
     }
-    drop(state)
+    drop(state);
     println!("[INFO] Creating Chain for self");
     let chainKey = core::generateChain();
     database::saveChain(chainKey);
     match chainKey[0] {
-        "0" => println!("[ERROR failed to create chain (Fatal)") => panic!(),
+        "0" =>  { println!("[ERROR failed to create chain (Fatal)"); panic!();},
         _ => println("[INFO] Succsessfully created chain with chain key {}", chainKey[0]),
     }
     let genesis_block: Block = core::generateGenesisBlock(chainKey[0], chainKey[1]);
     match blockchain::check_block(genesis_block) {
-        false => println!("[ERROR] Failed to create genesis block, block dump: {:?} (Fatal)", genesis_block) => panic!(),
+        false => { println!("[ERROR] Failed to create genesis block, block dump: {:?} (Fatal)", genesis_block); panic!();},
         _ => println!("[INFO] Succsessfully generated genesis block with hash {}", genesis_block.hash.to_owned()),
     }
     println!("[INFO] Launching P2p server on 127.0.0.1::{:?}", 11523); // Parsing config and having custom p2p ports to be added in 1.1.0 - 2.0.0
     match p2p::launchServer(11523) {
-        0 => println!("[ERROR] Error launching P2p server on 127.0.0.1::{:?} (Fatal)", 11523) => panic!(),
+        0 => { println!("[ERROR] Error launching P2p server on 127.0.0.1::{:?} (Fatal)", 11523); panic!();},
         1 => println!("[INFO] Launched P2p server on 127.0.0.1::{:?}" 11523),
     }
     // [TODO
@@ -62,7 +61,7 @@ fn existingStartup() -> u8{
         "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
         "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
         "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
-    ]
+    ];
     let mut conn_nodes =0;
     while (conn_nodes < 1) {
         println!("[WARN] Failed to connect to any seednodes, retrying");
@@ -100,8 +99,8 @@ fn main() {
     if startup_state == 1 { // succsess
         println!("[INFO] Avrio Daemon succsessfully launched");
         match p2p::sync_needed() { // do we need to sync
-            true => p2p::sync() => println("[INFO] Successfully synced with the network!") => synced = true,;
-            false => println("[INFO] Succsessfully synced with the network!") => synced = true,
+            true => { p2p::sync(); println("[INFO] Successfully synced with the network!"); synced = true;},
+            false => { println("[INFO] Succsessfully synced with the network!"); synced = true;},
         }
     }else {
         println!("[ERROR] Failed to start avrio daemon (Fatal)");
@@ -113,18 +112,20 @@ fn main() {
             handle_new_messages(message_buffer);
         } else {
         // create block
-            let new_block == Block 
+            let new_block = Block
             {
                 header: Header {
                     version_major: 0,
-                    version_minor: 0
+                    version_minor: 0,
                     chain_key: chainKey,
-                    prev_hash: hex::encode(get_last_blockhash(chainKey),
+                    prev_hash: hex::encode(get_last_blockhash(chainKey)),
                     height: 0,
                     timestamp: 0,
                 },
                 txns: blank_txn,
-            }
+                hash: String::from(""),
+                signature: String::from(""),
+            };
             new_block.hash = new_block.hash();
             new_block.signature = new_block.sign(private_key, new_block.hash);
             let mut new_block_s: String;
@@ -140,8 +141,8 @@ fn main() {
         }
    }else {
        match p2p::sync_needed() { // do we need to sync
-            true => p2p::sync() => println("[INFO] Successfully synced with the network!") => synced = true,;
-            false => println("[INFO] Succsessfully synced with the network!") => synced = true,
+            true =>  { p2p::sync(); println("[INFO] Successfully synced with the network!"); synced = true;},
+            false => { println("[INFO] Succsessfully synced with the network!"); synced = true;},
         }
   }
 }
