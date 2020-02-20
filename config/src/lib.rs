@@ -36,7 +36,7 @@ pub struct Config {
     pub max_reward: u32,
     pub min_vote: u8,
     pub probatory_epoch_count: u8,
-    
+    certificateDifficulty: u64,
 }
 
 
@@ -91,6 +91,7 @@ impl Default for Config {
              max_reward: 25000,
              min_vote: 65, // min vote to not be banned
              probatory_epoch_count: 10,
+             certificateDifficulty: 1000, // TODO find this value
         }
     }
 }
