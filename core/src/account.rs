@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate log;
 extern crate config;
-use config::config{config,Config};
+use config::config;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Accesskey {
@@ -73,7 +73,7 @@ fn getAccount(public_key: String) -> Result<Account, u8> {
     return Ok(acc);
 }
 
-pub fn deltaFunds(public_key: String, amount: u64, mode: u8, access_key: String) -> Result<(), String> ) {
+pub fn deltaFunds(public_key: String, amount: u64, mode: u8, access_key: String) -> Result<(), String> {
     let mut acc = getAccount(public_key);
     if mode == 0 {
         // minus funds
