@@ -1,7 +1,10 @@
-use database::{getAccount, setAccount};
+use database::{setData, getData};
 use serde::{Deserialize, Serialize};
 #[macro_use]
-extern crate log
+extern crate log;
+extern crate config;
+use config::config{config,Config};
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Accesskey {
     // Access keys are keys that provide limited access to a wallet - it allows one wallet to be split
@@ -38,6 +41,38 @@ impl Account {
     }
 }
 
+fn setAccount(acc: Account) -> u8 {
+    let path = config().db_path + "/db/accountdb";
+    let serialized: String;
+    serialized = serde_json::to_string(&acc).unwrap_or_else(|e| {
+        error!("Unable To Serilise Account, gave error {}, retrying", e);
+        serialized = serde_json::to_string(&acc).unwrap_or_else(|et| { 
+                error!("Retry Failed with error: {}" et);
+                panic!();
+        });
+    });
+    saveData(serialized, path, acc.public_key);
+    return 1;
+}
+
+fn getAccount(public_key: String) -> Result<Account, u8> {
+    let path = config().db_path + "/bd/accountdb".to_owned();
+    let mut data = getData(path, public_key);
+    if data != "1" {
+        return Err(1);
+    } else {
+        let acc: Account;
+        acc = serde_json::from_str(&data).unwrap_or_else(|e| { 
+            error!("Failed to Parse Account {:?}, gave error {:?}, Retrying...", &data, e);
+            serde_json::from_str(&data).unwrap_or_else(|et| { 
+                error!("Retry failed with error {:?}", et);
+                panic!();
+            });
+        });
+    }
+    return Ok(acc);
+}
+
 pub fn deltaFunds(public_key: String, amount: u64, mode: u8, access_key: String) -> Result<(), String> ) {
     let mut acc = getAccount(public_key);
     if mode == 0 {
@@ -47,10 +82,7 @@ pub fn deltaFunds(public_key: String, amount: u64, mode: u8, access_key: String)
             let after_change = acc.balance - amount;
             if after_change < 0 {
                 // insufffient funds
-                log::warn!(
-                    "changing funds for account {} would produce negative balance!",
-                    acc.public_key
-                );
+                warn!("changing funds for account {} would produce negative balance!", acc.public_key);
                 return Err("changing funds for account {} would produce negative balance");
             } else {
                 acc.balance = acc.balance - amount;
