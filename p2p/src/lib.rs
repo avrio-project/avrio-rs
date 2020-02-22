@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate unwrap;
 extern crate avrio_config;
+use avrio_config::config;
 use std::io::{Read, Write};
 use std::process;
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
