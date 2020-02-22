@@ -4,7 +4,7 @@ extern crate log;
 use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate unwrap;
-//extern crate avrio_config;
+extern crate avrio_config;
 use std::io::{Read, Write};
 use std::process;
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -45,9 +45,6 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     loop {
         let mut data = [0 as u8; 200];
         match stream.read(&mut data) {
-            Ok(0) => { // client has disconected
-                return Ok(());
-            }
             Ok(_) => {
                 match deformMsg(&String::from_utf8(data.to_vec()).unwrap()) {
                     Some(a) => {
@@ -61,10 +58,8 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                             + "*"
                             + &config().node_type.to_string();
                         info!("Our handshake: {}", msg);
-                        //info!("The message they will recieve {}", formMsg(msg.to_owned(), 0x1a));
-                        let d = stream.flush();
-                        let a = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes()); // send our handshake
-                        let b = stream.flush();
+                        let _ = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes()); // send our handshake
+                        
                     }
                     _ =>  {}
                 }
