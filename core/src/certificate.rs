@@ -3,9 +3,19 @@ This file handles the generation, validation and saving of the fullnodes certifi
 */
 
 extern crate hex;
-use std::time::{Duration, SystemTime};
+use std::time::{UNIX_EPOCH, SystemTime};
 extern crate cryptonight;
+extern crate avrio_config;
+use avrio_config::config;
+extern crate avrio_database;
+use avrio_database::{getData, saveData};
 use cryptonight::cryptonight;
+use crate::transaction::{TxStore};
+use ring::{
+  rand as randc,
+  signature::{self, KeyPair},
+};
+use std::error::Error;
 
 enum certificateErrors {
   transactionNotFound,
@@ -58,11 +68,12 @@ pub fn generateCertificate(pk: &String, privateKey: &String, txnHash: &String) -
     timestamp: 0,
     signature: String::from(""),
   };
-  cert.publicKey = pk;
-  cert.txnHash = txnHash;
-  cert.timestamp = SystemTime::now();
+  cert.publicKey = pk.to_owned();
+  cert.txnHash = txnHash.to_owned();
+  cert.timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
+  .expect("Time went backwards").as_millis() as u64;
   let diff_cert = config().certificateDifficulty;
-  for nonce in u64::maxValue() {
+  for nonce in 0..u64::max_value() {
     cert.nonce = nonce;
     cert.hash();
     if cert.checkDiff(&diff_cert) {
@@ -70,10 +81,10 @@ pub fn generateCertificate(pk: &String, privateKey: &String, txnHash: &String) -
     }
   }
   drop(diff_cert);
-  if !cert.sign(&privateKey) {
-    Err(certificateErrors::signatureError);
-  else {
-    Ok(cert);
+  if let Err(e) = cert.sign(&privateKey) {
+    return Err(certificateErrors::signatureError);
+  } else {
+    return Ok(cert);
   }
 }
 impl Certificate {
@@ -81,49 +92,53 @@ impl Certificate {
     let cert = self;
     cert.hash();
     let diff_cert = config().certificateDifficulty;
-    if !cert.checkDiff(diff_cert) {
-      Err(certificateErrors::difficultyLow)
+    if !cert.checkDiff(&diff_cert) {
+      return Err(certificateErrors::difficultyLow);
     }
     else if !cert.validSignature() {
-      Err(certificateErrrors::signatureError)
+      return Err(certificateErrors::signatureError);
     }
-    else if cert.timestamp > SystemTime::now() {
-      Err(certificateErrors::timestampHigh);
-    } 
-    let txn: String = database::getData(&cert.txnHash); // get the txn to check if it is correct
+    else if cert.timestamp > SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis() as u64 {
+      return Err(certificateErrors::timestampHigh);
+    }
+    let txn: TxStore = serde_json::from_str(&getData(config().db_path+"/transactions.db", cert.txnHash)).unwrap_or_else(|e| {warn!("failed to deserilise Tx, gave error: {}", e); return TxStore::default(); } ); // get the txn to check if it is correct
+    if txn == TxStore::default() {
+      return Err(certificateErrors::otherTransactionIssue);
+    }
     if txn.sender_key != cert.publicKey {
-      Err(certificateErrors::transactionNotOwnedByAccount);
+      return Err(certificateErrors::transactionNotOwnedByAccount);
     }
-    else if txn.type() != "lock" {
-      Err(certificateError::transactionNotLock)
+    else if txn.typeTransaction() != "lock" {
+      return Err(certificateErrors::transactionNotLock);
     }
-    else if txn.amount != lock_amount {
-      Err(certificate::lockedFundsInsufficent);
+    else if txn.amount != config().fullnode_lock_amount {
+      return Err(certificateErrors::lockedFundsInsufficent);
     }
-    else if getData(&cert.publicKey + "-cert".to_owned()) {
-      Err(certificateError::walletAlreadyRegistered);
+    else if getData(config().db_path + "/certifcates.db", cert.publicKey + &"-cert".to_owned()) != "-1".to_string() {
+      return Err(certificateErrors::walletAlreadyRegistered);
     }
     else {
-      ok(());
+      return Ok(());
     }
+    return Ok(());
   }
-  fn sign(&self, privateKey: &String) -> bool {
-    let key_pair = signature::Ed25519KeyPair::from_pkcs8(hex::decode(privateKey).unwrap_or_else(|e| { error!("Failed to decode privatekey {}, gave error {}", privateKey, e); return false; }).as_ref()).unwrap_or_else(|e| { error!("Failed to parse keypair from private key {}, gave error {}", privatekey, e); return false;});
-    let msg: &[u8] = cert.hash.as_bytes();
-    cert.signature = hex::encode(key_pair.sign(msg));
-    return true;
+  fn sign(&mut self, privateKey: &String) -> Result<(), ring::error::KeyRejected> {
+    let key_pair = signature::Ed25519KeyPair::from_pkcs8(hex::decode(privateKey).unwrap().as_ref())?;
+    let msg: &[u8] = self.hash.as_bytes();
+    self.signature = hex::encode(key_pair.sign(msg));
+    return Ok(());
   }
   fn validSignature(&self) -> bool {
-     let msg: &[u8] = cert.hash.as_bytes();
-     let peer_public_key = signature::UnparsedPublicKey::new(&signature::ED25519, hex::decode(self.publicKey).unwrap_or_else(|e| { error!("Failed to decode public key from hex {}, gave error {}", self.publicKey,e); return false;});
-     peer_public_key.verify(msg, hex::decode(self.signature).unwrap_or_else(|e| { error!("failed to decode signature from hex {}, gave error {}", self.signature,e); return false;}).as_ref()).unwrap_or_else(|e| {return false;});
+     let msg: &[u8] = self.hash.as_bytes();
+     let peer_public_key = signature::UnparsedPublicKey::new(&signature::ED25519, hex::decode(self.publicKey).unwrap_or_else(|e| { error!("Failed to decode public key from hex {}, gave error {}", self.publicKey,e); return vec![0,1,0];}));
+     peer_public_key.verify(msg, hex::decode(self.signature).unwrap_or_else(|e| { error!("failed to decode signature from hex {}, gave error {}", self.signature,e); return vec![0,1,0];}).as_ref()).unwrap_or_else(|e| {return ();});
      return true; // ^ wont unwrap if sig is invalid
   }
-    
+
   fn checkDiff(&self, diff: &u64) -> bool {
-    if difficulty_bytes_as_u128(self.hash.as_bytes()) < diff {
+    if difficulty_bytes_as_u128(&self.hash.as_bytes().to_vec()) < diff.to_owned() {
       return true;
-    } 
+    }
     else {
       return false;
     }
@@ -136,11 +151,11 @@ impl Certificate {
     bytes.extend(self.timestamp.to_owned().to_string().bytes());
     bytes
   }
-  fn hash(&self) {
+  fn hash(&mut self) {
     let bytes = self.encodeForHashing();
     cryptonight::set_params(655360, 32768);
     let hash = cryptonight::cryptonight(&bytes, bytes.len(), 0);
-    cert.hash = String::from(hex::encode(hash));
+    self.hash = String::from(hex::encode(hash));
   }
   fn encodeForFile(&self) -> Vec<u8>{
     let mut bytes = vec![];
@@ -152,7 +167,7 @@ impl Certificate {
     bytes.extend(self.signature.bytes());
     bytes
   }
-  
+
   fn encodeForHash(&self) -> Vec<u8>{
     let mut bytes = vec![];
     bytes.extend(self.publicKey.bytes());
