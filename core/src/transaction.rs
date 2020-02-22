@@ -9,8 +9,8 @@ use ring::{
     rand as randc,
     signature::{self, KeyPair},
 };
-extern crate database;
-use database::getAccount;
+extern crate avrio_database;
+use crate::account::{getAccount, Account};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Transaction {
@@ -27,22 +27,22 @@ pub struct Transaction {
     pub nonce: u64,
     pub signature: String,
 }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
 pub struct TxStore {
     // remove data not needed to be stored
-    hash: String,
-    amount: u64,
-    flag: char,
-    extra: String,
-    sender_key: String,
-    receive_key: String,
-    access_key: String,
-    fee: u64, // fee in AIO (gas_used * gas_price)
-    nonce: u8,
-    signature: String,
+    pub hash: String,
+    pub amount: u64,
+    pub flag: char,
+    pub extra: String,
+    pub sender_key: String,
+    pub receive_key: String,
+    pub access_key: String,
+    pub fee: u64, // fee in AIO (gas_used * gas_price)
+    pub nonce: u64,
+    pub signature: String,
 }
 impl Transaction {
-    fn toTxStore(&self) -> TxStore {
+    pub fn toTxStore(self) -> TxStore {
         let n = TxStore { 
             hash: self.hash,
             amount: self.amount,
@@ -57,27 +57,27 @@ impl Transaction {
         };
         return n;
     }
-    fn typeTransaction(&self) -> String {
+    pub fn typeTransaction(&self) -> String {
         return match (self.flag) {
-            'n' => "normal",
-            'r' => "reward",
-            'f' => "fullnode registration",
-            'u' => "username registraion",
-            'l' => "fund lock",
-            'b' => "burn",
-            'w' => "burn with return",
-            'm' => "message",
-            _ => "unknown",
+            'n' => "normal".to_string(),
+            'r' => "reward".to_string(),
+            'f' => "fullnode registration".to_string(),
+            'u' => "username registraion".to_string(),
+            'l' => "fund lock".to_string(),
+            'b' => "burn".to_string(),
+            'w' => "burn with return".to_string(),
+            'm' => "message".to_string(),
+            _ => "unknown".to_string(),
         };
     }
     
-    fn validateTransaction(&self) -> bool {
-        let mut acc = getAccount(self.sender_key);
+    pub fn validateTransaction(&self) -> bool {
+        let mut acc = getAccount(self.sender_key.to_string()).unwrap_or_else(|e| { warn!("Failed to get account, gave error: {}", e); return Account::default(); });
         if acc.balance == 0 {
             return false;
         }
         
-        if self.amount < 1  && flag != 'm'{
+        if self.amount < 1  && self.flag != 'm'{
             // the min amount sendable (1 miao) unless the txn is a message txn
             return false;
         }
@@ -95,14 +95,14 @@ impl Transaction {
                  let peer_public_key =
                     signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
                 match peer_public_key.verify(self.hash.as_bytes(), &hex::decode(&(self.signature).to_owned()).unwrap()) {
-                    ok(()) => return true,
+                    Ok(()) => return true,
                     _ => return false,
                  }
             }
         }
     return true;
     }
-    fn bytes(&self) -> Vec<u8> {
+    pub fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
         bytes.extend((self.amount.to_string()).bytes());
@@ -114,7 +114,7 @@ impl Transaction {
         bytes.extend((self.nonce.to_owned().to_string()).bytes());
         bytes
     }
-    fn hash(&mut self) {
+    pub fn hash(&mut self) {
         let asbytes = self.bytes();
         unsafe {
             let out = cryptonight(&asbytes, asbytes.len(), 0);
@@ -122,16 +122,88 @@ impl Transaction {
             self.hash = hex::encode(out);
         }
     }
-    fn hashReturn(&self) -> String {
+    pub fn hashReturn(&self) -> String {
         let asbytes = self.bytes();
         unsafe {
             let out = cryptonight(&asbytes, asbytes.len(), 0);
             return hex::encode(out);
         }
     }
-}                                                                     
+}
+impl TxStore {
+    pub fn typeTransaction(&self) -> String {
+        return match (self.flag) {
+            'n' => "normal".to_string(),
+            'r' => "reward".to_string(),
+            'f' => "fullnode registration".to_string(),
+            'u' => "username registraion".to_string(),
+            'l' => "fund lock".to_string(),
+            'b' => "burn".to_string(),
+            'w' => "burn with return".to_string(),
+            'm' => "message".to_string(),
+            _ => "unknown".to_string(),
+        };
+    }
 
-fn hashBytes(asbytes: Vec<u8>) -> String{;
+    pub fn validateTransaction(&self) -> bool {
+        let mut acc = getAccount(self.sender_key.to_owned()).unwrap_or_else(|e| { warn!("failed to get account, gave error: {}", e); return Account::default();});
+        if acc.balance == 0 {
+            return false;
+        }
+        if self.amount < 1  && self.flag != 'm'{
+            // the min amount sendable (1 miao) unless the txn is a message txn
+            return false;
+        }
+        if self.access_key == "" {
+            if  acc.balance > self.amount {
+                return false;
+            } else if self.hashReturn() != self.hash {
+                return false;
+            }
+            else if self.extra.len() > 100 {
+                return false;
+            }
+             else {
+                 let peer_public_key_bytes = hex::decode(&self.sender_key.to_owned()).unwrap();
+                 let peer_public_key =
+                    signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
+                match peer_public_key.verify(self.hash.as_bytes(), &hex::decode(&(self.signature).to_owned()).unwrap()) {
+                    Ok(()) => return true,
+                    _ => return false,
+                 }
+            }
+        }
+    return true;
+    }
+    pub fn bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![];
+
+        bytes.extend((self.amount.to_string()).bytes());
+        bytes.extend((self.extra.to_owned()).bytes());;
+        bytes.extend(self.flag.to_string().bytes());
+        bytes.extend(self.sender_key.bytes());
+        bytes.extend(self.receive_key.bytes());
+        bytes.extend(((self.fee.to_owned()).to_string()).bytes()); // aka fee
+        bytes.extend((self.nonce.to_owned().to_string()).bytes());
+        bytes
+    }
+    pub fn hash(&mut self) {
+        let asbytes = self.bytes();
+        unsafe {
+            let out = cryptonight(&asbytes, asbytes.len(), 0);
+        
+            self.hash = hex::encode(out);
+        }
+    }
+    pub fn hashReturn(&self) -> String {
+        let asbytes = self.bytes();
+        unsafe {
+            let out = cryptonight(&asbytes, asbytes.len(), 0);
+            return hex::encode(out);
+        }
+    }
+}
+pub fn hashBytes(asbytes: Vec<u8>) -> String{;
     unsafe {
         let out = cryptonight(&asbytes, asbytes.len(), 0);
         return hex::encode(out);

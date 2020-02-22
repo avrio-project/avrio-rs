@@ -1,5 +1,8 @@
+#[macro_use]
+extern crate log;
+
+
 mod account;
-mod genesis;
 mod transaction;
 mod certificate;
 

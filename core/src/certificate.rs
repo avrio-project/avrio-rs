@@ -88,7 +88,7 @@ pub fn generateCertificate(pk: &String, privateKey: &String, txnHash: &String) -
   }
 }
 impl Certificate {
-  fn validate(&self) -> Result<(), certificateErrors> {
+  pub fn validate(&mut self) -> Result<(), certificateErrors> {
     let cert = self;
     cert.hash();
     let diff_cert = config().certificateDifficulty;
@@ -101,7 +101,7 @@ impl Certificate {
     else if cert.timestamp > SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis() as u64 {
       return Err(certificateErrors::timestampHigh);
     }
-    let txn: TxStore = serde_json::from_str(&getData(config().db_path+"/transactions.db", cert.txnHash)).unwrap_or_else(|e| {warn!("failed to deserilise Tx, gave error: {}", e); return TxStore::default(); } ); // get the txn to check if it is correct
+    let txn: TxStore = serde_json::from_str(&getData(config().db_path+"/transactions.db", cert.txnHash.to_owned())).unwrap_or_else(|e| {warn!("failed to deserilise Tx, gave error: {}", e); return TxStore::default(); } ); // get the txn to check if it is correct
     if txn == TxStore::default() {
       return Err(certificateErrors::otherTransactionIssue);
     }
@@ -114,7 +114,7 @@ impl Certificate {
     else if txn.amount != config().fullnode_lock_amount {
       return Err(certificateErrors::lockedFundsInsufficent);
     }
-    else if getData(config().db_path + "/certifcates.db", cert.publicKey + &"-cert".to_owned()) != "-1".to_string() {
+    else if getData(config().db_path + "/certifcates.db", cert.publicKey.to_owned() + &"-cert".to_owned()) != "-1".to_string() {
       return Err(certificateErrors::walletAlreadyRegistered);
     }
     else {
@@ -122,20 +122,20 @@ impl Certificate {
     }
     return Ok(());
   }
-  fn sign(&mut self, privateKey: &String) -> Result<(), ring::error::KeyRejected> {
+  pub fn sign(&mut self, privateKey: &String) -> Result<(), ring::error::KeyRejected> {
     let key_pair = signature::Ed25519KeyPair::from_pkcs8(hex::decode(privateKey).unwrap().as_ref())?;
     let msg: &[u8] = self.hash.as_bytes();
     self.signature = hex::encode(key_pair.sign(msg));
     return Ok(());
   }
-  fn validSignature(&self) -> bool {
+  pub fn validSignature(&self) -> bool {
      let msg: &[u8] = self.hash.as_bytes();
-     let peer_public_key = signature::UnparsedPublicKey::new(&signature::ED25519, hex::decode(self.publicKey).unwrap_or_else(|e| { error!("Failed to decode public key from hex {}, gave error {}", self.publicKey,e); return vec![0,1,0];}));
-     peer_public_key.verify(msg, hex::decode(self.signature).unwrap_or_else(|e| { error!("failed to decode signature from hex {}, gave error {}", self.signature,e); return vec![0,1,0];}).as_ref()).unwrap_or_else(|e| {return ();});
+     let peer_public_key = signature::UnparsedPublicKey::new(&signature::ED25519, hex::decode(self.publicKey.to_owned()).unwrap_or_else(|e| { error!("Failed to decode public key from hex {}, gave error {}", self.publicKey,e); return vec![0,1,0];}));
+     peer_public_key.verify(msg, hex::decode(self.signature.to_owned()).unwrap_or_else(|e| { error!("failed to decode signature from hex {}, gave error {}", self.signature,e); return vec![0,1,0];}).as_ref()).unwrap_or_else(|e| {return ();});
      return true; // ^ wont unwrap if sig is invalid
   }
 
-  fn checkDiff(&self, diff: &u64) -> bool {
+  pub fn checkDiff(&self, diff: &u64) -> bool {
     if difficulty_bytes_as_u128(&self.hash.as_bytes().to_vec()) < diff.to_owned() {
       return true;
     }
@@ -143,7 +143,7 @@ impl Certificate {
       return false;
     }
   }
-  fn encodeForHashing(&self) -> Vec<u8>{
+  pub fn encodeForHashing(&self) -> Vec<u8>{
     let mut bytes = vec![];
     bytes.extend(self.publicKey.bytes());
     bytes.extend(self.txnHash.bytes());
@@ -153,7 +153,9 @@ impl Certificate {
   }
   fn hash(&mut self) {
     let bytes = self.encodeForHashing();
-    cryptonight::set_params(655360, 32768);
+    unsafe {
+      cryptonight::set_params(655360, 32768);
+    }
     let hash = cryptonight::cryptonight(&bytes, bytes.len(), 0);
     self.hash = String::from(hex::encode(hash));
   }
