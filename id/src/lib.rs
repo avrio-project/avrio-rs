@@ -59,18 +59,7 @@ fn hash_string(params: HashParams, s: String) -> String {
         let input = s.as_bytes();
         cryptonight::set_params(params.memory, params.iterations);
         let out = cryptonight(&input, input.len(), 0);
-        let mut out_abs: Vec<u8> = vec![];
-
-        for x in out {
-            if x < 0 {
-                let x_pos = x + (x * 2);
-                out_abs.push(x_pos);
-            } else {
-                out_abs.push(x);
-            }
-        }
-
-        return hex::encode(out_abs);
+        return hex::encode(out);
     }
 }
 
@@ -78,7 +67,7 @@ pub fn generateId(
     k: String,
     public_key: String,
     private_key: String,
-    difficulty: u128,
+    difficulty: u128
 ) -> IdDetails {
     let mut struct_: IdDetails;
     let params = calculate_hash_params(getLastBlockHash());

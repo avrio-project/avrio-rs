@@ -9,6 +9,4 @@ path = "src/lib.rs"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 rocksdb = "0.12.3"
-avrio_blockchain = { path = "../blockchain/" }
-#avrio_core = { path = "../core/" }
 avrio_config = { path = "../config/" }

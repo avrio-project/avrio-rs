@@ -10,20 +10,11 @@ rust:
 matrix:
   allow_failures:
     - rust: nightly
-
-after_success:
-  wget https://raw.githubusercontent.com/DiscordHooks/travis-ci-discord-webhook/master/send.sh
-  chmod +x send.sh
-  ./send.sh success $WEBHOOK_URL
-after_failure:
-  wget https://raw.githubusercontent.com/DiscordHooks/travis-ci-discord-webhook/master/send.sh
-  chmod +x send.sh
-  ./send.sh failure $WEBHOOK_URL
-
+    
 notifications:
   webhooks:
     urls:
       - https://discordhooks.herokuapp.com/travis
-    on_success: always
-    on_failure: always
-    on_start: always
+    #on_success: always
+    #on_failure: always
+    #on_start: always

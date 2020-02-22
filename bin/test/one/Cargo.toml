@@ -14,3 +14,8 @@ Testnet one, aimed at P2p + block/ txn code testing
 name = "avrio-daemon"
 source = "src/daemon"
 [dependencies]
+log = "0.4"
+avrio_core = {path = "../../../core"}
+avrio_database = {path = "../../../database"}
+avrio_config = {path = "../../../config"}
+avrio_blockchain = {path = "../../../blockchain"}
