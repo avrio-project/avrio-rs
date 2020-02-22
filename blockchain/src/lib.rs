@@ -1,5 +1,6 @@
 extern crate avrio_config;
 extern crate avrio_core;
+use avrio_core::{TxStore, generateGenesisBlock};
 use serde::{Deserialize, Serialize};
 
 enum blockValidationErrors {
@@ -25,7 +26,7 @@ pub struct Header {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Block {
     header: Header,
-    txns: Vec<Transaction>,
+    txns: Vec<TxStore>,
     hash: String,
     signature: String,
     node_signatures: Vec<String>, // a block must be signed by at least (c / 2) + 1 nodes to be valid (ensures at least ne honest node has singed it)
@@ -70,7 +71,7 @@ impl Block {
 pub fn check_block(blk: Block) -> Result<(), blockValidationErrors> {
     if blk.header.height == 0 {
         // genesis block
-        // could be costly 
+        // could be costly
         if blk != generateGenesisBlock() {
             return Err(blockValidationErrors::genesisBlockMissmatch);
         }

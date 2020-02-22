@@ -1,26 +1,25 @@
 // This file generates the genesis block for a new network.
 
 extern crate avrio_config;
-extern crate avrio_database;
-extern crate rand;
+use avrio_database::{getData, saveData};
 use rand::Rng;
 extern crate hex;
 
 static genesis_txns: Vec<Transactions> = vec![
         // any txns to be in the genesis block are defined here, below is a template for one.
         Transaction {
-            hash: tring;:from(""),
+            hash: String::from(""),
             amount: 0,
-            extra: String;:from(""),
-            flag: '',
+            extra: String::from(""),
+            flag: 'n',
             sender_key: hex::encode(vec![0, 32]).to_owned(),
-            receive_key: String;:from(""),
-            access_key: String;:from(""),
+            receive_key: String::from(""),
+            access_key: String::from(""),
             gas_price: 1,
             gas: 0,
             max_gas: u64::max_value(),
             nonce: 0,
-            signature: String;:from(""),
+            signature: String::from(""),
         },
     ];
 

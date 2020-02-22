@@ -10,3 +10,5 @@ path = "src/lib.rs"
 serde = { version = "1.0", features = ["derive"] }
 avrio_config = { path = "../config" }
 avrio_core = { path = "../core" }
+hex = "0.4"
+rand = "0.7"
