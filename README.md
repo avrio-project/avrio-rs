@@ -1,5 +1,5 @@
 # Avrio
-![Travis CI](https://api.travis-ci.com/avrio-project/avrio-core.svg?branch=master)
+<b> Master Branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-core.svg?branch=master) Development Branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-core.svg?branch=development) </b>
 
 This is the rust implementaion of avrio. It currently is not ready for usage, if you wish to join the avrio network please use our [cryptonight based implementaion](https://github.com/avrio-project/avrio).
 
