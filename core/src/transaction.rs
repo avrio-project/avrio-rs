@@ -21,6 +21,7 @@ pub struct Transaction {
     pub sender_key: String,
     pub receive_key: String,
     pub access_key: String,
+    pub unlock_time: u64,
     pub gas_price: u64,
     pub max_gas: u64,
     pub gas: u64, // gas used
@@ -80,6 +81,8 @@ impl Transaction {
         bytes.extend(self.flag.to_string().bytes());
         bytes.extend(self.sender_key.bytes());
         bytes.extend(self.receive_key.bytes());
+        bytes.extend(self.access_key.as_bytes());
+        bytes.extend(self.unlock_time.to_string().as_bytes());
         bytes.extend(((self.gas * self.gas_price.to_owned()).to_string()).bytes()); // aka fee
         bytes.extend((self.nonce.to_owned().to_string()).bytes());
         bytes
