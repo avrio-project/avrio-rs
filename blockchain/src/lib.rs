@@ -102,7 +102,7 @@ pub fn check_block(blk: Block) -> Result<(), blockValidationErrors> {
             return Err(blockValidationErrors::invalidPreviousBlockhash);
         }
         for txn in blk.txns {
-                    if !txn.validateTransaction() {
+                    if !txn.validate_transaction() {
                         return Err(blockValidationErrors::invalidTransaction);
                     } else {
                         return Ok(());
