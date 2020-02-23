@@ -17,8 +17,8 @@ use ring::{
 };
 use std::error::Error;
 
-enum certificateErrors {
-  transactionNotFound,
+pub enum certificateErrors {
+  pubtransactionNotFound,
   walletAlreadyRegistered,
   lockedFundsInsufficent,
   parsingError,
