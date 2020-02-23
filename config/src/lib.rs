@@ -23,6 +23,7 @@ pub struct NetworkConfig {
     pub probatory_epoch_count: u8,
     pub certificateDifficulty: u64,
     pub fullnode_lock_amount: u64,
+    pub transactionTimestampMaxOffset: u32, 
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -76,6 +77,7 @@ pub struct Config {
     pub probatory_epoch_count: u8,
     pub certificateDifficulty: u64,
     pub fullnode_lock_amount: u64,
+    pub transactionTimestampMaxOffset: u32,
 }
 
 pub fn config() -> Config {
@@ -147,6 +149,7 @@ impl ConfigSave {
             max_reward: nconf.max_reward,
             probatory_epoch_count: nconf.probatory_epoch_count,
             fullnode_lock_amount: nconf.fullnode_lock_amount,
+            transactionTimestampMaxOffset: nconf.transactionTimestampMaxOffset,
         };
     }
 }
@@ -177,6 +180,7 @@ impl Default for NetworkConfig {
             probatory_epoch_count: 10,
             certificateDifficulty: 1000, // TODO find this value
             fullnode_lock_amount: 50000,
+            transactionTimestampMaxOffset: 600,
         }
     }
 }
