@@ -31,6 +31,7 @@ pub fn getGenesisTxns() -> Vec<Transaction> {
             gas: 0,
             max_gas: u64::max_value(),
             nonce: 0,
+            timestamp: 0,
             signature: String::from(""),
         },
     ];
