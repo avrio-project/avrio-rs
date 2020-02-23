@@ -23,12 +23,5 @@ matrix:
     - rust: nightly
  
 script:
-  - cargo build --release
+  - cargo check
     
-notifications:
-  webhooks:
-    urls:
-      - https://discordhooks.herokuapp.com/travis
-    on_success: always
-    #on_failure: always
-    #on_start: always
