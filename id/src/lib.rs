@@ -2,20 +2,30 @@
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 extern crate rand;
-
+extern crate cryptonight;
+use cryptonight::cryptonight;
 use rand::Rng;
+extern crate hex;
+#[macro_use]
+extern crate log;
+use ring::{
+    rand as randc,
+    signature::{self, KeyPair},
+};
+use serde::{Deserialize, Serialize};
 
-struct HashParams {
-    iterations: u32,
-    memory: u32,
+pub struct HashParams {
+    pub iterations: u32,
+    pub memory: u32,
 }
 
-struct IdDetails {
-    hash: String,
-    signed: String,
-    nonce: u64,
-    start_t: u64,
-    end_t: u64,
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
+pub struct IdDetails {
+    pub hash: String,
+    pub signed: String,
+    pub nonce: u64,
+    pub start_t: u64,
+    pub end_t: u64,
 }
 
 pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
@@ -37,8 +47,8 @@ pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
         | ((v[48] as u128) << 0x0 * 8)
 }
 
-pub fn check_difficulty(hash: &Hash, difficulty: u128) -> bool {
-    difficulty > difficulty_bytes_as_u128(&hash)
+pub fn check_difficulty(hash: &String, difficulty: u128) -> bool {
+    difficulty > difficulty_bytes_as_u128(&hash.as_bytes().to_vec())
 }
 
 fn calculate_hash_params(PrevBlockHash: String) -> HashParams {
@@ -50,14 +60,13 @@ fn calculate_hash_params(PrevBlockHash: String) -> HashParams {
     for x in &b {
         a = a + *x as u32;
     }
-
-    return HashParams(iterations: a * 10, memory: a * 20);
+    return HashParams { iterations: a * 10, memory: a * 20 }
 }
 
-fn hash_string(params: HashParams, s: String) -> String {
+fn hash_string(params: &HashParams, s: &String) -> String {
     unsafe {
         let input = s.as_bytes();
-        cryptonight::set_params(params.memory, params.iterations);
+        cryptonight::set_params(params.memory as u64, params.iterations as u64);
         let out = cryptonight(&input, input.len(), 0);
         return hex::encode(out);
     }
@@ -69,27 +78,32 @@ pub fn generateId(
     private_key: String,
     difficulty: u128
 ) -> IdDetails {
-    let mut struct_: IdDetails;
-    let params = calculate_hash_params(getLastBlockHash());
+    let mut struct_: IdDetails = IdDetails::default();
+    let params = HashParams {
+        memory: 262144,
+        iterations: 65536,
+    };
     let mut nonce: u32 = 0;
-    let mut hashed: String = "";
+    let mut hashed: String;
 
-    struct_.start_t = SystemTime::now().as_millis();
+    struct_.start_t = SystemTime::now().duration_since(UNIX_EPOCH)
+    .expect("Time went backwards").as_millis() as u64;
 
-    while true {
+    loop {
         nonce = nonce + 1;
-        hashed = hash_string(params, k + public_key + nonce);
+        hashed = hash_string(&params, &(k.clone() + &public_key + &nonce.to_string()));
 
         // check difficulty
         if check_difficulty(&hashed, difficulty) {
-            struct_.nonce = nonce;
-            struct_.hash = hashed;
-            struct_.end_t = SystemTime::now().as_millis();
-            println!(
-                "[INFO] Found ID hash: {0} with nonce: {1} (in {2} secconds)",
+            struct_.nonce = nonce as u64;
+            struct_.hash = hashed.clone();
+            struct_.end_t = SystemTime::now().duration_since(UNIX_EPOCH)
+            .expect("Time went backwards").as_millis() as u64;
+            info!(
+                "Found ID hash: {} with nonce: {} (in {} secconds)",
                 hashed,
                 nonce,
-                (struct_.end_t - start_.start_t) / 1000
+                (struct_.end_t - struct_.start_t) / 1000
             );
             break;
         }
@@ -98,4 +112,19 @@ pub fn generateId(
     struct_.signed = sign(hashed, private_key);
 
     return struct_;
+}
+
+fn sign(s: String, pk: String) -> String {
+    let pkcs8_bytes = hex::decode(pk);
+    match pkcs8_bytes {
+        Ok(out) => {
+            let key_pair = signature::Ed25519KeyPair::from_pkcs8(out.as_ref()).unwrap();
+let msg: &[u8] = s.as_bytes();
+            return hex::encode(key_pair.sign(msg));
+        },
+        Err(e) => {
+            warn!("failed to decode hex, gave error: {}", e);
+            return "failed to hex decode".to_string();
+        }
+    }
 }
