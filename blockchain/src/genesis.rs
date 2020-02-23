@@ -26,6 +26,7 @@ pub fn getGenesisTxns() -> Vec<Transaction> {
             sender_key: hex::encode(vec![0, 32]).to_owned(),
             receive_key: String::from(""),
             access_key: String::from(""),
+            unlock_time: 0,
             gas_price: 0,
             gas: 0,
             max_gas: u64::max_value(),
