@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 extern crate hex;
 extern crate cryptonight;
 use cryptonight::cryptonight;
+extern crate  avrio_config;
+use avrio_config::config;
 extern crate rand;
 use rand::Rng;
 use std::time::{Duration, Instant};
@@ -11,7 +13,7 @@ use ring::{
 };
 extern crate avrio_database;
 use crate::account::{getAccount, Account};
-
+use std::time::{UNIX_EPOCH, SystemTime};
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Transaction {
     pub hash: String,
@@ -26,6 +28,7 @@ pub struct Transaction {
     pub max_gas: u64,
     pub gas: u64, // gas used
     pub nonce: u64,
+    pub timestamp: u64,
     pub signature: String,
 }
 impl Transaction {
@@ -43,13 +46,19 @@ impl Transaction {
         };
     }
 
-    pub fn validateTransaction(&self) -> bool {
-        let mut acc = getAccount(self.sender_key.to_string()).unwrap_or_else(|e| { warn!("Failed to get account, gave error: {}", e); return Account::default(); });
+    pub fn validate_transaction(&self) -> bool {
+        let acc = getAccount(self.sender_key.to_string()).unwrap_or_else(|e| { warn!("Failed to get account, gave error: {}", e); return Account::default(); });
         if acc.balance == 0 {
             return false;
         }
         if self.amount < 1  && self.flag != 'm'{
             // the min amount sendable (1 miao) unless the txn is a message txn
+            return false;
+        }
+        if self.receive_key.len() == 0 && self.flag != 'm' {
+            return false;
+        }
+        if self.timestamp - (config().transactionTimestampMaxOffset as u64) > SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis() as u64 || self.timestamp + (config().transactionTimestampMaxOffset as u64) < SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis() as u64{
             return false;
         }
         if self.access_key == "" {
@@ -62,17 +71,29 @@ impl Transaction {
                 return false;
             }
              else {
-                 let peer_public_key_bytes = hex::decode(&self.sender_key.to_owned()).unwrap();
+                 let peer_public_key_bytes = hex::decode(&self.sender_key.to_owned()).unwrap_or_else(|e| {
+                     warn!("Hex decoding peer public key gave error {}", e);
+                     return vec![5];
+                 });
+                 if peer_public_key_bytes.len() == 1 && peer_public_key_bytes[0] == 5 { // a public key will never be this short
+                     return false;
+                 }
                  let peer_public_key =
                     signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
                 match peer_public_key.verify(self.hash.as_bytes(), &hex::decode(&(self.signature).to_owned()).unwrap()) {
-                    Ok(()) => return true,
+                    Ok(()) => {},
                     _ => return false,
                  }
+
             }
+        }
+        else {
+            // have access key
+            return true; // todo
         }
     return true;
     }
+
     pub fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
@@ -84,6 +105,7 @@ impl Transaction {
         bytes.extend(self.access_key.as_bytes());
         bytes.extend(self.unlock_time.to_string().as_bytes());
         bytes.extend(((self.gas * self.gas_price.to_owned()).to_string()).bytes()); // aka fee
+        bytes.extend(self.timestamp.to_string().as_bytes());
         bytes.extend((self.nonce.to_owned().to_string()).bytes());
         bytes
     }
