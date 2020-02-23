@@ -10,7 +10,7 @@ use avrio_config::config;
 extern crate avrio_database;
 use avrio_database::{getData, saveData};
 use cryptonight::cryptonight;
-use crate::transaction::{TxStore};
+use crate::transaction::{Transaction};
 use ring::{
   rand as randc,
   signature::{self, KeyPair},
@@ -101,8 +101,8 @@ impl Certificate {
     else if cert.timestamp > SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis() as u64 {
       return Err(certificateErrors::timestampHigh);
     }
-    let txn: TxStore = serde_json::from_str(&getData(config().db_path+"/transactions.db", cert.txnHash.to_owned())).unwrap_or_else(|e| {warn!("failed to deserilise Tx, gave error: {}", e); return TxStore::default(); } ); // get the txn to check if it is correct
-    if txn == TxStore::default() {
+    let txn: Transaction = serde_json::from_str(&getData(config().db_path+"/transactions.db", cert.txnHash.to_owned())).unwrap_or_else(|e| {warn!("failed to deserilise Tx, gave error: {}", e); return Transaction::default(); } ); // get the txn to check if it is correct
+    if txn == Transaction::default() {
       return Err(certificateErrors::otherTransactionIssue);
     }
     if txn.sender_key != cert.publicKey {

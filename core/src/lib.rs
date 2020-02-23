@@ -2,7 +2,7 @@
 extern crate log;
 
 
-mod account;
-mod transaction;
-mod certificate;
+pub mod account;
+pub mod transaction;
+pub mod certificate;
 
