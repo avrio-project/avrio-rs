@@ -11,7 +11,7 @@ pub extern crate blockchain;
 pub extern crate database;
 extern crate simple_logger;
 extern crate log;
-use libp2p::{Multiaddr, Transport, tcp::TcpConfig};
+use std::process;
 
 fn connectSeednodes(seednodes: Vec<IpAddr::V4>) -> u8 {
     let mut i = 0;
@@ -31,7 +31,7 @@ fn existingStartup() -> u8 {
     let mut state = database::createFileStructure();
     if state != Err(databaseError::none) {
         error!("Failed to create  filestructure, recieved error {:?}.  (Fatal) Try checking permissions.", state);
-        panic!(); // Faling to create the file structure is fatal but probaly just a permisions error 
+        process::exit(1); // Faling to create the file structure is fatal but probaly just a permisions error 
     } else {
         info!("Succsesfuly created filestructure");
     }
