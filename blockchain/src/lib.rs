@@ -87,7 +87,10 @@ pub fn check_block(blk: Block) -> Result<(), blockValidationErrors> {
         match getGenesisBlock(&blk.header.chain_key) {
             Ok(b) => genesis = b,
             Err(e) => {
-                warn!("Failed to get genesis block for chain: {}, gave error: {:?}",&blk.header.chain_key, e);
+                warn!(
+                    "Failed to get genesis block for chain: {}, gave error: {:?}",
+                    &blk.header.chain_key, e
+                );
                 return Err(blockValidationErrors::failedToGetGenesisBlock);
             }
         }
@@ -102,11 +105,11 @@ pub fn check_block(blk: Block) -> Result<(), blockValidationErrors> {
             return Err(blockValidationErrors::invalidPreviousBlockhash);
         }
         for txn in blk.txns {
-                    if !txn.validate_transaction() {
-                        return Err(blockValidationErrors::invalidTransaction);
-                    } else {
-                        return Ok(());
-                    }
+            if !txn.validate_transaction() {
+                return Err(blockValidationErrors::invalidTransaction);
+            } else {
+                return Ok(());
+            }
         }
         return Ok(());
     }
