@@ -2,7 +2,6 @@
 
 extern crate avrio_config;
 use avrio_config::config;
-extern crate avrio_database;
 use avrio_database::{getData, saveData};
 use rand::Rng;
 extern crate hex;

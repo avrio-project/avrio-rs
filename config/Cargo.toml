@@ -1,11 +1,12 @@
 [package]
 name = "avrio_config"
 version = "0.1.0"
-authors = ["Arielh25 <areilhurdle@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
+authors = ["Leo Cornelius <leocornelius019@gmail.com>"]
 edition = "2018"
-
-
 [dependencies]
-serde = { version = "1.0.104", features = ["derive"] }
-serde_json = "1.0.48"
-log = "0.4.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+simple_logger = "1.5.0"
+log = "0.4"
+[package.metadata.deb]
+extended-description = ""

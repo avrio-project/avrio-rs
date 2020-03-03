@@ -1,6 +1,5 @@
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
-extern crate avrio_config;
 use std::process;
 #[macro_use]
 extern crate log;
@@ -8,10 +7,14 @@ extern crate log;
 struct PeerlistSave {
     peers: Vec<String>,
 }
+
 pub fn saveData(serialized: String, path: String, key: String) -> u8 {
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
-    let db = DB::open_default(&path.to_owned()).unwrap_or_else(|e| { 
-        error!("Failed to open database at path {}, gave error {:?}", path, e);
+    let db = DB::open_default(&path.to_owned()).unwrap_or_else(|e| {
+        error!(
+            "Failed to open database at path {}, gave error {:?}",
+            path, e
+        );
         process::exit(0);
     });
     db.put(key, serialized);
@@ -23,9 +26,7 @@ pub fn savePeerlist(list: &Vec<Vec<u8>>, path: String) {
     let ips: Vec<String>;
     let mut ip_curr: String = "".to_string();
     let mut ip_prv: String;
-    let mut pl: PeerlistSave = PeerlistSave {
-        peers: vec![]
-    };
+    let mut pl: PeerlistSave = PeerlistSave { peers: vec![] };
     for ip in list {
         for ip_seg in ip {
             ip_prv = ip_curr.clone();
@@ -33,7 +34,10 @@ pub fn savePeerlist(list: &Vec<Vec<u8>>, path: String) {
         }
         pl.peers.push(String::from(&ip_curr));
     }
-    let pl_s: String = serde_json::to_string(&pl).unwrap_or_else(|e| { warn!("Failed to compact peerlist to string. Gave error: {}", e); return "".to_string()});
+    let pl_s: String = serde_json::to_string(&pl).unwrap_or_else(|e| {
+        warn!("Failed to compact peerlist to string. Gave error: {}", e);
+        return "".to_string();
+    });
     saveData(pl_s, path, "peerlist".to_string());
 }
 
@@ -47,4 +51,3 @@ pub fn getData(path: String, key: String) -> String {
     }
     return data;
 }
-

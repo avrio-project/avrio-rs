@@ -1,8 +1,8 @@
 // This lib deals with the generation of ID's based off the random strings provided by the consensius commitee at the end of the last round
 use std::io::{stdin, stdout, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
-extern crate rand;
 extern crate cryptonight;
+extern crate rand;
 use cryptonight::cryptonight;
 use rand::Rng;
 extern crate hex;
@@ -60,7 +60,10 @@ fn calculate_hash_params(PrevBlockHash: String) -> HashParams {
     for x in &b {
         a = a + *x as u32;
     }
-    return HashParams { iterations: a * 10, memory: a * 20 }
+    return HashParams {
+        iterations: a * 10,
+        memory: a * 20,
+    };
 }
 
 fn hash_string(params: &HashParams, s: &String) -> String {
@@ -76,7 +79,7 @@ pub fn generateId(
     k: String,
     public_key: String,
     private_key: String,
-    difficulty: u128
+    difficulty: u128,
 ) -> IdDetails {
     let mut struct_: IdDetails = IdDetails::default();
     let params = HashParams {
@@ -86,8 +89,10 @@ pub fn generateId(
     let mut nonce: u32 = 0;
     let mut hashed: String;
 
-    struct_.start_t = SystemTime::now().duration_since(UNIX_EPOCH)
-    .expect("Time went backwards").as_millis() as u64;
+    struct_.start_t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as u64;
 
     loop {
         nonce = nonce + 1;
@@ -97,8 +102,10 @@ pub fn generateId(
         if check_difficulty(&hashed, difficulty) {
             struct_.nonce = nonce as u64;
             struct_.hash = hashed.clone();
-            struct_.end_t = SystemTime::now().duration_since(UNIX_EPOCH)
-            .expect("Time went backwards").as_millis() as u64;
+            struct_.end_t = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis() as u64;
             info!(
                 "Found ID hash: {} with nonce: {} (in {} secconds)",
                 hashed,
@@ -119,9 +126,9 @@ fn sign(s: String, pk: String) -> String {
     match pkcs8_bytes {
         Ok(out) => {
             let key_pair = signature::Ed25519KeyPair::from_pkcs8(out.as_ref()).unwrap();
-let msg: &[u8] = s.as_bytes();
+            let msg: &[u8] = s.as_bytes();
             return hex::encode(key_pair.sign(msg));
-        },
+        }
         Err(e) => {
             warn!("failed to decode hex, gave error: {}", e);
             return "failed to hex decode".to_string();

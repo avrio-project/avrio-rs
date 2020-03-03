@@ -1,3 +1,4 @@
+extern crate serde_json;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io;
@@ -25,6 +26,9 @@ pub struct NetworkConfig {
     pub fullnode_lock_amount: u64,
     pub transactionTimestampMaxOffset: u32,
     pub max_time_to_live: u64,
+    pub target_epoch_length: u64,
+    pub fullnode_lock_time: u64,
+    pub username_burn_amount: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -80,6 +84,9 @@ pub struct Config {
     pub fullnode_lock_amount: u64,
     pub transactionTimestampMaxOffset: u32,
     pub max_time_to_live: u64,
+    pub target_epoch_length: u64,
+    pub username_burn_amount: u64,
+    pub fullnode_lock_time: u64,
 }
 
 pub fn config() -> Config {
@@ -153,6 +160,9 @@ impl ConfigSave {
             fullnode_lock_amount: nconf.fullnode_lock_amount,
             transactionTimestampMaxOffset: nconf.transactionTimestampMaxOffset,
             max_time_to_live: nconf.max_time_to_live,
+            target_epoch_length: nconf.target_epoch_length,
+            username_burn_amount: nconf.username_burn_amount,
+            fullnode_lock_time: nconf.fullnode_lock_time,
         };
     }
 }
@@ -178,13 +188,16 @@ impl Default for NetworkConfig {
             ],
             min_intrest: 0.5,
             max_intrest: 2.5,
-            max_reward: 25000,
+            max_reward: 25000, // 2.5000 AIO
             min_vote: 65,
             probatory_epoch_count: 10,
             certificateDifficulty: 1000, // TODO find this value
             fullnode_lock_amount: 50000,
             transactionTimestampMaxOffset: 600,
-            max_time_to_live: 600000, // millisecconds
+            max_time_to_live: 600000,      // millisecconds
+            target_epoch_length: 18000000, // 5 Hours
+            fullnode_lock_time: 30 * 5,    // epoches (30 days)
+            username_burn_amount: 5000,    // 0.5000 AIO
         }
     }
 }

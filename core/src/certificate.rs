@@ -15,6 +15,7 @@ use ring::{
     rand as randc,
     signature::{self, KeyPair},
 };
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 
 pub enum certificateErrors {
@@ -31,7 +32,7 @@ pub enum certificateErrors {
     difficultyLow,
     unknown,
 }
-
+#[derive(Deserialize, Serialize, Default)]
 pub struct Certificate {
     pub hash: String,
     pub publicKey: String,
@@ -40,23 +41,8 @@ pub struct Certificate {
     pub timestamp: u64,
     pub signature: String,
 }
-pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u64 {
-    ((v[63] as u64) << 0xf * 8)
-        | ((v[62] as u64) << 0xe * 8)
-        | ((v[61] as u64) << 0xd * 8)
-        | ((v[60] as u64) << 0xc * 8)
-        | ((v[59] as u64) << 0xb * 8)
-        | ((v[58] as u64) << 0xa * 8)
-        | ((v[57] as u64) << 0x9 * 8)
-        | ((v[56] as u64) << 0x8 * 8)
-        | ((v[55] as u64) << 0x7 * 8)
-        | ((v[54] as u64) << 0x6 * 8)
-        | ((v[53] as u64) << 0x5 * 8)
-        | ((v[52] as u64) << 0x4 * 8)
-        | ((v[51] as u64) << 0x3 * 8)
-        | ((v[50] as u64) << 0x2 * 8)
-        | ((v[49] as u64) << 0x1 * 8)
-        | ((v[48] as u64) << 0x0 * 8)
+pub fn difficulty_bytes_as_u64(v: &Vec<u8>) -> u64 {
+    v.iter().sum()
 }
 
 pub fn generateCertificate(
@@ -177,7 +163,7 @@ impl Certificate {
     }
 
     pub fn checkDiff(&self, diff: &u64) -> bool {
-        if difficulty_bytes_as_u128(&self.hash.as_bytes().to_vec()) < diff.to_owned() {
+        if difficulty_bytes_as_u64(&self.hash.as_bytes().to_vec()) < diff.to_owned() {
             return true;
         } else {
             return false;
@@ -207,15 +193,6 @@ impl Certificate {
         bytes.extend(self.nonce.to_owned().to_string().bytes());
         bytes.extend(self.timestamp.to_owned().to_string().bytes());
         bytes.extend(self.signature.bytes());
-        bytes
-    }
-
-    fn encodeForHash(&self) -> Vec<u8> {
-        let mut bytes = vec![];
-        bytes.extend(self.publicKey.bytes());
-        bytes.extend(self.txnHash.bytes());
-        bytes.extend(self.nonce.to_owned().to_string().bytes());
-        bytes.extend(self.timestamp.to_owned().to_string().bytes());
         bytes
     }
 }
