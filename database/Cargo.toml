@@ -6,5 +6,7 @@ authors = ["Leo Cornelius <leocornelius019@gmail.com>"]
 license = "MIT OR Apache-2.0"
 [dependencies]
 serde_json = "1.0.48"
-cryptonight-rs = { path = "../crypto/cn-rs"}
-hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+rocksdb = "0.12.3"
+avrio_config = { path = "../config/" }
+log = "0.4" 
