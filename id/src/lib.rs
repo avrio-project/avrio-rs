@@ -21,7 +21,7 @@ pub struct HashParams {
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct IdDetails {
-    pub hash: String, as u128
+    pub hash: String,
     pub signed: String,
     pub nonce: u64,
     pub start_t: u64,
@@ -29,7 +29,7 @@ pub struct IdDetails {
 }
 
 pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
-    return v.iter().sum() as u128
+    return v.iter().sum::<u8>() as u128;
 }
 
 pub fn check_difficulty(hash: &String, difficulty: u128) -> bool {
