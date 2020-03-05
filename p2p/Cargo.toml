@@ -5,8 +5,9 @@ authors = ["Arielh25 <areilhurdle@gmail.com>", "TheDevMinerTV <tobigames200@gmai
 edition = "2018"
 
 [dependencies]
+avrio_config = { path = "../config" }
+avrio_database = { path = "../database" }
 hex = "0.4"
-avrio_config = {path = "../config"}
 log = "~0.4"
 rand = "~0.7.3"
 serde = "~1.0.82"
