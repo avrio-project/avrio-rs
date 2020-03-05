@@ -29,22 +29,7 @@ pub struct IdDetails {
 }
 
 pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
-    ((v[63] as u128) << 0xf * 8)
-        | ((v[62] as u128) << 0xe * 8)
-        | ((v[61] as u128) << 0xd * 8)
-        | ((v[60] as u128) << 0xc * 8)
-        | ((v[59] as u128) << 0xb * 8)
-        | ((v[58] as u128) << 0xa * 8)
-        | ((v[57] as u128) << 0x9 * 8)
-        | ((v[56] as u128) << 0x8 * 8)
-        | ((v[55] as u128) << 0x7 * 8)
-        | ((v[54] as u128) << 0x6 * 8)
-        | ((v[53] as u128) << 0x5 * 8)
-        | ((v[52] as u128) << 0x4 * 8)
-        | ((v[51] as u128) << 0x3 * 8)
-        | ((v[50] as u128) << 0x2 * 8)
-        | ((v[49] as u128) << 0x1 * 8)
-        | ((v[48] as u128) << 0x0 * 8)
+    return v.iter().sum::<u8>() as u128;
 }
 
 pub fn check_difficulty(hash: &String, difficulty: u128) -> bool {
