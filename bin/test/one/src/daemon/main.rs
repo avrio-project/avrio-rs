@@ -3,13 +3,16 @@
 // get the peer list and connect to the other nodes on this peerlist. Then every 5 mins they 
 //generate a block and release it (to test the p2p propigation code). 
 
-//pub extern crate config;
-pub extern crate core;
-pub extern crate config;
-pub extern crate p2p;
-pub extern crate blockchain;
-pub extern crate database;
+use std::net::SocketAddr
+pub extern crate avrio_config;
+use avrio_config::config;
+pub extern crate avrio_core;
+pub extern crate avrio_config;
+pub extern crate avrio_p2p;
+pub extern crate avrio_blockchain;
+pub extern crate avrio_database;
 extern crate simple_logger;
+#[macro_use]
 extern crate log;
 use std::process;
 
@@ -17,19 +20,22 @@ fn connectSeednodes(seednodes: Vec<IpAddr::V4>) -> u8 {
     let mut i = 0;
     let mut conn_count = 0;
     while i < seednodes.iter.count() - 1 {
-        let mut error: p2p_error = p2p::connect(seednodes[i]);
+        let mut error: p2p_error = avrio_p2p::new_connection(seednodes[i]);
         match error {
-            Err(p2p_errors::none) =>  { info!("Connected and handshaked to {:?}::{:?}", seednode[i], 11523); conn_count += 1; },
+            Ok(_) =>  { 
+                info!("Connected and handshaked to {:?}::{:?}", seednode[i], 11523); 
+                conn_count += 1;
+            },
             _ => warn!("Failed to connect to {:?}:: {:?}, returned error {:?}", seednode[i], 11523, error),
         };
         i += 1;
     }
     return conn_count;
 }
-fn existingStartup() -> u8 {
+fn firstStartUp() -> u8 {
     info!("First startup detected, creating file structure");
     let mut state = database::createFileStructure();
-    if state != Err(databaseError::none) {
+    if state != Ok(_) {
         error!("Failed to create  filestructure, recieved error {:?}.  (Fatal) Try checking permissions.", state);
         process::exit(1); // Faling to create the file structure is fatal but probaly just a permisions error 
     } else {
@@ -37,27 +43,42 @@ fn existingStartup() -> u8 {
     }
     drop(state);
     info!("Creating Chain for self");
-    let chainKey = core::generateChain();
-    database::saveChain(chainKey);
+    let mut chainKey = [""; 2]; // 0 = pubkey, 1 = privkey
+    chainKey = generateKeypair();
     match chainKey[0] {
-        "0" =>  { error!("failed to create chain (Fatal)"); panic!();},
+        "0" =>  { 
+            error!("failed to create chain (Fatal)");
+            process::exit(1);
+        },
         _ => info!("Succsessfully created chain with chain key {}", chainKey[0]),
     }
-    let genesis_block: Block = core::generateGenesisBlock(chainKey[0], chainKey[1]);
-    match blockchain::check_block(genesis_block) {
-        false => { error!("Failed to create genesis block, block dump: {:?} (Fatal)", genesis_block); panic!();},
-        _ => info!("Succsessfully generated genesis block with hash {}", genesis_block.hash.to_owned()),
+    let genesis_block: Block = avrio_core::generateGenesisBlock(chainKey[0]);
+    match avrio_blockchain::check_block(genesis_block) {
+        Err(error) => { 
+            error!("Failed to create genesis block gave error {:?}, block dump: {:?} (Fatal)", error, genesis_block);
+            process::exit(1);
+        },
+        _ => info!("Succsessfully generated genesis block with hash {}", genesis_block.hash),
     }
+    match avrio_database::saveData(serde_json::to_string(&genesis_block.unwrap()), config().db_path + &"/".to_string() + chainKey[0], genesis_block.hash.clone()) {
+        1 => {
+            info!("Sucsessfully saved genesis block!");
+        }
+        _ => {
+            error!("Failed to save genesis block (fatal)!");
+            process::exit(1);
+        }
+    };
     info!(" Launching P2p server on 127.0.0.1::{:?}", 11523); // Parsing config and having custom p2p ports to be added in 1.1.0 - 2.0.0
     match p2p::launchServer(11523) {
         0 => { error!("Error launching P2p server on 127.0.0.1::{:?} (Fatal)", 11523); panic!();},
         1 => info!("Launched P2p server on 127.0.0.1::{:?}" 11523),
     }
-    let mut peerlist: Vec<Multiaddr>;
-    let seednodes: Vec<Multiaddr> = vec![
-        "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
-        "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
-        "/ip4/98.97.96.95/tcp/11523".parse().expect("invalid multiaddr"),
+    let mut peerlist: Vec<SocketAddr>;
+    let seednodes: Vec<SockerAddr> = vec![
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12345),
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12345),
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12345),
     ];
     let mut conn_nodes =0;
     while (conn_nodes < 1) {
@@ -89,9 +110,9 @@ fn main() {
     println!("{}", art);
     info!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
     info!("Checking for previous startup");
-    let startup_state: u16 = match database::new_startup() {
+    let startup_state: u16 = match database::database_present() {
         true => existingStartup(),
-        false => noExistingStartup(),
+        false => firstStartUp(),
     };
     if startup_state == 1 { // succsess
         info!("Avrio Daemon succsessfully launched");
