@@ -12,7 +12,7 @@ Testnet one, aimed at P2p + block/ txn code testing
 """
 [[bin]]
 name = "avrio-daemon"
-source = "src/daemon"
+path = "src/daemon/main.rs"
 [dependencies]
 simple_logger = "1.5.0" 
 log = "0.4"
