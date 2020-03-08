@@ -10,7 +10,7 @@ readme = "README.md"
 description = """
 Testnet one, aimed at P2p + block/ txn code testing
 """
-[bin]
+[[bin]]
 name = "avrio-daemon"
 source = "src/daemon"
 [dependencies]
