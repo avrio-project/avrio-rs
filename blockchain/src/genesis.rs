@@ -36,7 +36,7 @@ pub fn getGenesisTxns() -> Vec<Transaction> {
     ];
 }
 
-pub fn generateGenesisBlock(chainKey: String) -> Block {
+pub fn generateGenesisBlock(chainKey: String, privKey: String) -> Result<Block, geneisBlockErrors> {
     let mut my_genesis_txns: Vec<Transaction> = vec![];
     let genesis_txns = getGenesisTxns();
     for tx in genesis_txns {
@@ -58,16 +58,17 @@ pub fn generateGenesisBlock(chainKey: String) -> Block {
         hash: "".to_string(),
         txns: my_genesis_txns,
         signature: "".to_string(),
-        node_signatures: vec!["".to_string(); 11],
+        node_signatures: vec![],
     };
 
     genesis_block.hash();
+    genesis_block.sign(privKey);
     return genesis_block;
 }
 
 pub fn getGenesisBlock(chainkey: &String) -> Result<Block, geneisBlockErrors> {
     let data = getData(
-        config().db_path + &"genesis-blocks".to_string(),
+        config().db_path + &"/genesis-blocks".to_string(),
         chainkey.to_owned(),
     );
     let none = String::from("-1");
