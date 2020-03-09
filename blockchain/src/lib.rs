@@ -71,7 +71,7 @@ impl Block {
     fn hash(&mut self) {
         // TODO
     }
-    fn sign(&mut self) {
+    fn sign(&mut self, privateKey: String) {
         //
     }
     fn isOtherBlock(&self, OtherBlock: &Block) -> bool {

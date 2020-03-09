@@ -12,3 +12,4 @@ avrio_database = { path = "../database" }
 hex = "0.4"
 rand = "0.7"
 log = "0.4"
+ring = "0.16.11"
