@@ -62,8 +62,8 @@ pub fn generateGenesisBlock(chainKey: String, privKey: String) -> Result<Block, 
     };
 
     genesis_block.hash();
-    genesis_block.sign(privKey);
-    return genesis_block;
+    genesis_block.sign(&privKey);
+    return Ok(genesis_block);
 }
 
 pub fn getGenesisBlock(chainkey: &String) -> Result<Block, geneisBlockErrors> {
