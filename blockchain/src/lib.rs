@@ -5,6 +5,10 @@ use avrio_core::transaction::*;
 use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate log;
+use ring::{
+    rand as randc,
+    signature::{self, KeyPair},
+};
 
 pub enum blockValidationErrors {
     invalidBlockhash,
@@ -71,8 +75,42 @@ impl Block {
     fn hash(&mut self) {
         // TODO
     }
-    fn sign(&mut self, privateKey: String) {
-        //
+    pub fn sign(&mut self, privateKey: &String) -> Result<(), ring::error::KeyRejected> {
+        let key_pair =
+            signature::Ed25519KeyPair::from_pkcs8(hex::decode(privateKey).unwrap().as_ref())?;
+        let msg: &[u8] = self.hash.as_bytes();
+        self.signature = hex::encode(key_pair.sign(msg));
+        return Ok(());
+    }
+    pub fn validSignature(&self) -> bool {
+        let msg: &[u8] = self.hash.as_bytes();
+        let peer_public_key = signature::UnparsedPublicKey::new(
+            &signature::ED25519,
+            hex::decode(self.header.chain_key.to_owned()).unwrap_or_else(|e| {
+                error!(
+                    "Failed to decode public key from hex {}, gave error {}",
+                    self.header.chain_key, e
+                );
+                return vec![0, 1, 0];
+            }),
+        );
+        peer_public_key
+            .verify(
+                msg,
+                hex::decode(self.signature.to_owned())
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "failed to decode signature from hex {}, gave error {}",
+                            self.signature, e
+                        );
+                        return vec![0, 1, 0];
+                    })
+                    .as_ref(),
+            )
+            .unwrap_or_else(|e| {
+                return ();
+            });
+        return true; // ^ wont unwrap if sig is invalid
     }
     fn isOtherBlock(&self, OtherBlock: &Block) -> bool {
         self == OtherBlock
