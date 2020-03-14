@@ -29,6 +29,7 @@ pub struct NetworkConfig {
     pub target_epoch_length: u64,
     pub fullnode_lock_time: u64,
     pub username_burn_amount: u64,
+    pub first_block_hash: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -87,6 +88,7 @@ pub struct Config {
     pub target_epoch_length: u64,
     pub username_burn_amount: u64,
     pub fullnode_lock_time: u64,
+    pub first_block_hash: String,
 }
 
 pub fn config() -> Config {
@@ -163,6 +165,7 @@ impl ConfigSave {
             target_epoch_length: nconf.target_epoch_length,
             username_burn_amount: nconf.username_burn_amount,
             fullnode_lock_time: nconf.fullnode_lock_time,
+            first_block_hash: nconf.first_block_hash,
         };
     }
 }
@@ -198,6 +201,7 @@ impl Default for NetworkConfig {
             target_epoch_length: 18000000, // 5 Hours
             fullnode_lock_time: 30 * 5,    // epoches (30 days)
             username_burn_amount: 5000,    // 0.5000 AIO
+            first_block_hash: "0x...".to_string(),
         }
     }
 }

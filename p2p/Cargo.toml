@@ -1,12 +1,16 @@
 [package]
 name = "avrio_p2p"
 version = "0.1.0"
-authors = ["Arielh25 <areilhurdle@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
+authors = [
+    "Arielh25 <areilhurdle@gmail.com>",
+    "TheDevMinerTV <tobigames200@gmail.com>"
+]
 edition = "2018"
 
 [dependencies]
 avrio_config = { path = "../config" }
 avrio_database = { path = "../database" }
+avrio_blockchain = { path = "../blockchain" }
 hex = "0.4"
 log = "~0.4"
 rand = "~0.7.3"
