@@ -8,23 +8,23 @@ extern crate rand;
 use rand::Rng;
 use serde::{Serialize, Deserialize};
 
-#[derive(Defualt, PartialEq, PartialOrq, Serialize, Deserialize, Debug)]
-struct Epoch {
-    hash: String,
-    height: u64,
-    fullnodes_online: u64,
-    total_coins_movement: u64,
-    new_coins: u64,
-    burnt_coins: u64,
-    locked_coins: u64,
-    blocks: u64,
-    average_ttl: u64,
-    average_vote: u8,
-    nonce: u64,
+#[derive(Default, PartialEq, Serialize, Deserialize, Debug)]
+pub struct Epoch {
+    pub hash: String,
+    pub height: u64,
+    pub fullnodes_online: u64,
+    pub total_coins_movement: u64,
+    pub new_coins: u64,
+    pub burnt_coins: u64,
+    pub locked_coins: u64,
+    pub blocks: u64,
+    pub average_ttl: u64,
+    pub average_vote: u8,
+    pub nonce: u64,
 }
 
 impl Epoch {
-    fn generate() -> Epoch {
+    pub fn generate() -> Epoch {
         let mut rng = rand::thread_rng();
         Epoch {
             hash: "".to_owned(),
@@ -42,6 +42,6 @@ impl Epoch {
     }
 }
 
-fn getTopEpoch() -> Epoch {
+pub fn getTopEpoch() -> Epoch {
     return Epoch::default();
 }
