@@ -9,6 +9,7 @@ extern crate avrio_config;
 extern crate avrio_database;
 use avrio_blockchain::{getBlockFromRaw, Block};
 use avrio_config::config;
+use avrio_core::epoch::Epoch;
 use avrio_database::{getData, saveData};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -289,15 +290,15 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     } else if get_ci_res == "0" {
         info!("First time sync detected.");
     } else {
-        let res = getData(config() + &"/epochs".to_owned(), get_ci_res);
-        if res == "-1".to_owned() || "0".to_owned() {
+        let res = getData(config().db_path + &"/epochs".to_owned(), get_ci_res.clone());
+        if res == "-1".to_owned() || res == "0".to_owned() {
             warn!("Failed to epoch number for hash: {} from epoches db, probably corupted. Syncing from zero...", get_ci_res);
         } else if res == "0".to_owned() {
             warn!("Cant find epoch with hash: {} in epoches db. probably a result of a terminated sync", get_ci_res);
         } else{
-            let epoch: 
+            let epoch: Epoch = Epoch::default();
         }
-        let from_hash: String;
+        let from_hash: String = "".to_owned();
 
         info!("Last synced epoch: {}. Syncing from block hash: {}", get_ci_res, from_hash);
     }
