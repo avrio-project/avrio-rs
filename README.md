@@ -11,10 +11,25 @@ The following instructions use the ```--release``` flag. This means that cargo w
 ### Linux
 
 #### Prerequisites
+Rust makes abundant use of Rust's syntax extensions and other advanced, unstable features. Because of this, you will need to use a nightly version of Rust. If you already have a working installation of the latest Rust nightly, feel free to skip to the next section.
 
-You will need the following packages: [Boost](https://www.boost.org/), [OpenSSL](https://www.openssl.org/), rust and git.
+To install a nightly version of Rust, we recommend using rustup. Install rustup by following the instructions on its website. Once rustup is installed, configure Rust nightly as your default toolchain by running the command:
+```
+rustup default nightly
+```
+If you prefer you can use per-directory overrides to use the nightly version only for avrio by running the following command in the directory:
 
-You will also need either Cargo or rustc.
+```
+rustup override set nightly
+```
+
+<span>&#9888;</span>  <b>Warning</b>: Avrio requires the latest version of Rust nightly.
+
+If avrio suddenly stops building, ensure you're using the latest version of Rust nightly and avrio by updating your toolchain and dependencies with:
+```
+rustup update && cargo update
+```
+You will also need the following packages: [Boost](https://www.boost.org/), [OpenSSL](https://www.openssl.org/) Cargo (or rustc) and git.
 
 ##### Ubuntu
 
