@@ -277,10 +277,30 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         }
     }
     let mut inventorys_to_ignore: Vec<String> = vec![];
-    // now we need to get our top block hash - if any - so we know where to sync from
+    // now we need to get the last time we were fully synced - if ever - so we know where to sync from
+    let mut last_hash_fully_synced = "0000000000".to_string();
     let mut chainsindex = "0000000000".to_string();
     let mut amount_synced: u64 = 0;
     let mut amount_to_sync: u64 = 0;
+    let get_ci_res = getData(config().db_path + &"/chainindex".to_owned(), "lastsyncedepoch".to_owned());
+    if get_ci_res == "-1".to_owned() {
+        // the db is likley corupted, we will resync
+        warn!("Failed to get last synced epoch from chains state db, probably corupted. Syncing from zero...");
+    } else if get_ci_res == "0" {
+        info!("First time sync detected.");
+    } else {
+        let res = getData(config() + &"/epochs".to_owned(), get_ci_res);
+        if res == "-1".to_owned() || "0".to_owned() {
+            warn!("Failed to epoch number for hash: {} from epoches db, probably corupted. Syncing from zero...", get_ci_res);
+        } else if res == "0".to_owned() {
+            warn!("Cant find epoch with hash: {} in epoches db. probably a result of a terminated sync", get_ci_res);
+        } else{
+            let epoch: 
+        }
+        let from_hash: String;
+
+        info!("Last synced epoch: {}. Syncing from block hash: {}", get_ci_res, from_hash);
+    }
     let _ = sendData(
         "".to_string(),
         &mut peer_to_use_unwraped.try_clone().unwrap(),
@@ -438,7 +458,10 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                     }
                 };
                 if amount_synced == amount_to_sync {
-                    info!("Downloaded {} out of {} inventories, moving onto block data", amount_synced, amount_to_sync);
+                    info!(
+                        "Downloaded {} out of {} inventories, moving onto block data",
+                        amount_synced, amount_to_sync
+                    );
                     inventories_downloaded = true;
                     break;
                 }
