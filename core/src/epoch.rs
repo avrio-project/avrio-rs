@@ -24,11 +24,11 @@ pub struct Epoch {
 }
 
 impl Epoch {
-    pub fn generate() -> Epoch {
+    pub fn new() -> Epoch {
         let mut rng = rand::thread_rng();
         Epoch {
             hash: "".to_owned(),
-            height: getTopEpoch().height + 1,
+            height: get_top_epoch().height + 1,
             fullnodes_online: 0,
             total_coins_movement: 0,
             new_coins: 0,
@@ -42,6 +42,6 @@ impl Epoch {
     }
 }
 
-pub fn getTopEpoch() -> Epoch {
+pub fn get_top_epoch() -> Epoch {
     return Epoch::default();
 }

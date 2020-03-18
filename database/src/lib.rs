@@ -1,4 +1,4 @@
-use rocksdb::{Options, DB};
+use rocksdb::{Options, DB, DBRawIterator};
 use serde::{Deserialize, Serialize};
 use std::process;
 #[macro_use]
@@ -7,7 +7,16 @@ extern crate log;
 struct PeerlistSave {
     peers: Vec<String>,
 }
-
+pub fn openDb(path: String) -> Result<rocksdb::DB, ()> {
+    if let Ok(database) = DB::open_default(&path.to_owned()) {
+        return Ok(database);
+    } else {
+        return Err(());
+    }
+}
+pub fn getIter<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
+    return db.raw_iterator();
+}
 pub fn saveData(serialized: String, path: String, key: String) -> u8 {
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
     let db = DB::open_default(&path.to_owned()).unwrap_or_else(|e| {

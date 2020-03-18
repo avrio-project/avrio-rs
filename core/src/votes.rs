@@ -7,6 +7,10 @@ extern crate cryptonight;
 use cryptonight::cryptonight;
 use std::time::Instant;
 extern crate hex;
+use ring::{
+    rand as randc,
+    signature::{self, KeyPair},
+};
 use std::error::Error;
 extern crate avrio_config;
 use avrio_config::config;
@@ -29,20 +33,20 @@ impl Vote {
         } else if ttl > mttl {
             return 0;
         } else {
-            vote += (50 - ((attl - ttl) / 5) as u8);
+            vote += 50 - ((attl - ttl) / 5) as u8;
         }
         match prt {
             0..=200 => vote += 50, // max
-            201..=700 => vote += (50 - (prt / 10) as u8),
+            201..=700 => vote += 50 - (prt / 10) as u8,
             _ => return 0,
         }
         drop(mttl);
-        let mut tpt = (tvt / tvc as u64);
+        let mut tpt = tvt / tvc as u64;
         if tpt < prt {
             vote += 20; // max
         } else {
             tpt -= prt;
-            vote += (50 - (tpt as u8));
+            vote += 50 - (tpt as u8);
         }
         if vote > 100 {
             // how would happen i have no idea but it is worth catching just incase
@@ -60,18 +64,18 @@ impl Vote {
     }
     pub fn hash(&mut self) {
         let as_bytes = self.bytes();
-        unsafe {
-            self.hash = hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
-        }
+        self.hash = hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
     }
     pub fn hash_return(&self) -> String {
         let as_bytes = self.bytes();
-        unsafe {
-            return hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
-        }
+        return hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
     }
-    pub fn sign(&mut self) {
-        return (); // TODO
+    pub fn sign(&mut self, private_key: String) -> Result<(), ring::error::KeyRejected>{
+        let key_pair =
+            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let msg: &[u8] = self.hash.as_bytes();
+        self.signature = hex::encode(key_pair.sign(msg));
+        return Ok(());
     }
     pub fn bytes_all(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
@@ -87,7 +91,7 @@ impl Vote {
         subject: String,
         voter: String,
         vote: u8,
-        privateKey: String,
+        private_key: String,
     ) -> Result<Vote, Box<dyn Error>> {
         let time = Instant::now().elapsed().as_millis() as u64;
         let mut vote = Vote {
@@ -99,7 +103,11 @@ impl Vote {
             vote,
         };
         vote.hash();
-        vote.sign();
-        return Ok(vote);
+        let res = vote.sign(private_key);
+        if let Err(_) = res {
+            return Err("Signature Failed".into());
+        } else {
+            return Ok(vote);
+        }
     }
 }

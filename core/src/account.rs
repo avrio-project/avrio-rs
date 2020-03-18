@@ -18,6 +18,7 @@ pub struct Account {
     pub public_key: String, // key (which is used as a index for storing) and the list of access keys.
     pub username: String,
     pub balance: u64,
+    pub locked: u64,
     pub access_keys: Vec<Accesskey>,
 }
 
@@ -41,6 +42,7 @@ impl Account {
             public_key: publicKey,
             username: "".to_string(),
             balance: 0,
+            locked: 0,
             access_keys: vec![Accesskey {
                 key: String::from(""),
                 allowance: 0,

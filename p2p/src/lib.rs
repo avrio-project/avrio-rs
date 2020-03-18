@@ -10,7 +10,7 @@ extern crate avrio_database;
 use avrio_blockchain::{getBlockFromRaw, Block};
 use avrio_config::config;
 use avrio_core::epoch::Epoch;
-use avrio_database::{getData, saveData};
+use avrio_database::{getData, getIter, openDb, saveData};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::process;
@@ -26,6 +26,7 @@ pub struct Inventory {
     chain: String,
     hash: String,
     height: u64,
+    timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -70,10 +71,35 @@ pub struct GetBlocks {
 }
 
 /* TODO */
-fn sendInventories(from: String, to: String, peer: TcpStream) -> Result<(), std::io::Error> {
-    return Ok(());
+fn sendInventories(
+    from: String,
+    to: String,
+    peer: TcpStream,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let firstInventory = getBlockFromRaw(from);
+    let lastInventory = getBlockFromRaw(to);
+    if firstInventory == Block::default() || lastInventory == Block::default() {
+        return Err("err".into());
+    } else {
+        if let Ok(db) = openDb(config().db_path + &"/chains".to_owned()) {
+            let mut iter = db.raw_iterator();
+            iter.seek_to_first();
+            while iter.valid() {
+                let mut curr_chain = "".to_owned();
+                if let Some(chain) = iter.value() {
+                    if let Ok(chain_string) = String::from_utf8(chain) {
+                        curr_chain = chain_string;
+                    } else {
+                        warn!("Found corrupted chain at key: {}", String::from_utf8(iter.key().unwrap_or(b"error getting index".to_owned().to_vec())).unwrap_or("error getting index".to_owned()));
+                    }
+                }
+                println!("Saw {:?} {:?}", iter.key(), iter.value());
+                iter.next();
+            }
+        }
+        return Ok(());
+    }
 }
-
 fn sendBlocks(from: String, to: String, peer: TcpStream) -> Result<(), std::io::Error> {
     return Ok(());
 }
@@ -283,7 +309,10 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let mut chainsindex = "0000000000".to_string();
     let mut amount_synced: u64 = 0;
     let mut amount_to_sync: u64 = 0;
-    let get_ci_res = getData(config().db_path + &"/chainindex".to_owned(), "lastsyncedepoch".to_owned());
+    let get_ci_res = getData(
+        config().db_path + &"/chainindex".to_owned(),
+        "lastsyncedepoch".to_owned(),
+    );
     if get_ci_res == "-1".to_owned() {
         // the db is likley corupted, we will resync
         warn!("Failed to get last synced epoch from chains state db, probably corupted. Syncing from zero...");
@@ -295,12 +324,15 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             warn!("Failed to epoch number for hash: {} from epoches db, probably corupted. Syncing from zero...", get_ci_res);
         } else if res == "0".to_owned() {
             warn!("Cant find epoch with hash: {} in epoches db. probably a result of a terminated sync", get_ci_res);
-        } else{
+        } else {
             let epoch: Epoch = Epoch::default();
         }
         let from_hash: String = "".to_owned();
 
-        info!("Last synced epoch: {}. Syncing from block hash: {}", get_ci_res, from_hash);
+        info!(
+            "Last synced epoch: {}. Syncing from block hash: {}",
+            get_ci_res, from_hash
+        );
     }
     let _ = sendData(
         "".to_string(),

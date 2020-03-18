@@ -235,17 +235,14 @@ impl Transaction {
     }
     pub fn hash(&mut self) {
         let asbytes = self.bytes();
-        unsafe {
-            let out = cryptonight(&asbytes, asbytes.len(), 0);
-            self.hash = hex::encode(out);
-        }
+        let out = cryptonight(&asbytes, asbytes.len(), 0);
+        self.hash = hex::encode(out);
     }
     pub fn hashReturn(&self) -> String {
         let asbytes = self.bytes();
-        unsafe {
-            let out = cryptonight(&asbytes, asbytes.len(), 0);
-            return hex::encode(out);
-        }
+
+        let out = cryptonight(&asbytes, asbytes.len(), 0);
+        return hex::encode(out);
     }
 }
 
