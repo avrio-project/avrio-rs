@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 extern crate log;
-use log::{error, info};
+use log::{error};
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

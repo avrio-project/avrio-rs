@@ -38,7 +38,7 @@ impl Account {
     }
     pub fn new(publicKey: String) -> Account {
         // allows Account::new(publicKey)
-        let mut acc: Account = Account {
+        let acc: Account = Account {
             public_key: publicKey,
             username: "".to_string(),
             balance: 0,
@@ -91,7 +91,7 @@ pub fn setAccount(acc: &Account) -> u8 {
 
 pub fn getAccount(public_key: String) -> Result<Account, u8> {
     let path = config().db_path + &"/bd/accountdb".to_owned();
-    let mut data = getData(path, public_key);
+    let data = getData(path, public_key);
     if data != "1" {
         return Err(1);
     } else {
@@ -182,7 +182,7 @@ pub fn deltaFunds(
                 _ => Err("Failed to save account".to_string()),
             };
         } else {
-            let mut accesskeys = acc.access_keys.clone();
+            let accesskeys = acc.access_keys.clone();
             let mut accesskey = Accesskey::default();
             let mut i = 0;
             while accesskey.key != access_key {

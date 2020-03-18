@@ -2,9 +2,8 @@
 Copyright 2020 The Avrio Core Developers
 This file handles the registartion and validation of txns.
 */
-use cryptonight::cryptonight;
+
 use ring::{
-    rand as randc,
     signature::{self, KeyPair},
 };
 use serde::{Deserialize, Serialize};
@@ -36,7 +35,7 @@ impl UsernameRegistation {
         let as_bytes = self.bytes();
         return hex::encode(cryptonight::cryptonight(&as_bytes, as_bytes.len(), 0));
     }
-    pub fn sign(&mut self, privateKey: String) -> bool {
+    pub fn sign(&mut self, _privateKey: String) -> bool {
         if self.hash == "".to_string() {
             return false;
         }

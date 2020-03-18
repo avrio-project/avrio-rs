@@ -3,6 +3,7 @@ name = "avrio_core"
 version = "0.1.0"
 authors = ["Arielh25 <areilhurdle@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
 edition = "2018"
+license = "MIT"
 [dependencies]
 ring = "0.16.11"
 serde = { version = "1.0", features = ["derive"] }

@@ -5,7 +5,7 @@ rpc/lib.rs -
 */
 
 #![feature(proc_macro_hygiene, decl_macro)]
-use serde_json::json;
+
 extern crate avrio_core;
 use avrio_core::account::{getAccount, Account};
 #[macro_use] extern crate rocket;

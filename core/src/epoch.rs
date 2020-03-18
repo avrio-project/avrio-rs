@@ -1,8 +1,8 @@
 // This file handles the saving of epoch details.
 extern crate avrio_database;
-use avrio_database::{getData, saveData};
+
 extern crate avrio_config;
-use avrio_config::config;
+
 extern crate rand;
 
 use rand::Rng;

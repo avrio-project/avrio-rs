@@ -9,14 +9,14 @@ extern crate cryptonight;
 use avrio_config::config;
 extern crate avrio_database;
 use crate::transaction::Transaction;
-use avrio_database::{getData, saveData};
-use cryptonight::cryptonight;
+use avrio_database::{getData};
+
 use ring::{
     rand as randc,
     signature::{self, KeyPair},
 };
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+
 
 pub enum certificateErrors {
     pubtransactionNotFound,
@@ -73,7 +73,7 @@ pub fn generateCertificate(
         }
     }
     drop(diff_cert);
-    if let Err(e) = cert.sign(&privateKey) {
+    if let Err(_e) = cert.sign(&privateKey) {
         return Err(certificateErrors::signatureError);
     } else {
         return Ok(cert);
@@ -156,7 +156,7 @@ impl Certificate {
                     })
                     .as_ref(),
             )
-            .unwrap_or_else(|e| {
+            .unwrap_or_else(|_e| {
                 return ();
             });
         return true; // ^ wont unwrap if sig is invalid

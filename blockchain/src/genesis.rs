@@ -2,12 +2,12 @@
 
 extern crate avrio_config;
 use avrio_config::config;
-use avrio_database::{getData, saveData};
-use rand::Rng;
+use avrio_database::{getData};
+
 extern crate hex;
 use crate::{Block, Header};
 use avrio_core::transaction::Transaction;
-use serde::{Deserialize, Serialize};
+
 #[derive(Debug, PartialEq)]
 pub enum geneisBlockErrors {
     BlockNotFound,
@@ -71,11 +71,11 @@ pub fn getGenesisBlock(chainkey: &String) -> Result<Block, geneisBlockErrors> {
         config().db_path + &"/genesis-blocks".to_string(),
         chainkey.to_owned(),
     );
-    let none = String::from("-1");
-    let zero = String::from("0");
+    let _none = String::from("-1");
+    let _zero = String::from("0");
     return match data {
-        none => Err(geneisBlockErrors::BlockNotFound),
-        zero => Err(geneisBlockErrors::OtherDb),
+        _none => Err(geneisBlockErrors::BlockNotFound),
+        _zero => Err(geneisBlockErrors::OtherDb),
         _ => {
             let b: Block = serde_json::from_str(&data).unwrap_or_else(|e| {
                 warn!(

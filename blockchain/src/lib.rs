@@ -12,7 +12,7 @@ use ring::{
     rand as randc,
     signature::{self, KeyPair},
 };
-use std::error::Error;
+
 use std::fs::File;
 use std::io::prelude::*;
 use bincode::{deserialize, serialize};
@@ -135,7 +135,7 @@ impl Block {
                     })
                     .as_ref(),
             )
-            .unwrap_or_else(|e| {
+            .unwrap_or_else(|_e| {
                 return ();
             });
         return true; // ^ wont unwrap if sig is invalid

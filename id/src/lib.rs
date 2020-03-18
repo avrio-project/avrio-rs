@@ -1,10 +1,10 @@
 // This lib deals with the generation of ID's based off the random strings provided by the consensius commitee at the end of the last round
-use std::io::{stdin, stdout, Write};
+
 use std::time::{SystemTime, UNIX_EPOCH};
 extern crate cryptonight;
 extern crate rand;
 use cryptonight::cryptonight;
-use rand::Rng;
+
 extern crate hex;
 #[macro_use]
 extern crate log;
@@ -37,10 +37,10 @@ pub fn check_difficulty(hash: &String, difficulty: u128) -> bool {
 }
 
 fn calculate_hash_params(PrevBlockHash: String) -> HashParams {
-    let mut cu = PrevBlockHash.as_bytes();
-    let mut b: Vec<u8> = cu.iter().cloned().collect();
+    let cu = PrevBlockHash.as_bytes();
+    let b: Vec<u8> = cu.iter().cloned().collect();
     let mut a: u32 = 0;
-    let mut i = 0;
+    let _i = 0;
 
     for x in &b {
         a = a + *x as u32;

@@ -10,10 +10,10 @@ extern crate avrio_database;
 use avrio_blockchain::{getBlockFromRaw, Block};
 use avrio_config::config;
 use avrio_core::epoch::Epoch;
-use avrio_database::{getData, getIter, openDb, saveData};
+use avrio_database::{getData, openDb, saveData};
 use std::io::{Read, Write};
-use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
-use std::process;
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
+
 use std::str;
 use std::thread;
 extern crate hex;
@@ -74,7 +74,7 @@ pub struct GetBlocks {
 fn sendInventories(
     from: String,
     to: String,
-    peer: TcpStream,
+    _peer: TcpStream,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let firstInventory = getBlockFromRaw(from);
     let lastInventory = getBlockFromRaw(to);
@@ -100,12 +100,12 @@ fn sendInventories(
         return Ok(());
     }
 }
-fn sendBlocks(from: String, to: String, peer: TcpStream) -> Result<(), std::io::Error> {
+fn sendBlocks(_from: String, _to: String, _peer: TcpStream) -> Result<(), std::io::Error> {
     return Ok(());
 }
 /* TODO end*/
 pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
-    let mut peer_to_use_unwraped = peer.try_clone().unwrap();
+    let peer_to_use_unwraped = peer.try_clone().unwrap();
     let syncreqres = sendData(
         "syncreq".to_string(),
         &mut peer_to_use_unwraped.try_clone().unwrap(),
@@ -159,7 +159,7 @@ fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
     loop {
         let mut buffer = [0; 128];
         let e_r = peer.read(&mut buffer);
-        if let Err(e) = e_r {
+        if let Err(_e) = e_r {
             if i >= 5 {
                 let peer_n = peer.try_clone();
                 if let Ok(peerNew) = peer_n {
@@ -182,7 +182,7 @@ fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
                 break ChainDigestPeer {
                     peer: Some(peerNew),
                     digest: String::from_utf8(buffer.to_vec())
-                        .unwrap_or_else(|e| return "".to_string()),
+                        .unwrap_or_else(|_e| return "".to_string()),
                 };
             } else {
                 break ChainDigestPeer {
@@ -211,23 +211,23 @@ pub struct ChainDigestPeer {
 pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let mut peers: Vec<TcpStream> = vec![];
     let mut pc: u32 = 0;
-    let mut i: usize = 0;
+    let _i: usize = 0;
     for i in 0..pl.len() {
         let res = sendData("getChainDigest".to_string(), &mut pl[i], 0x01);
         match res {
             Ok(_) => {
-                let mut peer_copy = pl[i].try_clone();
-                if let Ok(mut np) = peer_copy {
+                let peer_copy = pl[i].try_clone();
+                if let Ok(np) = peer_copy {
                     peers.push(np);
                     pc += 1;
                 }
             }
-            Err(e) => {}
+            Err(_e) => {}
         }
     }
     trace!("Sent getChainDigest to {} peers", pc);
     let mut chainDigests: Vec<ChainDigestPeer> = vec![];
-    let empty_string = "".to_string();
+    let _empty_string = "".to_string();
     for peer in peers.iter_mut() {
         if let Ok(mut peer_new) = peer.try_clone() {
             let handle = thread::Builder::new()
@@ -235,7 +235,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                 .spawn(move || {
                     let chainDigest = getChainDigest(&mut peer_new);
                     match chainDigest.digest {
-                        empty_string => {
+                        _empty_string => {
                             return ChainDigestPeer {
                                 peer: Some(peer_new),
                                 digest: "".to_string(),
@@ -260,7 +260,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     }
     let mode_hash = get_mode(hashes);
     let mut peer_to_use: Option<TcpStream> = None;
-    let mut i: u64 = 0;
+    let _i: u64 = 0;
     for i in 0..chainDigests.len() {
         if chainDigests[i].digest == mode_hash {
             if let Some(peer_) = &chainDigests[i].peer {
@@ -289,7 +289,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                     }
                 }
             }
-            let mut peer_to_use_unwraped: TcpStream;
+            let peer_to_use_unwraped: TcpStream;
             let try_ack = syncack_peer(&mut peer_to_use.unwrap().try_clone().unwrap());
             if let Ok(stream) = try_ack {
                 peer_to_use_unwraped = stream;
@@ -305,8 +305,8 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     }
     let mut inventorys_to_ignore: Vec<String> = vec![];
     // now we need to get the last time we were fully synced - if ever - so we know where to sync from
-    let mut last_hash_fully_synced = "0000000000".to_string();
-    let mut chainsindex = "0000000000".to_string();
+    let _last_hash_fully_synced = "0000000000".to_string();
+    let _chainsindex = "0000000000".to_string();
     let mut amount_synced: u64 = 0;
     let mut amount_to_sync: u64 = 0;
     let get_ci_res = getData(
@@ -325,7 +325,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         } else if res == "0".to_owned() {
             warn!("Cant find epoch with hash: {} in epoches db. probably a result of a terminated sync", get_ci_res);
         } else {
-            let epoch: Epoch = Epoch::default();
+            let _epoch: Epoch = Epoch::default();
         }
         let from_hash: String = "".to_owned();
 
@@ -360,7 +360,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     } else {
         amount_to_sync = deformed.message.parse().unwrap();
     }
-    let mut print_synced_every: u64;
+    let print_synced_every: u64;
     match amount_to_sync {
         0..=100 => print_synced_every = 10,
         100..=500 => print_synced_every = 50,
@@ -528,7 +528,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     loop {
         let mut data = [0 as u8; 200];
-        let mut peer_clone: TcpStream;
+        let peer_clone: TcpStream;
         if let Ok(peer) = stream.try_clone() {
             peer_clone = peer;
         } else {
@@ -537,7 +537,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
         match stream.read(&mut data) {
             Ok(_) => {
                 match deformMsg(&String::from_utf8(data.to_vec()).unwrap(), peer_clone) {
-                    Some(a) => {
+                    Some(_a) => {
                         /* we just recieved a handshake, now we send ours
                         This is in the following format
                         network id, our peer id, our node type;
@@ -634,7 +634,7 @@ fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         String::from_utf8(buffer_n.to_vec()).unwrap()
     );
     let pid: String;
-    let mut peer_clone: TcpStream;
+    let peer_clone: TcpStream;
     if let Ok(peer) = stream.try_clone() {
         peer_clone = peer;
     } else {
@@ -649,7 +649,7 @@ fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
             return Err("Got no id".into());
         }
     };
-    let mut info = PeerTracker {
+    let info = PeerTracker {
         sent_bytes: 200,
         recieved_bytes: 200,
     };
@@ -734,7 +734,7 @@ fn deformMsg(msg: &String, peer: TcpStream) -> Option<String> {
     let msg_c = v[0].to_string() + &"}".to_string();
     trace!("recive: {}", msg_c);
     drop(v);
-    let mut msg_d: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
+    let msg_d: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
         debug!(
             "Bad Packets recieved from peer, packets: {}. Parsing this gave error: {}",
             msg, e

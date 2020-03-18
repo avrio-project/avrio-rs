@@ -5,12 +5,11 @@ use cryptonight::cryptonight;
 extern crate avrio_config;
 use avrio_config::config;
 extern crate rand;
-use rand::Rng;
+
 use ring::{
-    rand as randc,
     signature::{self, KeyPair},
 };
-use std::time::{Duration, Instant};
+
 extern crate avrio_database;
 use crate::{
     account::{getAccount, getByUsername, Account},

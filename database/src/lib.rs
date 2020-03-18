@@ -1,4 +1,4 @@
-use rocksdb::{Options, DB, DBRawIterator};
+use rocksdb::{DB, DBRawIterator};
 use serde::{Deserialize, Serialize};
 use std::process;
 #[macro_use]
@@ -31,8 +31,8 @@ pub fn saveData(serialized: String, path: String, key: String) -> u8 {
 }
 
 pub fn savePeerlist(list: &Vec<Vec<u8>>, path: String) {
-    let peerlist_s: String;
-    let ips: Vec<String>;
+    let _peerlist_s: String;
+    let _ips: Vec<String>;
     let mut ip_curr: String = "".to_string();
     let mut ip_prv: String;
     let mut pl: PeerlistSave = PeerlistSave { peers: vec![] };
@@ -52,11 +52,11 @@ pub fn savePeerlist(list: &Vec<Vec<u8>>, path: String) {
 
 pub fn getData(path: String, key: String) -> String {
     let db = DB::open_default(path).unwrap();
-    let mut data: String;
+    let data: String;
     match db.get(key) {
         Ok(Some(value)) => data = value.to_utf8().unwrap().to_string(),
         Ok(None) => data = "-1".to_owned(),
-        Err(e) => data = "0".to_owned(),
+        Err(_e) => data = "0".to_owned(),
     }
     return data;
 }
