@@ -6,7 +6,7 @@ use std::io::prelude::*;
 extern crate log;
 use log::{error};
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
-
+/// This is the struct that holds the built in , network params that are set by the core devs and the same for everyone
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NetworkConfig {
     pub version_major: u8,
@@ -31,7 +31,7 @@ pub struct NetworkConfig {
     pub username_burn_amount: u64,
     pub first_block_hash: String,
 }
-
+/// This is what is saved in a file, the stuff the user can change and edit to fit their needs
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ConfigSave {
     pub db_path: String,
@@ -50,7 +50,7 @@ pub struct ConfigSave {
     pub key_file_path: String,
     pub log_level: u8,
 }
-
+/// This is the entire config - this is what is passed arround in software and what you should use in anything your build
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     pub version_major: u8,
@@ -126,6 +126,7 @@ impl Default for ConfigSave {
         }
     }
 }
+
 impl ConfigSave {
     pub fn toConfig(&self) -> Config {
         let nconf = NetworkConfig::default();
@@ -226,12 +227,14 @@ impl Config {
             log_level: self.log_level,
         }
     }
+    /// This creates a config file from the provided struct, if the file exists it does the same thing as save()
     pub fn create(self) -> io::Result<()> {
         // create file
         let mut file = File::create("node.conf")?;
         file.write_all(serde_json::to_string(&self.toSave()).unwrap().as_bytes())?;
         Ok(())
     }
+    /// This is how you save the config, it is a expensive function on devices with slow storage as it opens and writes to the file
     pub fn save(self) -> io::Result<()> {
         // save to exisiting/ update
         let mut file = File::open("node.conf")?;
