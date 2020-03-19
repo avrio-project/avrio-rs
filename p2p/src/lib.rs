@@ -106,11 +106,19 @@ fn sendInventories(
                                             if inv_des.timestamp >= from_t
                                                 && inv_des.timestamp <= to_t
                                             {
-                                                use std::borrow::Cow;  // Cow = clone on write -  a much more efficent way of having multiple defrenced refrences to strings.
+                                                use std::borrow::Cow; // Cow = clone on write -  a much more efficent way of having multiple defrenced refrences to strings.
                                                 let inv_string_cow = Cow::from(inv_string);
-                                                if let Err(_) = sendData((&inv_string_cow).to_string(), _peer, 0x1a){
+                                                if let Err(_) = sendData(
+                                                    (&inv_string_cow).to_string(),
+                                                    _peer,
+                                                    0x1a,
+                                                ) {
                                                     // try again
-                                                    sendData((&inv_string_cow).to_string(), _peer, 0x1a)?
+                                                    sendData(
+                                                        (&inv_string_cow).to_string(),
+                                                        _peer,
+                                                        0x1a,
+                                                    )?
                                                 } else {
                                                     return Ok(());
                                                 }
@@ -283,7 +291,7 @@ pub struct ChainDigestPeer {
     pub peer: Option<TcpStream>,
     pub digest: String,
 }
-// TODO: FInish syncing code
+// TODO: Finish syncing code
 pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let mut peers: Vec<TcpStream> = vec![];
     let mut pc: u32 = 0;
@@ -576,7 +584,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                 }
                 if amount_synced % print_synced_every == 0 {
                     info!(
-                        "Synced {} / {}. Only {} to go!",
+                        "Synced {} / {} inventories. Only {} to go!",
                         amount_synced,
                         amount_to_sync,
                         amount_to_sync - amount_synced
@@ -596,9 +604,54 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     if inventories_downloaded == false {
         //syncing failed
         return Err("syncing failed".into());
+    } else {
+        // time to download blocks
+        // first we make a iter of all the invs we have saved
+        if let Ok(db) = openDb(config().db_path + &"/chains".to_owned()) {
+            let mut iter = db.raw_iterator();
+            iter.seek_to_first();
+            while iter.valid() {
+                if let Some(inv) = iter.value() {
+                    if let Ok(inv_string) = String::from_utf8(inv) {
+                        let inv_des: Inventory =
+                            serde_json::from_str(&inv_string).unwrap_or_default();
+                        if inv_des == Inventory::default() {
+                            warn!(
+                                "Failed to parse inventory from: {}, likley corrupted DB",
+                                inv_string
+                            );
+                        } else {
+                            trace!(
+                                "Saw inv: index: {:?}, value: {:?}",
+                                iter.key(),
+                                iter.value()
+                            );
+                            // TODO get block
+                            let block: String = String::from_utf8(
+                                iter.value().unwrap_or(b"get value failed".to_vec()),
+                            )
+                            .unwrap_or("get value failed".to_string());
+                            if let Ok(mut a) = peer_to_use_unwraped.try_clone() {
+                                sendData(block, &mut a, 0x1a).unwrap();
+                                // TODO get the raw block from the stream
+                            }
+                        }
+                    } else {
+                        warn!(
+                            "Found corrupted inventory at key: {}",
+                            String::from_utf8(
+                                iter.key().unwrap_or(
+                                    b"error getting index, (key err)".to_owned().to_vec()
+                                )
+                            )
+                            .unwrap_or("error getting index (utf8 err)".to_owned())
+                        );
+                    }
+                }
+            }
+        }
     }
-    return Ok(0);
-    // else - poll the peer for the raw blocks!
+    return Ok(1);
 }
 
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
@@ -796,7 +849,7 @@ pub enum p2p_errors {
     Other,
 }
 
-fn sendData(data: String, peer: &mut TcpStream, msg_type: u16) -> Result<(), std::io::Error> {
+pub fn sendData(data: String, peer: &mut TcpStream, msg_type: u16) -> Result<(), std::io::Error> {
     // This function takes some data as a string and places it into a struct before sending to the peer
     let data_s: String = formMsg(data, msg_type);
     let sent = peer.write_all(data_s.as_bytes());
