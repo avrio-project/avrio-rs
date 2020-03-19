@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate log;
-#[macro_use]
 use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate unwrap;
@@ -65,45 +64,116 @@ pub struct GetInventories {
 }
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct GetBlocks {
-    pub amount: u8,   // The amount of inventories to send back, max is 128
-    pub from: String, // hash (or 00000000000 for ignore)
-    pub to: String,   // hash (or 00000000000 for ignore)
+    pub hash: String,
 }
 
-/* TODO */
+/* TODO finish send invs*/
 fn sendInventories(
     from: String,
     to: String,
-    _peer: TcpStream,
+    _peer: &mut TcpStream,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let firstInventory = getBlockFromRaw(from);
     let lastInventory = getBlockFromRaw(to);
     if firstInventory == Block::default() || lastInventory == Block::default() {
         return Err("err".into());
     } else {
+        let from_t = firstInventory.header.timestamp;
+        let to_t = firstInventory.header.timestamp;
         if let Ok(db) = openDb(config().db_path + &"/chains".to_owned()) {
             let mut iter = db.raw_iterator();
             iter.seek_to_first();
             while iter.valid() {
-                let mut curr_chain = "".to_owned();
                 if let Some(chain) = iter.value() {
                     if let Ok(chain_string) = String::from_utf8(chain) {
-                        curr_chain = chain_string;
+                        if let Ok(inv_db) = openDb(
+                            config().db_path + &"/".to_owned() + &chain_string + &"-inv".to_owned(),
+                        ) {
+                            let mut inviter = inv_db.raw_iterator();
+                            inviter.seek_to_first();
+                            while inviter.valid() {
+                                if let Some(inv) = iter.value() {
+                                    if let Ok(inv_string) = String::from_utf8(inv) {
+                                        let inv_des: Inventory =
+                                            serde_json::from_str(&inv_string).unwrap_or_default();
+                                        if inv_des == Inventory::default() {
+                                            warn!("Failed to parse inventory from: {}, likley corrupted DB", inv_string);
+                                        } else {
+                                            trace!(
+                                                "Saw inv: index: {:?}, value: {:?}",
+                                                iter.key(),
+                                                iter.value()
+                                            );
+                                            if inv_des.timestamp >= from_t
+                                                && inv_des.timestamp <= to_t
+                                            {
+                                                sendData(inv_string, _peer, 0x1a);
+                                            }
+                                        }
+                                    } else {
+                                        warn!(
+                                            "Found corrupted inventory at key: {}",
+                                            String::from_utf8(
+                                                iter.key().unwrap_or(
+                                                    b"error getting index, (key err)"
+                                                        .to_owned()
+                                                        .to_vec()
+                                                )
+                                            )
+                                            .unwrap_or("error getting index (utf8 err)".to_owned())
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     } else {
-                        warn!("Found corrupted chain at key: {}", String::from_utf8(iter.key().unwrap_or(b"error getting index".to_owned().to_vec())).unwrap_or("error getting index".to_owned()));
+                        warn!(
+                            "Found corrupted chain at key: {}",
+                            String::from_utf8(
+                                iter.key()
+                                    .unwrap_or(b"error getting index".to_owned().to_vec())
+                            )
+                            .unwrap_or("error getting index".to_owned())
+                        );
                     }
+                } else {
+                    warn!(
+                        "Found corrupted chain at key: {}",
+                        String::from_utf8(
+                            iter.key()
+                                .unwrap_or(b"error getting index".to_owned().to_vec())
+                        )
+                        .unwrap_or("error getting index".to_owned())
+                    );
                 }
-                println!("Saw {:?} {:?}", iter.key(), iter.value());
+                trace!(
+                    "Saw chain: number: {:?}, hash: {:?}",
+                    iter.key(),
+                    iter.value()
+                );
                 iter.next();
             }
         }
         return Ok(());
     }
 }
-fn sendBlocks(_from: String, _to: String, _peer: TcpStream) -> Result<(), std::io::Error> {
-    return Ok(());
+fn sendBlock(hash: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+    let block: Block = getBlockFromRaw(hash);
+    if block == Block::default() {
+        return Err("could not get block".into());
+    } else {
+        let block_ser = serde_json::to_string(&block).unwrap_or(" ".to_owned());
+        if block_ser == " ".to_owned() {
+            return Err("Could not ser block".into());
+        } else {
+            if let Err(e) = sendData(block_ser, _peer, 0x0a) {
+                return Err(e.into());
+            } else {
+                return Ok(());
+            }
+        }
+    }
 }
-/* TODO end*/
 pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     let peer_to_use_unwraped = peer.try_clone().unwrap();
     let syncreqres = sendData(
@@ -207,7 +277,7 @@ pub struct ChainDigestPeer {
     pub peer: Option<TcpStream>,
     pub digest: String,
 }
-
+// TODO: FInish syncing code
 pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let mut peers: Vec<TcpStream> = vec![];
     let mut pc: u32 = 0;
@@ -528,7 +598,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     loop {
         let mut data = [0 as u8; 200];
-        let peer_clone: TcpStream;
+        let mut peer_clone: TcpStream;
         if let Ok(peer) = stream.try_clone() {
             peer_clone = peer;
         } else {
@@ -536,31 +606,40 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
         }
         match stream.read(&mut data) {
             Ok(_) => {
-                match deformMsg(&String::from_utf8(data.to_vec()).unwrap(), peer_clone) {
+                match deformMsg(&String::from_utf8(data.to_vec()).unwrap(), &mut peer_clone) {
                     Some(_a) => {
-                        /* we just recieved a handshake, now we send ours
-                        This is in the following format
-                        network id, our peer id, our node type;
-                        */
-                        let msg = hex::encode(config().network_id)
-                            + "*"
-                            + &config().identitiy
-                            + "*"
-                            + &config().node_type.to_string();
-                        info!("Our handshake: {}", msg);
-                        let _ = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes());
-                        // send our handshake
+                        let handshake_string = "handshake".to_owned();
+                        match _a {
+                            handshake_string => {
+                                /* we just recieved a handshake, now we send ours
+                                This is in the following format
+                                network id, our peer id, our node type;
+                                */
+                                let msg = hex::encode(config().network_id)
+                                    + "*"
+                                    + &config().identitiy
+                                    + "*"
+                                    + &config().node_type.to_string();
+                                debug!("Our handshake: {}", msg);
+                                let _ = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes());
+                                // send our handshake
+                            }
+                            _ => {
+                                // we can ignore all other things bcause they don't require our action :), deform message does it.
+                            }
+                        }
                     }
-                    _ => {} // TODO: handle the clients rather than ignoring them if its not a handshake!!
+                    _ => {}
                 }
             }
-            Err(_) => {
+            Err(e) => {
                 debug!(
-                    "Terminating connection with {}",
-                    stream.peer_addr().unwrap()
+                    "Terminating connection with {}, gave error {}",
+                    stream.peer_addr().unwrap(),
+                    e
                 );
                 stream.shutdown(Shutdown::Both).unwrap();
-                return Err("undefined".into());
+                return Err(e.into());
             }
         }
         {}
@@ -634,13 +713,13 @@ fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         String::from_utf8(buffer_n.to_vec()).unwrap()
     );
     let pid: String;
-    let peer_clone: TcpStream;
+    let mut peer_clone: TcpStream;
     if let Ok(peer) = stream.try_clone() {
         peer_clone = peer;
     } else {
         return Err("failed to clone stream".into());
     }
-    match deformMsg(&String::from_utf8(buffer_n.to_vec())?, peer_clone) {
+    match deformMsg(&String::from_utf8(buffer_n.to_vec())?, &mut peer_clone) {
         Some(x) => {
             pid = x;
         }
@@ -682,13 +761,13 @@ fn process_handshake(s: String) -> Result<String, String> {
     let network_id_hex = hex::encode(config().network_id);
     let network_id_hex_len = network_id_hex.len();
     if s.len() < network_id_hex_len {
-        warn!(
+        debug!(
             "Bad handshake recived from peer (too short. Len: {}, Should be: {}), handshake: {}",
             s.len(),
             network_id_hex_len,
             s
         );
-        //return Err("Handshake too short".to_string());
+        return Err("Handshake too short".to_string());
     }
     let peer_network_id_hex: &String = &s[0..network_id_hex.len()].to_string();
     if network_id_hex != peer_network_id_hex.to_owned() {
@@ -700,7 +779,7 @@ fn process_handshake(s: String) -> Result<String, String> {
         let v: Vec<&str> = val.split("*").collect();
         id = v[0].to_string();
     }
-    info!("Handshook with peer, gave id {}", id);
+    debug!("Handshook with peer, gave id {}", id);
     return Ok(id);
 }
 
@@ -728,7 +807,7 @@ fn formMsg(data_s: String, data_type: u16) -> String {
     return serde_json::to_string(&msg).unwrap();
 }
 
-fn deformMsg(msg: &String, peer: TcpStream) -> Option<String> {
+fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
@@ -754,9 +833,10 @@ fn deformMsg(msg: &String, peer: TcpStream) -> Option<String> {
                 from = config.first_block_hash;
             }
             if to == "0000000000" {
+                let path = config.db_path;
                 let height_from: u64 = getBlockFromRaw(from.clone()).header.height;
                 let b = getData(
-                    config.db_path + &"/hashbynetworkheight".to_string(),
+                    path + &"/hashbynetworkheight".to_string(),
                     (height_from + d.amount as u64).to_string(),
                 );
                 if b == "-1".to_string() || b == "0".to_string() {
@@ -770,50 +850,21 @@ fn deformMsg(msg: &String, peer: TcpStream) -> Option<String> {
             return None;
         }
         0x05 => {
-            let config = config();
-            let d: GetBlocks = serde_json::from_str(&msg_d.message).unwrap_or_default();
-            if d == GetBlocks::default() {
-                return None;
-            }
-            let mut to: String = d.to;
-            let mut from = d.from;
-            if from == "0000000000".to_string() {
-                from = config.first_block_hash;
-            }
-            if to == "0000000000" {
-                let height_from: u64 = getBlockFromRaw(from.clone()).header.height;
-                let b = getData(
-                    config.db_path + &"/hashbynetworkheight".to_string(),
-                    (height_from + d.amount as u64).to_string(),
-                );
-                if b == "-1".to_string() || b == "0".to_string() {
-                    return None;
-                } else {
-                    let block: Block = serde_json::from_str(&b).unwrap_or_default();
-                    to = block.hash;
-                }
-            }
-            sendBlocks(from, to, peer);
-            return None;
+            sendBlock(msg_d.message, peer);
+            return Some("sendblock".into());
         }
         0x01 => {
             process_message(msg_d.message);
-            return None;
+            return Some("message".into());
         }
         0x0a => {
             process_block(msg_d.message);
-            return None;
-        }
-        0x0b => {
-            process_transaction(msg_d.message);
-            return None;
-        }
-        0x0c => {
-            process_registration(msg_d.message);
-            return None;
+            return Some("getblock".into());
         }
         0x1a => {
-            return Some(process_handshake(msg_d.message).unwrap());
+            return Some(process_handshake(msg_d.message).unwrap_or_else(|e| {
+                return "Error: ".to_owned() + &e;
+            }));
         }
         _ => {
             warn!("Bad Messge type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
