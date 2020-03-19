@@ -67,7 +67,6 @@ pub struct GetBlocks {
     pub hash: String,
 }
 
-/* TODO finish send invs*/
 fn sendInventories(
     from: String,
     to: String,
@@ -107,7 +106,14 @@ fn sendInventories(
                                             if inv_des.timestamp >= from_t
                                                 && inv_des.timestamp <= to_t
                                             {
-                                                sendData(inv_string, _peer, 0x1a);
+                                                use std::borrow::Cow;  // Cow = clone on write -  a much more efficent way of having multiple defrenced refrences to strings.
+                                                let inv_string_cow = Cow::from(inv_string);
+                                                if let Err(_) = sendData((&inv_string_cow).to_string(), _peer, 0x1a){
+                                                    // try again
+                                                    sendData((&inv_string_cow).to_string(), _peer, 0x1a)?
+                                                } else {
+                                                    return Ok(());
+                                                }
                                             }
                                         }
                                     } else {
@@ -433,10 +439,10 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let print_synced_every: u64;
     match amount_to_sync {
         0..=100 => print_synced_every = 10,
-        100..=500 => print_synced_every = 50,
-        500..=1000 => print_synced_every = 100,
-        1000..=10000 => print_synced_every = 500,
-        10000..=50000 => print_synced_every = 2000,
+        101..=500 => print_synced_every = 50,
+        501..=1000 => print_synced_every = 100,
+        1001..=10000 => print_synced_every = 500,
+        10001..=50000 => print_synced_every = 2000,
         _ => print_synced_every = 5000,
     }
     let mut inventories_downloaded = false;
