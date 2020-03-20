@@ -10,9 +10,9 @@ use avrio_blockchain::{getBlockFromRaw, Block};
 use avrio_config::config;
 use avrio_core::epoch::Epoch;
 use avrio_database::{getData, openDb, saveData};
+use std::borrow::{Cow, ToOwned};
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-
 use std::str;
 use std::thread;
 extern crate hex;
@@ -626,14 +626,42 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                                 iter.key(),
                                 iter.value()
                             );
-                            // TODO get block
                             let block: String = String::from_utf8(
                                 iter.value().unwrap_or(b"get value failed".to_vec()),
                             )
                             .unwrap_or("get value failed".to_string());
-                            if let Ok(mut a) = peer_to_use_unwraped.try_clone() {
-                                sendData(block, &mut a, 0x1a).unwrap();
-                                // TODO get the raw block from the stream
+                            if getBlockFromRaw((&block).to_string()) != Block::default() {
+                                // we have this block already
+                                iter.next();
+                            } else {
+                                if let Ok(mut a) = peer_to_use_unwraped.try_clone() {
+                                    sendData(block, &mut a, 0x1a).unwrap();
+                                    let mut buf = [0; 2048];
+                                    // TODO: if the peer does not respond with a block within say 20 secconds choose a new peer, get sync ack and start asking them for blocks (not invs though)
+                                    loop {
+                                        let peek_res = a.peek(&mut buf);
+                                        if let Ok(amount) = peek_res {
+                                            if amount != 0 {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    // we can now read the block
+                                    if let Err(_) = a.read(&mut buf) {
+                                        if let Err(_) = a.read(&mut buf) {
+                                            // TODO: choose a new peer, get sync ack and start asking them for blocks (not invs though)
+                                        }
+                                    }
+                                    let block: Block = serde_json::from_str(
+                                        &(String::from_utf8(buf.to_vec()).unwrap_or_default()),
+                                    )
+                                    .unwrap_or_default();
+                                    if block == Block::default() {
+                                        // TODO: reget the block, if this fails 3 or more times then choose a new peer and try again with them
+                                    } else {
+                                        // TODO: validate the block, if valid save it then enact the block and its transacions
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -814,7 +842,7 @@ fn process_registration(s: String) {
     info!("Certificate {}", s);
 }
 
-fn process_handshake(s: String) -> Result<String, String> {
+fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> {
     trace!("Handshake: {}", s);
     let id: String;
     let network_id_hex = hex::encode(config().network_id);
@@ -839,7 +867,17 @@ fn process_handshake(s: String) -> Result<String, String> {
         id = v[0].to_string();
     }
     debug!("Handshook with peer, gave id {}", id);
-    return Ok(id);
+    let id_cow = Cow::from(&id);
+    if let Ok(addr) = peer.peer_addr() {
+        let _ = saveData(
+            addr.ip().to_string() + &":".to_string() + &addr.port().to_string(),
+            config().db_path + &"/peers".to_owned(),
+            (&id_cow).to_string(),
+        );
+        return Ok((&id_cow).to_string());
+    } else {
+        return Err("Failed to get peer addr".into());
+    }
 }
 
 pub enum p2p_errors {
@@ -856,7 +894,7 @@ pub fn sendData(data: String, peer: &mut TcpStream, msg_type: u16) -> Result<(),
     return sent;
 }
 
-fn formMsg(data_s: String, data_type: u16) -> String {
+pub fn formMsg(data_s: String, data_type: u16) -> String {
     let data_len = data_s.len();
     let msg: P2pdata = P2pdata {
         message_bytes: data_len,
@@ -906,7 +944,7 @@ fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                 }
             }
             sendInventories(from, to, peer);
-            return None;
+            return Some("inventories".to_owned());
         }
         0x05 => {
             sendBlock(msg_d.message, peer);
@@ -921,9 +959,11 @@ fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return Some("getblock".into());
         }
         0x1a => {
-            return Some(process_handshake(msg_d.message).unwrap_or_else(|e| {
-                return "Error: ".to_owned() + &e;
-            }));
+            if let Ok(_) = process_handshake(msg_d.message, peer) {
+                return Some("handshake".to_string());
+            } else {
+                return None;
+            }
         }
         _ => {
             warn!("Bad Messge type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
