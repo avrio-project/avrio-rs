@@ -13,16 +13,7 @@ addons:
     - libboost-dev
     - clang
 
-rust:
-  - stable
-  - beta
-  - nightly
-
-matrix:
-  allow_failures:
-    - rust:   
-      - stable
-      - beta
+rust: nightly
  
 script:
   - cargo check
