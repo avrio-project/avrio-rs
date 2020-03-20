@@ -62,7 +62,7 @@ pub fn getBlockFromRaw(hash: String) -> Block { // returns the block when you on
     let mut file = File::open("block-".to_owned() + &hash + ".dat").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
-    return deserialize(&contents.as_bytes()).unwrap();
+    return deserialize(&contents.as_bytes()).unwrap_or_default();
 }
 
 pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> { // formats the block into a .dat file and saves it under block-hash.dat
