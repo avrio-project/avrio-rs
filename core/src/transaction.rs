@@ -241,6 +241,16 @@ impl Transaction {
         let out = cryptonight(&asbytes, asbytes.len(), 0);
         return hex::encode(out);
     }
+    pub fn sign(
+        &mut self,
+        private_key: &String,
+    ) -> std::result::Result<(), ring::error::KeyRejected> {
+        let key_pair =
+            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let msg: &[u8] = self.hash.as_bytes();
+        self.signature = hex::encode(key_pair.sign(msg));
+        return Ok(());
+    }
 }
 
 pub fn hashBytes(asbytes: Vec<u8>) -> String {
