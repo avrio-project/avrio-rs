@@ -33,12 +33,15 @@ impl UsernameRegistation {
         let as_bytes = self.bytes();
         return hex::encode(cryptonight::cryptonight(&as_bytes, as_bytes.len(), 0));
     }
-    pub fn sign(&mut self, _privateKey: String) -> bool {
-        if self.hash == "".to_string() {
-            return false;
-        }
-
-        return true;
+    pub fn sign(
+        &mut self,
+        private_key: &String,
+    ) -> std::result::Result<(), ring::error::KeyRejected> {
+        let key_pair =
+            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let msg: &[u8] = self.hash.as_bytes();
+        self.signature = hex::encode(key_pair.sign(msg));
+        return Ok(());
     }
     pub fn verify_signature(&self) -> bool {
         let public_key_bytes = hex::decode(self.public_key.clone()).unwrap_or(vec![5]);
