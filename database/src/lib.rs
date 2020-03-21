@@ -1,4 +1,4 @@
-use rocksdb::{DB, DBRawIterator};
+use rocksdb::{DBRawIterator, DB};
 use serde::{Deserialize, Serialize};
 use std::process;
 #[macro_use]

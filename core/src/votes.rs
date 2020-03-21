@@ -70,7 +70,7 @@ impl Vote {
         let as_bytes = self.bytes();
         return hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
     }
-    pub fn sign(&mut self, private_key: String) -> Result<(), ring::error::KeyRejected>{
+    pub fn sign(&mut self, private_key: String) -> Result<(), ring::error::KeyRejected> {
         let key_pair =
             signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
         let msg: &[u8] = self.hash.as_bytes();

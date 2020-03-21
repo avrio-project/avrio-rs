@@ -2,7 +2,7 @@
 
 extern crate avrio_config;
 use avrio_config::config;
-use avrio_database::{getData};
+use avrio_database::getData;
 
 extern crate hex;
 use crate::{Block, Header};
@@ -36,7 +36,10 @@ pub fn getGenesisTxns() -> Vec<Transaction> {
     ];
 }
 
-pub fn generateGenesisBlock(chainKey: String, privKey: String) -> Result<Block, genesisBlockErrors> {
+pub fn generateGenesisBlock(
+    chainKey: String,
+    privKey: String,
+) -> Result<Block, genesisBlockErrors> {
     let mut my_genesis_txns: Vec<Transaction> = vec![];
     let genesis_txns = getGenesisTxns();
     for tx in genesis_txns {
@@ -57,6 +60,7 @@ pub fn generateGenesisBlock(chainKey: String, privKey: String) -> Result<Block, 
         },
         hash: "".to_string(),
         txns: my_genesis_txns,
+        nonce: "0".to_owned(),
         signature: "".to_string(),
         node_signatures: vec![],
     };
@@ -67,10 +71,7 @@ pub fn generateGenesisBlock(chainKey: String, privKey: String) -> Result<Block, 
 }
 /// Reads the genesis block for this chain from the genesis blcoks db
 pub fn getGenesisBlock(chainkey: &String) -> Result<Block, genesisBlockErrors> {
-    let data = getData(
-        config().db_path + &"/genesis-blocks".to_string(),
-        chainkey,
-    );
+    let data = getData(config().db_path + &"/genesis-blocks".to_string(), chainkey);
     let _none = String::from("-1");
     let _zero = String::from("0");
     return match data {

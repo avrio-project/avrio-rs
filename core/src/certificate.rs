@@ -9,14 +9,13 @@ extern crate cryptonight;
 use avrio_config::config;
 extern crate avrio_database;
 use crate::transaction::Transaction;
-use avrio_database::{getData};
+use avrio_database::getData;
 
 use ring::{
     rand as randc,
     signature::{self, KeyPair},
 };
 use serde::{Deserialize, Serialize};
-
 
 pub enum certificateErrors {
     pubtransactionNotFound,

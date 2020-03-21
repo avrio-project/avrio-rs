@@ -3,9 +3,7 @@ Copyright 2020 The Avrio Core Developers
 This file handles the registartion and validation of txns.
 */
 
-use ring::{
-    signature::{self, KeyPair},
-};
+use ring::signature::{self, KeyPair};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, PartialEq, PartialOrd, Ord, Eq, Deserialize, Serialize)]

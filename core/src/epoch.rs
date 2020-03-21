@@ -6,7 +6,7 @@ extern crate avrio_config;
 extern crate rand;
 
 use rand::Rng;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Default, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Epoch {

@@ -130,7 +130,7 @@ impl Default for ConfigSave {
                     identitiy: String::from(""),
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
-                }
+                };
             } else {
                 return ConfigSave {
                     db_path: ".avrio-datadir".to_string(),

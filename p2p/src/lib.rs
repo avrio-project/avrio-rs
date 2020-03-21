@@ -21,7 +21,7 @@ use std::error::Error;
 extern crate simple_logger;
 
 /// # Inventorys
-/// This is save to the CHAIN_KEY-invs db (where CHAIN_KEY is the public key of the chain) 
+/// This is save to the CHAIN_KEY-invs db (where CHAIN_KEY is the public key of the chain)
 /// They key is the height of the block and the value is the following struct serialized
 /// Serializing this should produce a string like this:
 /// { "hash" : "...", "timestamp" : "124353632"}
@@ -35,7 +35,7 @@ pub struct Inventory {
     hash: String,
     #[serde(skip)]
     /// this is the key of the entry
-    height: u64, 
+    height: u64,
     /// the timestamp of the block
     timestamp: u64,
 }
@@ -45,15 +45,15 @@ pub struct P2pdata {
     /// The length in bytes of message
     pub message_bytes: usize,
     /// The type of data
-    pub message_type: u16,  
+    pub message_type: u16,
     /// The serialized data
-    pub message: String, 
+    pub message: String,
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Peer {
     pub id: String,
     /// socket (ip, port) of a peer
-    pub socket: SocketAddr, 
+    pub socket: SocketAddr,
     /// stats about recived and sent bytes from this peer
     pub info: PeerTracker,
 }
@@ -81,7 +81,7 @@ pub struct GetInventories {
     pub from: String,
     /// hash (or 00000000000 for ignore)
     /// if this value is 00000000000 it will take the block that is *amount* blocks ahead of from and use that
-    pub to: String, 
+    pub to: String,
 }
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct GetBlocks {
@@ -271,7 +271,7 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
 /// it is calculated with the generateChainDigest function which is auto called every time we get a new block
 fn sendChainDigest(peer: &mut TcpStream) {
     let chains_digest = getData(config().db_path + &"/chainsindex", &"digest".to_string());
-    let buf= chains_digest.as_bytes();
+    let buf = chains_digest.as_bytes();
     let _ = peer.write(buf);
 }
 /// this asks the peer for thier chain digest
@@ -339,10 +339,10 @@ fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<(), Box<dyn std::er
 /// for more controll over your sync you should call the sync_chain function which will sync only the chain specifyed.
 /// pl is a vector of mutable refrences of TcpStreams (Vec<&mut TcpStream>), thi function finds the most common chain digest
 /// and then chooses the fasted peer with that chain digest and uses it. After it thinks it has finished syncing it will choose
-/// a random peer and check random blocks are the same. If you wish to use the sync function with only one peer pass a vector 
+/// a random peer and check random blocks are the same. If you wish to use the sync function with only one peer pass a vector
 /// containing only that peer. Please note this means it will not be able to verify that it has not missed blocks afterwards if
 /// the peer is malicously withholding them. For this reason only do this if you trust the peer or will be checking the blockchain
-/// with a diferent peer afterwards. 
+/// with a diferent peer afterwards.
 pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let mut peers: Vec<TcpStream> = vec![];
     let mut pc: u32 = 0;

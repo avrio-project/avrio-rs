@@ -6,9 +6,7 @@ extern crate avrio_config;
 use avrio_config::config;
 extern crate rand;
 
-use ring::{
-    signature::{self, KeyPair},
-};
+use ring::signature::{self, KeyPair};
 
 extern crate avrio_database;
 use crate::{
