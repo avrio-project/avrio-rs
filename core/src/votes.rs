@@ -15,12 +15,20 @@ use std::error::Error;
 extern crate avrio_config;
 use avrio_config::config;
 pub struct Vote {
-    pub hash: String,               // The hash of the vote
-    pub timestamp: u64,             // The timestamp at which the vote was created
-    pub subject_public_key: String, // The public key of the node this vote is about
-    pub voter_public_key: String,   // The public key of the node which created this vote
-    pub vote: u8,                   // The vote (0-100)
-    pub signature: String,          // The hash of the vote signed by the voter
+    /// The hash of the vote
+    pub hash: String,
+    /// The timestamp at which the vote was created
+    pub timestamp: u64,
+    /// The public key of the node this vote is about        
+    pub subject_public_key: String,
+    /// The public key of the node which created this vote
+    pub voter_public_key: String,
+    /// The vote (0-100)
+    pub vote: u8,
+    /// The hash of the vote signed by the voter        
+    pub signature: String,
+    /// A nonce to prevent vote replay attacks
+    pub nonce: u64,
 }
 
 impl Vote {
@@ -60,6 +68,7 @@ impl Vote {
         bytes.extend(self.subject_public_key.as_bytes());
         bytes.extend(self.voter_public_key.as_bytes());
         bytes.extend(self.vote.to_string().as_bytes());
+        bytes.extend(self.nonce.to_string().as_bytes());
         bytes
     }
     pub fn hash(&mut self) {
@@ -92,6 +101,7 @@ impl Vote {
         voter: String,
         vote: u8,
         private_key: String,
+        nonce: u64,
     ) -> Result<Vote, Box<dyn Error>> {
         let time = Instant::now().elapsed().as_millis() as u64;
         let mut vote = Vote {
@@ -101,6 +111,7 @@ impl Vote {
             voter_public_key: voter,
             subject_public_key: subject,
             vote,
+            nonce,
         };
         vote.hash();
         let res = vote.sign(private_key);
