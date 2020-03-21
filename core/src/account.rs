@@ -3,6 +3,7 @@ use avrio_database::{getData, saveData};
 use serde::{Deserialize, Serialize};
 extern crate avrio_config;
 use avrio_config::config;
+use std::process::exit;
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Accesskey {
@@ -65,10 +66,11 @@ impl Account {
         return Ok(());
     }
 }
-
-pub fn getByUsername(username: String) -> Result<Account, String> {
+/// Gets the account assosiated with the username provided
+/// if the account or the username does not exist it returns an err
+pub fn getByUsername(username: &String) -> Result<Account, String> {
     let publicKey: String = getData(config().db_path + &"/usernamedb".to_string(), username);
-    if let Ok(acc) = getAccount(publicKey) {
+    if let Ok(acc) = getAccount(&publicKey) {
         return Ok(acc);
     } else {
         return Err("failed to read account".into());
@@ -88,20 +90,22 @@ pub fn setAccount(acc: &Account) -> u8 {
     saveData(serialized, path, acc.public_key.clone());
     return 1;
 }
-
-pub fn getAccount(public_key: String) -> Result<Account, u8> {
+/// Gets the account assosiated with the public_key provided
+/// if the account does not exist it returns an err
+pub fn getAccount(public_key: &String) -> Result<Account, u8> {
     let path = config().db_path + &"/bd/accountdb".to_owned();
     let data = getData(path, public_key);
-    if data != "1" {
+    if data == "-1" || data == "0" {
         return Err(1);
     } else {
         let acc: Account = serde_json::from_str(&data).unwrap_or_else(|e| {
-            error!(
+            info!(
                 "Failed to Parse Account {:?}, gave error {:?}, Retrying...",
                 &data, e
             );
             return serde_json::from_str(&data).unwrap_or_else(|et| {
                 error!("Retry failed with error {:?}", et);
+                //process::exit(1);
                 panic!();
             });
         });
@@ -110,14 +114,14 @@ pub fn getAccount(public_key: String) -> Result<Account, u8> {
 }
 
 pub fn deltaFunds(
-    public_key: String,
+    public_key: &String,
     amount: u64,
     mode: u8,
     access_key: String,
 ) -> Result<(), String> {
-    let mut acc: Account = getAccount(public_key.to_owned()).unwrap_or_else(|e| {
-        error!(
-            "failed to get account with public keey {}, gave error {}",
+    let mut acc: Account = getAccount(public_key).unwrap_or_else(|e| {
+        debug!(
+            "failed to get account with public key {}, gave error {}",
             public_key, e
         );
         return Account::default();

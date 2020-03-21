@@ -51,12 +51,12 @@ impl Transaction {
 
     pub fn validate_transaction(&self) -> bool {
         let mut acc: Account = Account::default();
-        let acc_try = getAccount(self.sender_key.to_string());
+        let acc_try = getAccount(&self.sender_key);
         if let Ok(account) = acc_try {
             acc = account;
         } else {
             // if getting the account via self.sender_key failed it is probably a username, try that now
-            let acc_try_username = getByUsername(self.sender_key.clone());
+            let acc_try_username = getByUsername(&self.sender_key);
             if let Ok(account_from_username) = acc_try_username {
                 acc = account_from_username;
             } else {
@@ -191,7 +191,7 @@ impl Transaction {
                     // a public key will never be this short
                     // this is probably a username rather than a publickey
                     peer_public_key_bytes = hex::decode(
-                        getByUsername(self.sender_key.clone())
+                        getByUsername(&self.sender_key)
                             .unwrap_or_default()
                             .public_key,
                     )

@@ -16,7 +16,7 @@ fn must_provide_method() -> &'static str {
 
 #[get("/getBalance/<chain>")]
 fn get_balance(chain: String) -> String {
-  let acc: Account = getAccount(chain.clone()).unwrap_or(Account::default());
+  let acc: Account = getAccount(&chain).unwrap_or(Account::default());
   let balance: u64 = acc.balance;
   let locked: u64 = acc.locked;
   "{    \"response\": 200, \"chainkey\": ".to_owned() + &chain + ",    \"balance\" : " + &balance.to_string() + ", \"locked\"" + &locked.to_string() + " }"

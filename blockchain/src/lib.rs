@@ -1,10 +1,10 @@
 extern crate avrio_config;
 extern crate avrio_core;
 extern crate avrio_database;
+use crate::genesis::{genesisBlockErrors, getGenesisBlock};
 use avrio_config::config;
+use avrio_core::{transaction::*, account::getAccount};
 use avrio_database::getData;
-use crate::genesis::getGenesisBlock;
-use avrio_core::transaction::*;
 use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate log;
@@ -13,9 +13,9 @@ use ring::{
     signature::{self, KeyPair},
 };
 
+use bincode::{deserialize, serialize};
 use std::fs::File;
 use std::io::prelude::*;
-use bincode::{deserialize, serialize};
 pub enum blockValidationErrors {
     invalidBlockhash,
     badSignature,
@@ -45,29 +45,34 @@ pub struct Block {
     pub signature: String,
     pub node_signatures: Vec<String>, // a block must be signed by at least (c / 2) + 1 nodes to be valid (ensures at least ne honest node has singed it)
 }
-// todo
-pub fn getBlock(chainkey: &String, height: u64) -> Block { // returns the block when you know the chain and the height
-    let hash = getData(config().db_path + &"/".to_owned() + chainkey + &"-inventories".to_owned() , height.to_string());
+
+pub fn getBlock(chainkey: &String, height: u64) -> Block {
+    // returns the block when you know the chain and the height
+    let hash = getData(
+        config().db_path + &"/".to_owned() + chainkey + &"-invs".to_owned(),
+        &height.to_string(),
+    );
     if hash == "-1".to_owned() {
         return Block::default();
     } else if hash == "0".to_owned() {
         return Block::default();
-    }
-    else {
+    } else {
         return getBlockFromRaw(hash);
     }
 }
 
-pub fn getBlockFromRaw(hash: String) -> Block { // returns the block when you only know the hash by opeining the raw block-HASH.dat file (where hash == the block hash)
-    let mut file = File::open("block-".to_owned() + &hash + ".dat").unwrap();
+pub fn getBlockFromRaw(hash: String) -> Block {
+    // returns the block when you only know the hash by opeining the raw blk-HASH.dat file (where hash == the block hash)
+    let mut file = File::open("blk-".to_owned() + &hash + ".dat").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     return deserialize(&contents.as_bytes()).unwrap_or_default();
 }
 
-pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> { // formats the block into a .dat file and saves it under block-hash.dat
+pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    // formats the block into a .dat file and saves it under block-hash.dat
     let encoded: Vec<u8> = serialize(&block).unwrap();
-    let mut file = File::create("block-".to_owned() + &block.hash + ".dat")?;
+    let mut file = File::create("blk-".to_owned() + &block.hash + ".dat")?;
     file.write_all(&encoded)?;
     Ok(())
 }
@@ -103,7 +108,10 @@ impl Block {
     fn hash(&mut self) {
         // TODO
     }
-    pub fn sign(&mut self, privateKey: &String) -> std::result::Result<(), ring::error::KeyRejected> {
+    pub fn sign(
+        &mut self,
+        privateKey: &String,
+    ) -> std::result::Result<(), ring::error::KeyRejected> {
         let key_pair =
             signature::Ed25519KeyPair::from_pkcs8(hex::decode(privateKey).unwrap().as_ref())?;
         let msg: &[u8] = self.hash.as_bytes();
@@ -147,23 +155,43 @@ impl Block {
 
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {
     if blk.header.height == 0 {
-        // genesis block
-        // could be costly
+        // This is a genesis block (the first block)
+        // First we will check if there is a entry for this chain in the genesis blocks db
         let genesis: Block;
+        let mut is_in_db = false;
         match getGenesisBlock(&blk.header.chain_key) {
-            Ok(b) => genesis = b,
-            Err(e) => {
-                warn!(
-                    "Failed to get genesis block for chain: {}, gave error: {:?}",
-                    &blk.header.chain_key, e
-                );
-                return Err(blockValidationErrors::failedToGetGenesisBlock);
+            Ok(b) => {
+                genesis = b;
+                is_in_db = true;
             }
+            Err(e) => match e {
+                genesisBlockErrors::BlockNotFound => {
+                    // this block is not in the genesis block db therefor this is a new chain that is not from the swap
+                    genesis = Block::default();
+                    is_in_db = false;
+                }
+                _ => {
+                    warn!(
+                        "Failed to get genesis block for chain: {}, gave error: {:?}",
+                        &blk.header.chain_key, e
+                    );
+                    return Err(blockValidationErrors::failedToGetGenesisBlock);
+                }
+            },
         }
-        if blk != genesis {
+        if blk != genesis || genesis != Block::default() {
             return Err(blockValidationErrors::genesisBlockMissmatch);
         } else {
-            return Ok(());
+            if is_in_db == true { // if it is in the db it is guarenteed to be valid, we do not need to validate the block
+                return Ok(());
+            } else { // if it isn't it needs to be validated like any other block
+                if blk.header.prev_hash != "00000000000".to_owned() {
+                    return Err(blockValidationErrors::invalidPreviousBlockhash);
+                } else if let Ok(_) = getAccount(&blk.header.chain_key){ // this account allready exists, you can't have two genesis blocks
+                    return Err(blockValidationErrors::genesisBlockMissmatch);
+                }
+                return Ok(());
+            }
         }
     } else {
         // not genesis block

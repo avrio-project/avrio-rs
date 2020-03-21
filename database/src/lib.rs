@@ -50,7 +50,7 @@ pub fn savePeerlist(list: &Vec<Vec<u8>>, path: String) {
     saveData(pl_s, path, "peerlist".to_string());
 }
 
-pub fn getData(path: String, key: String) -> String {
+pub fn getData(path: String, key: &String) -> String {
     let db = DB::open_default(path).unwrap();
     let data: String;
     match db.get(key) {

@@ -98,7 +98,7 @@ impl Certificate {
         }
         let txn: Transaction = serde_json::from_str(&getData(
             config().db_path + "/transactions.db",
-            cert.txnHash.to_owned(),
+            &cert.txnHash,
         ))
         .unwrap_or_else(|e| {
             warn!("failed to deserilise Tx, gave error: {}", e);
@@ -115,7 +115,7 @@ impl Certificate {
             return Err(certificateErrors::lockedFundsInsufficent);
         } else if getData(
             config().db_path + "/certifcates.db",
-            cert.publicKey.to_owned() + &"-cert".to_owned(),
+            &(cert.publicKey.to_owned() + &"-cert".to_owned()),
         ) != "-1".to_string()
         {
             return Err(certificateErrors::walletAlreadyRegistered);

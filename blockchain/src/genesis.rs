@@ -9,7 +9,7 @@ use crate::{Block, Header};
 use avrio_core::transaction::Transaction;
 
 #[derive(Debug, PartialEq)]
-pub enum geneisBlockErrors {
+pub enum genesisBlockErrors {
     BlockNotFound,
     OtherDb,
     Other,
@@ -36,7 +36,7 @@ pub fn getGenesisTxns() -> Vec<Transaction> {
     ];
 }
 
-pub fn generateGenesisBlock(chainKey: String, privKey: String) -> Result<Block, geneisBlockErrors> {
+pub fn generateGenesisBlock(chainKey: String, privKey: String) -> Result<Block, genesisBlockErrors> {
     let mut my_genesis_txns: Vec<Transaction> = vec![];
     let genesis_txns = getGenesisTxns();
     for tx in genesis_txns {
@@ -65,17 +65,17 @@ pub fn generateGenesisBlock(chainKey: String, privKey: String) -> Result<Block, 
     genesis_block.sign(&privKey);
     return Ok(genesis_block);
 }
-
-pub fn getGenesisBlock(chainkey: &String) -> Result<Block, geneisBlockErrors> {
+/// Reads the genesis block for this chain from the genesis blcoks db
+pub fn getGenesisBlock(chainkey: &String) -> Result<Block, genesisBlockErrors> {
     let data = getData(
         config().db_path + &"/genesis-blocks".to_string(),
-        chainkey.to_owned(),
+        chainkey,
     );
     let _none = String::from("-1");
     let _zero = String::from("0");
     return match data {
-        _none => Err(geneisBlockErrors::BlockNotFound),
-        _zero => Err(geneisBlockErrors::OtherDb),
+        _none => Err(genesisBlockErrors::BlockNotFound),
+        _zero => Err(genesisBlockErrors::OtherDb),
         _ => {
             let b: Block = serde_json::from_str(&data).unwrap_or_else(|e| {
                 warn!(
@@ -85,7 +85,7 @@ pub fn getGenesisBlock(chainkey: &String) -> Result<Block, geneisBlockErrors> {
                 return Block::default();
             });
             if b == Block::default() {
-                return Err(geneisBlockErrors::Other);
+                return Err(genesisBlockErrors::Other);
             } else {
                 return Ok(b);
             }
