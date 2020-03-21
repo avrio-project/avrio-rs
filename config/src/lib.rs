@@ -4,7 +4,9 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 extern crate log;
-use log::{error};
+use dirs::*;
+use log::error;
+use std::process::exit;
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
 /// This is the struct that holds the built in , network params that are set by the core devs and the same for everyone
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -94,35 +96,84 @@ pub struct Config {
 pub fn config() -> Config {
     let mut file = File::open("node.conf").unwrap_or_else(|e| {
         error!("Failed to Open Config file: {}", e);
-        panic!();
+        std::process::exit(1)
     });
     let mut data: String = String::from("");
     file.read_to_string(&mut data).unwrap();
     let conf: ConfigSave = serde_json::from_str(&data).unwrap_or_else(|e| {
         error!("Failed To Deserilise Config: {}", e);
-        panic!();
+        std::process::exit(1)
     });
     return conf.toConfig();
 }
 
 impl Default for ConfigSave {
     fn default() -> ConfigSave {
-        ConfigSave {
-            db_path: String::from("./database"),
-            max_connections: 50,
-            max_threads: 4,
-            chain_key: "".to_string(),
-            state: 0,
-            ip_host: "127.0.0.1".to_string(),
-            seednodes: vec!["127.0.0.1:12345".to_string(), "127.0.0.1:123456".to_string()],
-            ignore_minor_updates: false,
-            p2p_port: 12345,
-            rpc_port: 54321,
-            allow_cors: 'n',
-            node_type: 'n',
-            identitiy: String::from(""),
-            key_file_path: "wallet.keys".to_string(),
-            log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
+        if let Some(dir) = home_dir() {
+            if let Some(dir_str) = dir.to_str() {
+                return ConfigSave {
+                    db_path: dir_str.to_string() + &"/.avrio-datadir".to_string(),
+                    max_connections: 50,
+                    max_threads: 4,
+                    chain_key: "".to_string(),
+                    state: 0,
+                    ip_host: "127.0.0.1".to_string(),
+                    seednodes: vec![
+                        "127.0.0.1:12345".to_string(),
+                        "127.0.0.1:123456".to_string(),
+                    ],
+                    ignore_minor_updates: false,
+                    p2p_port: 12345,
+                    rpc_port: 54321,
+                    allow_cors: 'n',
+                    node_type: 'n',
+                    identitiy: String::from(""),
+                    key_file_path: "wallet.keys".to_string(),
+                    log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
+                }
+            } else {
+                return ConfigSave {
+                    db_path: ".avrio-datadir".to_string(),
+                    max_connections: 50,
+                    max_threads: 4,
+                    chain_key: "".to_string(),
+                    state: 0,
+                    ip_host: "127.0.0.1".to_string(),
+                    seednodes: vec![
+                        "127.0.0.1:12345".to_string(),
+                        "127.0.0.1:123456".to_string(),
+                    ],
+                    ignore_minor_updates: false,
+                    p2p_port: 12345,
+                    rpc_port: 54321,
+                    allow_cors: 'n',
+                    node_type: 'n',
+                    identitiy: String::from(""),
+                    key_file_path: "wallet.keys".to_string(),
+                    log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
+                };
+            }
+        } else {
+            return ConfigSave {
+                db_path: ".avrio-datadir".to_string(),
+                max_connections: 50,
+                max_threads: 4,
+                chain_key: "".to_string(),
+                state: 0,
+                ip_host: "127.0.0.1".to_string(),
+                seednodes: vec![
+                    "127.0.0.1:12345".to_string(),
+                    "127.0.0.1:123456".to_string(),
+                ],
+                ignore_minor_updates: false,
+                p2p_port: 12345,
+                rpc_port: 54321,
+                allow_cors: 'n',
+                node_type: 'n',
+                identitiy: String::from(""),
+                key_file_path: "wallet.keys".to_string(),
+                log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
+            };
         }
     }
 }
