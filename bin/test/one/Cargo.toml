@@ -22,3 +22,4 @@ avrio_config = {path = "../../../config"}
 avrio_blockchain = {path = "../../../blockchain"}
 avrio_p2p = {path = "../../../p2p"}
 cryptonight-rs = {path = "../../../crypto/cn-rs"}
+clap = "2.33.0"

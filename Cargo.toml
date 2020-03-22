@@ -6,6 +6,6 @@ members = [
   "database",
   "id",
   "p2p",
-  "rpc"#,
-  #"bin/test/one"
+  "rpc",
+  "bin/test/one"
 ]

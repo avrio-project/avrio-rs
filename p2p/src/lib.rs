@@ -94,6 +94,12 @@ pub struct ChainDigestPeer {
     pub peer: Option<TcpStream>,
     pub digest: String,
 }
+/// # prop_block
+/// This function sends a block to all peers it has from the comitee that is currently handeling the shard
+/// In testnet 0.0.1 It simply sent to all conected peers
+pub fn prop_block(blk: Block) -> Result<u64, Box<dyn std::error::Error>> {
+    return Ok(()); // TODO: send block to all peers and await a response, return Ok(number of peers who responded)
+}
 
 fn sendInventories(
     from: String,
