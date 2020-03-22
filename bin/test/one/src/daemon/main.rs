@@ -41,11 +41,14 @@ extern crate log;
 extern crate simple_logger;
 
 fn database_present() -> bool {
-    let get_res =  getData(config().db_path + &"/chainsindex".to_owned(), "digest".to_string());
+    let get_res = getData(
+        config().db_path + &"/chainsindex".to_owned(),
+        "digest".to_string(),
+    );
     if get_res == "-1".to_owned() {
         return false;
     } else if get_res == "0".to_string() {
-        return false
+        return false;
     } else {
         return true;
     }
