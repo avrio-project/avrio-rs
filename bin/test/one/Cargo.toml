@@ -23,3 +23,5 @@ avrio_blockchain = {path = "../../../blockchain"}
 avrio_p2p = {path = "../../../p2p"}
 cryptonight-rs = {path = "../../../crypto/cn-rs"}
 clap = "2.33.0"
+ring = "0.16.11"
+serde_json = "1"
