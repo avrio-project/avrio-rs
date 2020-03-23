@@ -49,13 +49,15 @@ pub struct P2pdata {
     /// The serialized data
     pub message: String,
 }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct Peer {
     pub id: String,
     /// socket (ip, port) of a peer
     pub socket: SocketAddr,
     /// stats about recived and sent bytes from this peer
     pub info: PeerTracker,
+    /// The stream its self - for reading and writing
+    pub stream: TcpStream,
 }
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Tracker {
@@ -97,8 +99,11 @@ pub struct ChainDigestPeer {
 /// # prop_block
 /// This function sends a block to all peers it has from the comitee that is currently handeling the shard
 /// In testnet 0.0.1 It simply sent to all conected peers
+pub fn sync_needed() -> bool {
+    return true;
+}
 pub fn prop_block(blk: Block) -> Result<u64, Box<dyn std::error::Error>> {
-    return Ok(()); // TODO: send block to all peers and await a response, return Ok(number of peers who responded)
+    return Ok(0); // TODO: send block to all peers and await a response, return Ok(number of peers who responded)
 }
 
 fn sendInventories(
@@ -206,7 +211,7 @@ fn sendInventories(
     }
 }
 /// Sends block with hash to _peer
-fn sendBlock(hash: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+pub fn sendBlock(hash: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
     let block: Block = getBlockFromRaw(hash);
     if block == Block::default() {
         return Err("could not get block".into());
@@ -336,7 +341,7 @@ fn get_mode(v: Vec<String>) -> String {
 /// It returns Ok(()) on succsess and handles the inventory generation, inventory saving, block geting, block validation,
 /// block saving, block enacting and informing the user of the progress.
 /// If you simply want to sync all chains then use the sync function bellow.
-fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
     return Ok(());
 }
 
@@ -822,7 +827,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
         {}
     }
 }
-fn rec_server() -> u8 {
+pub fn rec_server() -> u8 {
     let config = config();
     let listener = TcpListener::bind(
         config.ip_host.to_string() + &":".to_string() + &config.p2p_port.to_string(),
@@ -856,7 +861,7 @@ fn rec_server() -> u8 {
     drop(listener);
     return 1;
 }
-fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
+pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
     // This Fucntion handles all the details of conecting to a peer, geting id and constructing a Peer struct
     let mut stream = TcpStream::connect(socket)?;
     let self_config = config();
@@ -919,6 +924,7 @@ fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
     return Ok(Peer {
         id: pid,
         socket,
+        stream,
         info,
     });
 }
@@ -1004,7 +1010,7 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
     return serde_json::to_string(&msg).unwrap();
 }
 
-fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
+pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
