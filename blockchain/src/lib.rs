@@ -20,6 +20,7 @@ use cryptonightrs::cryptonight;
 use serde_json::*;
 use std::fs::File;
 use std::io::prelude::*;
+#[derive(Debug)]
 pub enum blockValidationErrors {
     invalidBlockhash,
     badSignature,
@@ -28,6 +29,7 @@ pub enum blockValidationErrors {
     invalidTransaction,
     genesisBlockMissmatch,
     failedToGetGenesisBlock,
+    other,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
@@ -205,6 +207,8 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 } else if let Ok(_) = getAccount(&blk.header.chain_key) {
                     // this account allready exists, you can't have two genesis blocks
                     return Err(blockValidationErrors::genesisBlockMissmatch);
+                } else if !blk.validSignature() {
+                    return Err(blockValidationErrors::badSignature);
                 }
                 return Ok(());
             }
@@ -213,6 +217,11 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
         // not genesis block
         if blk.header.prev_hash != getBlock(&blk.header.chain_key, &blk.header.height - 1).hash {
             return Err(blockValidationErrors::invalidPreviousBlockhash);
+        } else if let Err(e) = getAccount(&blk.header.chain_key) {
+            // this account allready exists, you can't have two genesis blocks
+            return Err(blockValidationErrors::other);
+        } else if !blk.validSignature() {
+            return Err(blockValidationErrors::badSignature);
         }
         for txn in blk.txns {
             if !txn.validate_transaction() {
@@ -225,7 +234,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
     }
 }
 
-mod genesis;
+pub mod genesis;
 #[cfg(test)]
 mod tests {
     use crate::*;
