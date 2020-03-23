@@ -3,6 +3,9 @@
 // get the peer list and connect to the other nodes on this peerlist. The node then registers.
 //
 
+use aead::{generic_array::GenericArray, Aead, NewAead};
+use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
+
 extern crate clap;
 use clap::App;
 
@@ -315,15 +318,35 @@ fn main() {
     if sync_needed() == false
     // check in case a new block has been released since we syned
     {
-        // TODO: !!!URGENT!!!, use encryption on the wallet!!!
-        let pubkey = getData(
+        // TODO: !!!URGENT!!!, use custom set password
+        let key = GenericArray::clone_from_slice(b"wallet-password");
+        let aead = Aes256Gcm::new(key);
+        // TODO: use unique nonce
+        let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
+        let ciphertext = getData(
             config().db_path + &"/wallets/wallet".to_owned(),
             &"pubkey".to_owned(),
         );
-        let privkey = getData(
+        let pubkey = String::from_utf8(
+            aead.decrypt(nonce, ciphertext.as_ref())
+                .expect("decryption failure!"),
+        )
+        .expect("failed to parse utf8");
+        // now priv key
+        let key = GenericArray::clone_from_slice(b"wallet-password");
+        let aead = Aes256Gcm::new(key);
+        // TODO: use unique nonce
+        let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
+        let ciphertext = getData(
             config().db_path + &"/wallets/wallet".to_owned(),
             &"privkey".to_owned(),
         );
+        let privkey = String::from_utf8(
+            aead.decrypt(nonce, ciphertext.as_ref())
+                .expect("decryption failure!"),
+        )
+        .expect("failed to parse utf8");
+        // now send block
         send_block(pubkey, 0, privkey);
     } else {
         match sync_needed() {
@@ -340,28 +363,68 @@ fn main() {
                         synced = true;
                     }
                 }
-                // TODO: !!!URGENT!!!, use encryption on the wallet!!!
-                let pubkey = getData(
+                // TODO: !!!URGENT!!!, use custom set password
+                let key = GenericArray::clone_from_slice(b"wallet-password");
+                let aead = Aes256Gcm::new(key);
+                // TODO: use unique nonce
+                let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
+                let ciphertext = getData(
                     config().db_path + &"/wallets/wallet".to_owned(),
                     &"pubkey".to_owned(),
                 );
-                let privkey = getData(
+                let pubkey = String::from_utf8(
+                    aead.decrypt(nonce, ciphertext.as_ref())
+                        .expect("decryption failure!"),
+                )
+                .expect("failed to parse utf8");
+                // now priv key
+                let key = GenericArray::clone_from_slice(b"wallet-password");
+                let aead = Aes256Gcm::new(key);
+                // TODO: use unique nonce
+                let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
+                let ciphertext = getData(
                     config().db_path + &"/wallets/wallet".to_owned(),
                     &"privkey".to_owned(),
                 );
+                let privkey = String::from_utf8(
+                    aead.decrypt(nonce, ciphertext.as_ref())
+                        .expect("decryption failure!"),
+                )
+                .expect("failed to parse utf8");
+                // now send block
                 send_block(pubkey, 0, privkey);
             }
             false => {
                 synced = true;
-                // TODO: !!!URGENT!!!, use encryption on the wallet!!!
-                let pubkey = getData(
+                // TODO: !!!URGENT!!!, use custom set password
+                let key = GenericArray::clone_from_slice(b"wallet-password");
+                let aead = Aes256Gcm::new(key);
+                // TODO: use unique nonce
+                let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
+                let ciphertext = getData(
                     config().db_path + &"/wallets/wallet".to_owned(),
                     &"pubkey".to_owned(),
                 );
-                let privkey = getData(
+                let pubkey = String::from_utf8(
+                    aead.decrypt(nonce, ciphertext.as_ref())
+                        .expect("decryption failure!"),
+                )
+                .expect("failed to parse utf8");
+                // now priv key
+                let key = GenericArray::clone_from_slice(b"wallet-password");
+                let aead = Aes256Gcm::new(key);
+                // TODO: use unique nonce
+                let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
+                let ciphertext = getData(
                     config().db_path + &"/wallets/wallet".to_owned(),
                     &"privkey".to_owned(),
                 );
+                let privkey = String::from_utf8(
+                    aead.decrypt(nonce, ciphertext.as_ref())
+                        .expect("decryption failure!"),
+                )
+                .expect("failed to parse utf8");
+                // now send block
                 send_block(pubkey, 0, privkey);
             }
         };
