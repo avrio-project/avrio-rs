@@ -54,7 +54,7 @@ pub fn generateGenesisBlock(
             version_breaking: 0,
             version_minor: 1,
             chain_key: chainKey,
-            prev_hash: hex::encode(vec![0, 32]).to_owned(),
+            prev_hash: "00000000000".to_owned(),
             height: 0,
             timestamp: 0,
         },

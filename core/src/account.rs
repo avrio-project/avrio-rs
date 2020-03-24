@@ -54,7 +54,7 @@ impl Account {
     }
     pub fn addUsername(&mut self, userName: String) -> Result<(), ()> {
         self.username = userName;
-        return Ok(());
+        self.save()
     }
     pub fn addAccessCode(&mut self, permCode: &String, pubKey: &String) -> Result<(), ()> {
         let new_acc_key: Accesskey = Accesskey {
@@ -63,7 +63,7 @@ impl Account {
             code: permCode.to_owned(),
         };
         self.access_keys.push(new_acc_key);
-        return Ok(());
+        self.save()
     }
 }
 /// Gets the account assosiated with the username provided
@@ -78,8 +78,19 @@ pub fn getByUsername(username: &String) -> Result<Account, String> {
 }
 
 pub fn setAccount(acc: &Account) -> u8 {
-    let path = config().db_path + "/db/accountdb";
+    let path = config().db_path + "/accountdb";
     let serialized: String;
+    let getAccOld = getData(path.clone(), &acc.public_key);
+    if getAccOld != "0".to_owned() && getAccOld != "-1".to_owned() {
+        let deserialized: Account = serde_json::from_str(&getAccOld).unwrap_or_default();
+        if acc.username != deserialized.username && deserialized != Account::default() {
+            saveData(
+                acc.public_key.clone(),
+                config().db_path + &"/usernamedb".to_string(),
+                acc.username.clone(),
+            );
+        }
+    }
     serialized = serde_json::to_string(&acc).unwrap_or_else(|e| {
         error!("Unable To Serilise Account, gave error {}, retrying", e);
         return serde_json::to_string(&acc).unwrap_or_else(|et| {
@@ -93,7 +104,7 @@ pub fn setAccount(acc: &Account) -> u8 {
 /// Gets the account assosiated with the public_key provided
 /// if the account does not exist it returns an err
 pub fn getAccount(public_key: &String) -> Result<Account, u8> {
-    let path = config().db_path + &"/bd/accountdb".to_owned();
+    let path = config().db_path + &"/accountdb".to_owned();
     let data = getData(path, public_key);
     if data == "-1" || data == "0" {
         return Err(1);
@@ -126,6 +137,9 @@ pub fn deltaFunds(
         );
         return Account::default();
     });
+    if acc.public_key == "".to_owned() {
+        return Err("Failed to get account".into());
+    }
     if mode == 0 {
         // minus funds
         if access_key == "" {

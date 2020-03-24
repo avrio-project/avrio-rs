@@ -6,6 +6,10 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 
+use std::time::Duration;
+
+use std::thread;
+
 extern crate clap;
 use clap::{App, Arg, SubCommand};
 
@@ -47,9 +51,43 @@ use avrio_database::{getData, getPeerList, saveData, savePeerlist};
 extern crate log;
 extern crate simple_logger;
 
+extern crate hex;
+
+fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let config = config();
+    let path = config.db_path + &"/wallets".to_owned() + &keypair[0];
+    if config.wallet_password == Config::default().wallet_password {
+        warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword>");
+    }
+    let key = GenericArray::clone_from_slice(config.wallet_password.as_bytes());
+    let aead = Aes256Gcm::new(key);
+
+    let nonce = GenericArray::from_slice(b"nonce"); // 96-bits; unique per message
+
+    let publickey_en = String::from_utf8(
+        aead.encrypt(nonce, keypair[0].as_bytes().as_ref())
+            .expect("wallet public keyencryption failure!"),
+    )?;
+    let privatekey_en = String::from_utf8(
+        aead.encrypt(nonce, keypair[1].as_bytes().as_ref())
+            .expect("wallet private key encryption failure!"),
+    )?;
+    let _ = saveData(publickey_en, path.clone(), "pubkey".to_owned());
+    let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
+    info!("Saved wallet to {}", path);
+    return Ok(());
+}
+
 fn generateKeypair(out: &mut Vec<String>) {
-    out.push("".to_owned());
-    out.push("".to_owned());
+    let rngc = randc::SystemRandom::new();
+    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
+    let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
+    let peer_public_key_bytes = key_pair.public_key().as_ref();
+    out.push(hex::encode(peer_public_key_bytes));
+    out.push(hex::encode(pkcs8_bytes));
+    let mut config = config();
+    config.chain_key = hex::encode(peer_public_key_bytes);
+    let _ = config.save();
 }
 
 fn database_present() -> bool {
@@ -69,6 +107,7 @@ fn database_present() -> bool {
 fn createFileStructure() -> std::result::Result<(), Box<dyn std::error::Error>> {
     create_dir_all(config().db_path + &"/blocks".to_string())?;
     create_dir_all(config().db_path + &"/chains".to_string())?;
+    create_dir_all(config().db_path + &"/wallets".to_string())?;
     return Ok(());
 }
 
@@ -79,10 +118,7 @@ fn connectSeednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStr
         let mut error = new_connection(seednodes[i]);
         match error {
             Ok(_) => {
-                info!(
-                    "Connected and handshaked to {:?}::{:?}",
-                    seednodes[i], 11523
-                );
+                info!("Connected to {:?}::{:?}", seednodes[i], 11523);
                 conn_count += 1;
                 let mut peer = error.unwrap();
                 let mut peer_cloned = peer.stream.try_clone().unwrap();
@@ -118,6 +154,10 @@ fn firstStartUp() -> u16 {
             "Succsessfully created keypair with chain key {}",
             chainKey[0]
         );
+        if let Err(e) = save_wallet(&chainKey) {
+            error!("Failed to save wallet: {}, gave error: {}", chainKey[0], e);
+            process::exit(1);
+        }
     }
     let mut genesis_block = getGenesisBlock(&chainKey[0]);
     if let Err(e) = genesis_block {
@@ -140,45 +180,44 @@ fn firstStartUp() -> u16 {
     match check_block(genesis_block) {
         Err(error) => {
             error!(
-                "Failed to create/ get genesis block. Gave error: {:?}, block dump: {:?}. (Fatal)",
+                "Failed to validate generated genesis block. Gave error: {:?}, block dump: {:?}. (Fatal)",
                 error, genesis_block_clone
             );
             process::exit(1);
         }
         Ok(_) => info!(
-            "Succsessfully generated/got genesis block with hash {}",
+            "Succsessfully generated genesis block with hash {}",
             genesis_block_clone.hash
         ),
     }
-    let e_code = saveData(
-        serde_json::to_string(&genesis_block_clone).unwrap(),
-        config().db_path + &"/".to_string() + &chainKey[0],
-        genesis_block_clone.hash.clone(),
-    );
+    let e_code = saveBlock(genesis_block_clone);
     match e_code {
-        1 => {
+        Ok(_) => {
             info!("Sucsessfully saved genesis block!");
             drop(e_code);
         }
-        _ => {
+        Err(e) => {
             error!(
-                "Failed to save genesis block with hash: {}, gave error code: {} (fatal)!",
-                genesis_block_clone.hash, e_code
+                "Failed to save genesis block gave error code: {:?} (fatal)!",
+                e
             );
             process::exit(1);
         }
     };
-    info!(" Launching P2p server on 127.0.0.1::{:?}", 11523); // Parsing config and having custom p2p ports to be added in 1.1.0 - 2.0.0
-    match rec_server() {
-        1 => {}
-        _ => {
+    info!(
+        " Launching P2p server on 127.0.0.1::{:?}",
+        config().p2p_port
+    );
+    let p2p_handler = thread::spawn(|| {
+        if rec_server() != 1 {
             error!(
                 "Error launching P2p server on 127.0.0.1::{:?} (Fatal)",
-                11523
+                config().p2p_port
             );
             process::exit(1);
         }
-    }
+    });
+    thread::sleep(Duration::from_millis(500));
     let peerlist: Vec<SocketAddr>;
     let mut conn_nodes = 0;
     let mut trys: u8 = 0;
@@ -186,8 +225,8 @@ fn firstStartUp() -> u16 {
     while conn_nodes < 1 {
         let seednodes: Vec<SocketAddr> = vec![
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12345),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12345),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12345),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(126, 0, 0, 1)), 12345),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(123, 0, 0, 1)), 12345),
         ];
         if trys > 49 {
             process::exit(1);
@@ -199,8 +238,12 @@ fn firstStartUp() -> u16 {
         trys += 1;
     }
     info!("Connected to seednode(s), polling for peerlist (this may take some time)");
-    peerlist = getPeerList().unwrap();
-    conn_nodes += connectSeednodes(peerlist, &mut connected_peers);
+    //for peer in connected_peers.clone() {
+    //peer.write()
+    //}
+    //peerlist = getPeerList().unwrap();
+    //conn_nodes += connectSeednodes(peerlist, &mut connected_peers);
+    thread::sleep(Duration::from_millis(2500));
     info!("Started syncing");
     let con_peer_len = connected_peers.len();
     for mut peer_val in connected_peers {
@@ -277,9 +320,9 @@ fn main() {
         .author("Leo Cornelius")
         .arg(Arg::with_name("config")
                                .short("c")
-                               .long("config")
+                               .long("config-file")
                                .value_name("FILE")
-                               .help("Sets a custom config file, if not set will use $HOME_DIR/.avrio-datadir/node.conf")
+                               .help("(DOESNT WORK YET!!) Sets a custom config file, if not set will use node.conf")
                                .takes_value(true))
                                .arg(Arg::with_name("loglev")
                                .long("log-level")
@@ -287,13 +330,15 @@ fn main() {
                                .multiple(true)
                                .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: debug"))
         .get_matches();
-    match matches.occurrences_of("loglev") {
-        0 => simple_logger::init_with_level(log::Level::Error).unwrap(),
-        1 => simple_logger::init_with_level(log::Level::Warn).unwrap(),
-        2 => simple_logger::init_with_level(log::Level::Info).unwrap(),
-        3 => simple_logger::init_with_level(log::Level::Info).unwrap(),
+    match matches.value_of("loglev").unwrap_or(&"2") {
+        "0" => simple_logger::init_with_level(log::Level::Error).unwrap(),
+        "1" => simple_logger::init_with_level(log::Level::Warn).unwrap(),
+        "2" => simple_logger::init_with_level(log::Level::Info).unwrap(),
+        "3" => simple_logger::init_with_level(log::Level::Debug).unwrap(),
+        "4" => simple_logger::init_with_level(log::Level::Trace).unwrap(),
         _ => panic!("Unknown log-level: {} ", matches.occurrences_of("loglev")),
     }
+    //println!("{}", matches.occurrences_of("loglev"));
     let art = "
    #    #     # ######  ### #######
   # #   #     # #     #  #  #     #
@@ -305,7 +350,7 @@ fn main() {
     println!("{}", art);
     info!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
     let config_ = config();
-    config_.save();
+    let _ =config_.save();
     info!("Checking for previous startup. DO NOT CLOSE PROGRAM NOW!!!");
     let startup_state: u16 = match database_present() {
         true => existingStartup(),

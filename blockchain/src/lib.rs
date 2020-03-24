@@ -4,11 +4,13 @@ extern crate avrio_database;
 use crate::genesis::{genesisBlockErrors, getGenesisBlock};
 use avrio_config::config;
 use avrio_core::{account::getAccount, transaction::*};
-use avrio_database::getData;
+use avrio_database::*;
 use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate log;
+use merkle::*;
 use ring::{
+    digest::{Context, Digest, SHA256},
     rand as randc,
     signature::{self, KeyPair},
 };
@@ -50,13 +52,67 @@ pub struct Block {
     pub hash: String,
     pub nonce: String,
     pub signature: String,
-    pub node_signatures: Vec<String>, // a block must be signed by at least (c / 2) + 1 nodes to be valid (ensures at least ne honest node has singed it)
+    pub node_signatures: Vec<String>, // a block must be signed by at least 2/3*c nodes to be valid (ensures at least one honest node has signed it)
 }
-
+/// Generates and saves the merkle root of the chain
+pub fn generate_merkle_root(
+    chain: String,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let mut chain_vec: Vec<String> = vec![];
+    let db =
+        openDb(config().db_path + &"/chains/".to_owned() + &chain + &"-invs".to_owned()).unwrap();
+    let mut iter = db.raw_iterator();
+    iter.seek_to_first();
+    while iter.valid() {
+        chain_vec.push(String::from_utf8(iter.value().unwrap_or(vec![])).unwrap_or_default());
+        iter.next();
+    }
+    let merkle = merkle::MerkleTree::from_vec(&SHA256, chain_vec);
+    let root = String::from_utf8(merkle.root_hash().clone())?;
+    let _ = saveData(
+        root.clone(),
+        config().db_path + &"/chains/".to_owned() + &chain + &"-chainsindex".to_owned(),
+        "digest".to_owned(),
+    );
+    return Ok(root);
+}
+pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
+    let mut roots: Vec<String> = vec![];
+    if let Ok(db) = openDb(config().db_path + &"/chainlist".to_owned()) {
+        let mut iter = db.raw_iterator();
+        iter.seek_to_first();
+        while iter.valid() {
+            if let Some(chain) = iter.value() {
+                if let Ok(chain_string) = String::from_utf8(chain) {
+                    let root_read = getData(
+                        config().db_path
+                            + &"/".to_owned()
+                            + &chain_string
+                            + &"-chainsindex".to_owned(),
+                        &"digest".to_owned(),
+                    );
+                    if root_read == "-1".to_owned() || root_read == "0".to_owned() {
+                        roots.push(generate_merkle_root(chain_string).unwrap_or("".to_owned()));
+                    } else {
+                        roots.push(root_read);
+                    }
+                }
+            }
+        }
+    }
+    let merkle = merkle::MerkleTree::from_vec(&SHA256, roots);
+    let root = String::from_utf8(merkle.root_hash().clone())?;
+    let _ = saveData(
+        root.clone(),
+        config().db_path + &"/chains/masterchainindex".to_owned(),
+        "digest".to_owned(),
+    );
+    return Ok(root);
+}
 pub fn getBlock(chainkey: &String, height: u64) -> Block {
     // returns the block when you know the chain and the height
     let hash = getData(
-        config().db_path + &"/".to_owned() + chainkey + &"-invs".to_owned(),
+        config().db_path + &"/chains/".to_owned() + chainkey + &"-invs".to_owned(),
         &height.to_string(),
     );
     if hash == "-1".to_owned() {
@@ -194,7 +250,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 }
             },
         }
-        if blk != genesis || genesis != Block::default() {
+        if blk != genesis && genesis != Block::default() {
             return Err(blockValidationErrors::genesisBlockMissmatch);
         } else {
             if is_in_db == true {

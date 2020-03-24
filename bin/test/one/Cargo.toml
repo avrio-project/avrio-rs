@@ -18,7 +18,7 @@ simple_logger = "1.5.0"
 log = "0.4"
 avrio_core = {path = "../../../core"}
 avrio_database = {path = "../../../database"}
-avrio_config = "0.1.2"
+avrio_config = "0.2.3"
 avrio_blockchain = {path = "../../../blockchain"}
 avrio_p2p = {path = "../../../p2p"}
 cryptonight-rs = {path = "../../../crypto/cn-rs"}
@@ -27,3 +27,4 @@ ring = "0.16.11"
 serde_json = "1"
 aes-gcm = "0.5.0"
 aead = "0.2.0"
+hex = "0.4.2"

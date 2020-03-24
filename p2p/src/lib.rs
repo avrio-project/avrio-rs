@@ -6,7 +6,7 @@ extern crate unwrap;
 extern crate avrio_blockchain;
 extern crate avrio_config;
 extern crate avrio_database;
-use avrio_blockchain::{getBlockFromRaw, Block};
+use avrio_blockchain::{generate_merkle_root_all, getBlockFromRaw, Block};
 use avrio_config::config;
 use avrio_core::epoch::Epoch;
 use avrio_database::{getData, openDb, saveData};
@@ -118,14 +118,17 @@ fn sendInventories(
     } else {
         let from_t = firstInventory.header.timestamp;
         let to_t = firstInventory.header.timestamp;
-        if let Ok(db) = openDb(config().db_path + &"/chains".to_owned()) {
+        if let Ok(db) = openDb(config().db_path + &"/chainlist".to_owned()) {
             let mut iter = db.raw_iterator();
             iter.seek_to_first();
             while iter.valid() {
                 if let Some(chain) = iter.value() {
                     if let Ok(chain_string) = String::from_utf8(chain) {
                         if let Ok(inv_db) = openDb(
-                            config().db_path + &"/".to_owned() + &chain_string + &"-inv".to_owned(),
+                            config().db_path
+                                + &"/chains".to_owned()
+                                + &chain_string
+                                + &"-inv".to_owned(),
                         ) {
                             let mut inviter = inv_db.raw_iterator();
                             inviter.seek_to_first();
@@ -234,7 +237,7 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     let syncreqres = sendData(
         "syncreq".to_string(),
         &mut peer_to_use_unwraped.try_clone().unwrap(),
-        0x01,
+        0x22,
     );
     match syncreqres {
         Ok(()) => {}
@@ -261,9 +264,15 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     // There are now bytes waiting in the stream
     let _ = peer_to_use_unwraped.try_clone().unwrap().read(&mut buf);
     let mut _reselect_needed = false;
-    let deformed: P2pdata =
-        serde_json::from_str(&String::from_utf8(buf.to_vec()).unwrap_or("".to_string()))
-            .unwrap_or(P2pdata::default());
+    let msg = String::from_utf8(buf.to_vec()).unwrap_or("utf8 failed".to_string());
+    let v: Vec<&str> = msg.split("}").collect();
+    let msg_c = v[0].to_string() + &"}".to_string();
+    drop(v);
+    info!(
+        "REcived: m {}",
+        String::from_utf8(buf.to_vec()).unwrap_or("utf8 failed".to_string())
+    );
+    let deformed: P2pdata = serde_json::from_str(&msg_c).unwrap_or(P2pdata::default());
     if deformed.message == "syncack".to_string() {
         debug!("Got syncack from selected peer. Continuing");
         return Ok(peer_to_use_unwraped);
@@ -273,7 +282,7 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
         return Err("rejected syncack".into());
     } else {
         info!("Recieved incorect message from peer (in context syncrequest). Message: {}. This could be caused by outdated software - check you are up to date!", deformed.message);
-        info!("Treating message aschainDigests sync decline, choosing new peer...");
+        info!("Treating message as sync decline, choosing new peer...");
         // choose the next fasted peer from our socket list
         return Err("assumed rejected syncack".into());
     }
@@ -281,9 +290,19 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
 /// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
 /// it is calculated with the generateChainDigest function which is auto called every time we get a new block
 fn sendChainDigest(peer: &mut TcpStream) {
-    let chains_digest = getData(config().db_path + &"/chainsindex", &"digest".to_string());
-    let buf = chains_digest.as_bytes();
-    let _ = peer.write(buf);
+    let chains_digest = getData(
+        config().db_path + &"/chains/masterchainindex",
+        &"digest".to_string(),
+    );
+    if chains_digest == "-1".to_owned() || chains_digest == "0".to_owned() {
+        let _ = sendData(
+            generate_merkle_root_all().unwrap_or("".to_owned()),
+            peer,
+            0x01,
+        );
+    } else {
+        let _ = sendData(chains_digest, peer, 0x01);
+    }
 }
 /// this asks the peer for thier chain digest
 fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
@@ -358,23 +377,9 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let mut peers: Vec<TcpStream> = vec![];
     let mut pc: u32 = 0;
     let _i: usize = 0;
-    for i in 0..pl.len() {
-        let res = sendData("getChainDigest".to_string(), &mut pl[i], 0x01);
-        match res {
-            Ok(_) => {
-                let peer_copy = pl[i].try_clone();
-                if let Ok(np) = peer_copy {
-                    peers.push(np);
-                    pc += 1;
-                }
-            }
-            Err(_e) => {}
-        }
-    }
-    trace!("Sent getChainDigest to {} peers", pc);
     let mut chainDigests: Vec<ChainDigestPeer> = vec![];
     let _empty_string = "".to_string();
-    for peer in peers.iter_mut() {
+    for peer in pl.iter_mut() {
         if let Ok(mut peer_new) = peer.try_clone() {
             let handle = thread::Builder::new()
                 .name("getChainDigest".to_string())
@@ -456,7 +461,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let mut amount_synced: u64 = 0;
     let mut amount_to_sync: u64 = 0;
     let get_ci_res = getData(
-        config().db_path + &"/chainindex".to_owned(),
+        config().db_path + &"/masterchainindex".to_owned(),
         &"lastsyncedepoch".to_owned(),
     );
     if get_ci_res == "-1".to_owned() {
@@ -522,7 +527,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         if let Some(mut peer_to_poll) = peer_to_use_clone {
             let mut peer = peer_to_poll.try_clone().unwrap();
             let mut chainsindex = getData(
-                config().db_path + &"/chainindexmaster".to_string(),
+                config().db_path + &"/masterchainindex".to_string(),
                 &"topblockhash".to_string(),
             );
             if chainsindex == "-1".to_string() || chainsindex == "0".to_string() {
@@ -585,7 +590,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                 // check if we allready have that inventory
                 let try_get = getData(
                     config().db_path
-                        + &"/".to_string()
+                        + &"/chains".to_string()
                         + &inventory.chain
                         + &"-inventorys".to_string(),
                     &inventory.height.to_string(),
@@ -613,7 +618,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                 let save_res = saveData(
                     inventory.hash.clone(),
                     config().db_path
-                        + &"/".to_string()
+                        + &"/chains".to_string()
                         + &inventory.chain
                         + &"-inventorys".to_string(),
                     inventory.height.to_string(),
@@ -668,7 +673,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         return Err("syncing failed".into());
     } else {
         // now we check that we have got all the inventories
-        // we ask the peer we just synce from for a merkle root hash of their inventories db and do the same on ours
+        // we ask the peer we just synced from for a merkle root hash of their inventories db and do the same on ours
         if let Ok(mut a) = peer_to_use_unwraped.try_clone() {
             sendData("*".to_owned(), &mut a, 0x1b).unwrap();
             let mut buf = [0; 128];
@@ -688,18 +693,29 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                 }
             }
             let hash = String::from_utf8(buf.to_vec()).unwrap_or("error".to_owned());
-            if hash != "error".to_owned() {}
+            if hash != "".to_owned() {
+                let local_merkle = generate_merkle_root_all()
+                .unwrap_or_default();
+                if local_merkle != hash {
+                    // Go back to the begining and sync again
+                    // TODO: Improve the efficency of this, rather than reruning everything (eg having to get chain digest bla bla bla) just go back to getting invs
+                     return sync(&mut vec!(&mut a));
+                }
+            }
         }
         // time to download blocks
         // first we make a iter of all the invs we have saved
-        if let Ok(db) = openDb(config().db_path + &"/chains".to_owned()) {
+        if let Ok(db) = openDb(config().db_path + &"/chainslist".to_owned()) {
             let mut chainiter = db.raw_iterator();
             chainiter.seek_to_first();
             while chainiter.valid() {
                 if let Some(chain) = chainiter.value() {
                     if let Ok(chain_string) = String::from_utf8(chain) {
                         if let Ok(inv_db) = openDb(
-                            config().db_path + &"/".to_owned() + &chain_string + &"-inv".to_owned(),
+                            config().db_path
+                                + &"/chains".to_owned()
+                                + &chain_string
+                                + &"-inv".to_owned(),
                         ) {
                             let mut iter = inv_db.raw_iterator();
                             iter.seek_to_first();
@@ -929,20 +945,15 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
     });
 }
 
-fn process_message(s: String) {
-    info!("Message:{}", s);
+fn process_message(s: String, p: &mut TcpStream) {
+    if s == "getChainDigest".to_string() {
+        let merkle_root = "sorry nothing".to_owned();
+        let _ = sendData(merkle_root, p, 0x01);
+    }
 }
 
 fn process_block(s: String) {
     info!("Block {}", s);
-}
-
-fn process_transaction(s: String) {
-    info!("Transaction {}", s);
-}
-
-fn process_registration(s: String) {
-    info!("Certificate {}", s);
 }
 
 fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> {
@@ -969,7 +980,7 @@ fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> 
         let v: Vec<&str> = val.split("*").collect();
         id = v[0].to_string();
     }
-    debug!("Handshook with peer, gave id {}", id);
+    info!("Handshook with peer, gave id {}", id);
     let id_cow = Cow::from(&id);
     if let Ok(addr) = peer.peer_addr() {
         let _ = saveData(
@@ -996,6 +1007,7 @@ pub enum p2p_errors {
 pub fn sendData(data: String, peer: &mut TcpStream, msg_type: u16) -> Result<(), std::io::Error> {
     // This function takes some data as a string and places it into a struct before sending to the peer
     let data_s: String = formMsg(data, msg_type);
+    info!("data_s: {}", data_s);
     let sent = peer.write_all(data_s.as_bytes());
     return sent;
 }
@@ -1012,9 +1024,9 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 
 pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
+    //info!("recive: {}", msg);
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
-    trace!("recive: {}", msg_c);
     drop(v);
     let msg_d: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
         debug!(
@@ -1024,6 +1036,11 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         return P2pdata::default();
     });
     match msg_d.message_type {
+        0x22 => {
+            info!("send have syncack");
+            let _ = sendData("syncack".to_owned(), peer, 0x01);
+            return Some("syncreq".to_owned());
+        }
         0x04 => {
             let config = config();
             let d: GetInventories = serde_json::from_str(&msg_d.message).unwrap_or_default();
@@ -1057,7 +1074,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return Some("sendblock".into());
         }
         0x01 => {
-            process_message(msg_d.message);
+            process_message(msg_d.message, peer);
             return Some("message".into());
         }
         0x0a => {
@@ -1071,16 +1088,12 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                 return None;
             }
         }
-        0x1b => {
-            sendInventoriesDigest(peer, msg_d.message);
-            return Some("sendinvdig".into());
-        }
-        0x1c => {
+        0x1b | 0x1c => {
             sendChainDigest(peer);
             return Some("sendchaindigest".into());
         }
         _ => {
-            warn!("Bad Messge type from peer. Message type: {}. (If you are getting, lots of these check for updates)", "0x".to_owned() + &hex::encode(msg_d.message_type.to_string()));
+            warn!("Bad Messge type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
             return None;
         }
     }

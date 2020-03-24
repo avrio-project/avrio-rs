@@ -1,7 +1,7 @@
 use rocksdb::{DBRawIterator, DB};
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::process;
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 #[macro_use]
 extern crate log;
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,7 +33,10 @@ pub fn saveData(serialized: String, path: String, key: String) -> u8 {
 /// Gets the saved peerlist
 // TODO: getPeerList
 pub fn getPeerList() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
-    return Ok(vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12345)]);
+    return Ok(vec![SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        12345,
+    )]);
 }
 // TODO: Save the vec of SocketAddrs to peerlist db
 pub fn savePeerlist(list: &Vec<SocketAddr>, path: String) {}
