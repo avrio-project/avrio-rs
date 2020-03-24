@@ -51,6 +51,7 @@ pub struct ConfigSave {
     pub identitiy: String,
     pub key_file_path: String,
     pub log_level: u8,
+    pub wallet_password: String,
 }
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, PartialOrd)]
@@ -91,6 +92,8 @@ pub struct Config {
     pub username_burn_amount: u64,
     pub fullnode_lock_time: u64,
     pub first_block_hash: String,
+    pub wallet_password: String,
+
 }
 
 pub fn config() -> Config {
@@ -106,7 +109,6 @@ pub fn config() -> Config {
         return Config::default();
     }
 }
-
 
 impl Default for ConfigSave {
     fn default() -> ConfigSave {
@@ -131,6 +133,7 @@ impl Default for ConfigSave {
                     identitiy: String::from(""),
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
+                    wallet_password: "wallet_password_123".to_string(),
                 };
             } else {
                 return ConfigSave {
@@ -152,6 +155,7 @@ impl Default for ConfigSave {
                     identitiy: String::from(""),
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
+                    wallet_password: "wallet_password_123".to_string(),
                 };
             }
         } else {
@@ -174,6 +178,7 @@ impl Default for ConfigSave {
                 identitiy: String::from(""),
                 key_file_path: "wallet.keys".to_string(),
                 log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
+                wallet_password: "wallet_password_123".to_string(),
             };
         }
     }
@@ -219,6 +224,7 @@ impl ConfigSave {
             username_burn_amount: nconf.username_burn_amount,
             fullnode_lock_time: nconf.fullnode_lock_time,
             first_block_hash: nconf.first_block_hash,
+            wallet_password: self.wallet_password.to_owned(),
         };
     }
 }
@@ -277,6 +283,8 @@ impl Config {
             identitiy: self.identitiy,
             key_file_path: self.key_file_path,
             log_level: self.log_level,
+            wallet_password: self.wallet_password,
+
         }
     }
     /// This creates a config file from the provided struct, if the file exists it does the same thing as save()

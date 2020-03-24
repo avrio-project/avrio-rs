@@ -1,6 +1,6 @@
 [package]
 name = "avrio_config"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Leo Cornelius <leocornelius019@gmail.com>"]
 edition = "2018"
 description = "A rust libary for parsing avrio config files (.conf)"
