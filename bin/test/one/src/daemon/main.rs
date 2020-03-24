@@ -7,7 +7,7 @@ use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 
 extern crate clap;
-use clap::App;
+use clap::{App, Arg, SubCommand};
 
 use std::fs::create_dir_all;
 
@@ -24,7 +24,7 @@ use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub extern crate avrio_config;
-use avrio_config::config;
+use avrio_config::{config, Config};
 
 extern crate avrio_core;
 use avrio_core::{
@@ -271,7 +271,29 @@ fn existingStartup() -> u16 {
 }
 
 fn main() {
-    simple_logger::init_with_level(log::Level::Info).unwrap();
+    let matches = App::new("Avrio Daemon")
+        .version("Testnet Pre-alpha 0.0.1")
+        .about("This is the offical daemon for the avrio network.")
+        .author("Leo Cornelius")
+        .arg(Arg::with_name("config")
+                               .short("c")
+                               .long("config")
+                               .value_name("FILE")
+                               .help("Sets a custom config file, if not set will use $HOME_DIR/.avrio-datadir/node.conf")
+                               .takes_value(true))
+                               .arg(Arg::with_name("loglev")
+                               .long("log-level")
+                               .short("v")
+                               .multiple(true)
+                               .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: debug"))
+        .get_matches();
+    match matches.occurrences_of("loglev") {
+        0 => simple_logger::init_with_level(log::Level::Error).unwrap(),
+        1 => simple_logger::init_with_level(log::Level::Warn).unwrap(),
+        2 => simple_logger::init_with_level(log::Level::Info).unwrap(),
+        3 => simple_logger::init_with_level(log::Level::Info).unwrap(),
+        _ => panic!("Unknown log-level: {} ", matches.occurrences_of("loglev")),
+    }
     let art = "
    #    #     # ######  ### #######
   # #   #     # #     #  #  #     #
@@ -282,6 +304,8 @@ fn main() {
 #     #    #    #     # ### ####### ";
     println!("{}", art);
     info!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
+    let config_ = config();
+    config_.save();
     info!("Checking for previous startup. DO NOT CLOSE PROGRAM NOW!!!");
     let startup_state: u16 = match database_present() {
         true => existingStartup(),

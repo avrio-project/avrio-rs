@@ -53,7 +53,7 @@ pub struct ConfigSave {
     pub log_level: u8,
 }
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, PartialOrd)]
 pub struct Config {
     pub version_major: u8,
     pub version_breaking: u8,
@@ -94,18 +94,19 @@ pub struct Config {
 }
 
 pub fn config() -> Config {
-    let mut file = File::open("node.conf").unwrap_or_else(|e| {
-        error!("Failed to Open Config file: {}", e);
-        std::process::exit(1)
-    });
-    let mut data: String = String::from("");
-    file.read_to_string(&mut data).unwrap();
-    let conf: ConfigSave = serde_json::from_str(&data).unwrap_or_else(|e| {
-        error!("Failed To Deserilise Config: {}", e);
-        std::process::exit(1)
-    });
-    return conf.toConfig();
+    if let Ok(mut file) = File::open("node.conf") {
+        let mut data: String = String::from("");
+        if let Err(_) = file.read_to_string(&mut data) {
+            return Config::default();
+        } else {
+            let conf: ConfigSave = serde_json::from_str(&data).unwrap_or_default();
+            return conf.toConfig();
+        }
+    } else {
+        return Config::default();
+    }
 }
+
 
 impl Default for ConfigSave {
     fn default() -> ConfigSave {
