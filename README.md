@@ -1,5 +1,5 @@
 # Avrio
-<b> Master branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-core.svg?branch=master) Development branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-core.svg?branch=development) </b>
+<b> Master branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-rs.svg?branch=master) Development branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-rs.svg?branch=development) </b>
 
 This is the rust implementation of Avrio. It is currently not ready for usage. If you wish to join the Avrio network, please use our [cryptonight based implementation](https://github.com/avrio-project/avrio).
 
@@ -37,8 +37,8 @@ You will also need the following packages: [Boost](https://www.boost.org/), [Ope
 sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
 sudo apt-get update
 sudo apt-get install -y build-essential g++-8 gcc-8 git libboost-all-dev libssl1.0-dev cmake
-git clone -b master --single-branch https://github.com/avrio-project/avrio-core/
-cd avrio-core
+git clone -b master --single-branch https://github.com/avrio-project/avrio-rs/
+cd avrio-rs
 cargo build --release
 ```
 
@@ -55,8 +55,8 @@ Ensure you have the dependencies listed above.
 
 
 ```bash
-git clone -b master --single-branch https://github.com/avrio-project/avrio-core/
-cd avrio-core
+git clone -b master --single-branch https://github.com/avrio-project/avrio-rs/
+cd avrio-rs
 cargo build --release
 ```
 After the completion, the binaries will be in the `target/release` folder.
