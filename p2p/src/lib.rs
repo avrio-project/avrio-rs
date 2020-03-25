@@ -6,7 +6,7 @@ extern crate unwrap;
 extern crate avrio_blockchain;
 extern crate avrio_config;
 extern crate avrio_database;
-use avrio_blockchain::{generate_merkle_root_all, getBlockFromRaw, Block};
+use avrio_blockchain::{generate_merkle_root_all, saveBlock, getBlockFromRaw, Block, check_block, enact_block};
 use avrio_config::config;
 use avrio_core::epoch::Epoch;
 use avrio_database::{getData, openDb, saveData};
@@ -19,6 +19,7 @@ extern crate hex;
 use std::collections::HashMap;
 use std::error::Error;
 extern crate simple_logger;
+use std::process;
 
 /// # Inventorys
 /// This is save to the CHAIN_KEY-invs db (where CHAIN_KEY is the public key of the chain)
@@ -770,6 +771,23 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                                                     // TODO: reget the block, if this fails 3 or more times then choose a new peer and try again with them
                                                 } else {
                                                     // TODO: validate the block, if valid save it then enact the block and its transacions
+                                                    if let Err(e) = check_block(block.clone()) {
+                                                        warn!("Got bad block from peer. Validation gave error: {:?}", e);
+                                                    } else {
+                                                        if let Err(e) = saveBlock(block.clone()) {
+                                                            warn!("Failed to save block, gave error: {}. Retrying...", e);
+                                                            if let Err(e) = saveBlock(block.clone()) {
+                                                                warn!("Failed to save block, gave error: {}. Exiting", e);
+                                                                process::exit(1);
+                                                            }
+                                                        }
+                                                        if let Err(e) = enact_block(block.clone()) {
+                                                            warn!("Failed to enact block, gave error: {:?}. Retrying", e);
+                                                            if let Err(e) = enact_block(block.clone()) {
+                                                                warn!("Failed to enact block, gave error: {}. Retrying", e);
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
