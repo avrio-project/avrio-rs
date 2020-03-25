@@ -32,6 +32,9 @@ pub struct NetworkConfig {
     pub fullnode_lock_time: u64,
     pub username_burn_amount: u64,
     pub first_block_hash: String,
+    pub commitee_size: u8,
+    pub assessor_node_count: u8,
+    pub consensus_commitee_size: u8,
 }
 /// This is what is saved in a file, the stuff the user can change and edit to fit their needs
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -52,6 +55,7 @@ pub struct ConfigSave {
     pub key_file_path: String,
     pub log_level: u8,
     pub wallet_password: String,
+    pub time_beetween_sync: u64,
 }
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, PartialOrd)]
@@ -93,7 +97,10 @@ pub struct Config {
     pub fullnode_lock_time: u64,
     pub first_block_hash: String,
     pub wallet_password: String,
-
+    pub commitee_size: u8,
+    pub assessor_node_count: u8,
+    pub consensus_commitee_size: u8,
+    pub time_beetween_sync: u64,
 }
 
 pub fn config() -> Config {
@@ -134,6 +141,7 @@ impl Default for ConfigSave {
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
+                    time_beetween_sync: 5*60000,
                 };
             } else {
                 return ConfigSave {
@@ -156,6 +164,7 @@ impl Default for ConfigSave {
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
+                    time_beetween_sync: 5*60000,
                 };
             }
         } else {
@@ -179,6 +188,7 @@ impl Default for ConfigSave {
                 key_file_path: "wallet.keys".to_string(),
                 log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                 wallet_password: "wallet_password_123".to_string(),
+                time_beetween_sync: 5*60000,
             };
         }
     }
@@ -225,6 +235,10 @@ impl ConfigSave {
             fullnode_lock_time: nconf.fullnode_lock_time,
             first_block_hash: nconf.first_block_hash,
             wallet_password: self.wallet_password.to_owned(),
+            time_beetween_sync: self.time_beetween_sync,
+            commitee_size: nconf.commitee_size,
+            consensus_commitee_size: nconf.consensus_commitee_size,
+            assessor_node_count: nconf.assessor_node_count,
         };
     }
 }
@@ -261,6 +275,9 @@ impl Default for NetworkConfig {
             fullnode_lock_time: 30 * 5,    // epoches (30 days)
             username_burn_amount: 5000,    // 0.5000 AIO
             first_block_hash: "0x...".to_string(),
+            commitee_size: 15,
+            consensus_commitee_size: 21,
+            assessor_node_count: 6,
         }
     }
 }
@@ -284,7 +301,7 @@ impl Config {
             key_file_path: self.key_file_path,
             log_level: self.log_level,
             wallet_password: self.wallet_password,
-
+            time_beetween_sync: self.time_beetween_sync,
         }
     }
     /// This creates a config file from the provided struct, if the file exists it does the same thing as save()
