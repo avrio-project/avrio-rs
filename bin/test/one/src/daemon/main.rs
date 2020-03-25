@@ -59,19 +59,27 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
     if config.wallet_password == Config::default().wallet_password {
         warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword>");
     }
-    let key = GenericArray::clone_from_slice(config.wallet_password.as_bytes());
+    let mut padded = config.wallet_password.as_bytes().to_vec();
+    while padded.len() != 32 && padded.len() < 33 {
+        padded.push(b"n"[0]);
+    }
+    let padded_string = String::from_utf8(padded).unwrap();
+    let key = GenericArray::clone_from_slice(padded_string.as_bytes());
     let aead = Aes256Gcm::new(key);
-
-    let nonce = GenericArray::from_slice(b"nonce"); // 96-bits; unique per message
-
-    let publickey_en = String::from_utf8(
+    let mut padded = b"nonce".to_vec();
+    while padded.len() != 12 {
+        padded.push(b"n"[0]);
+    }
+    let padded_string = String::from_utf8(padded).unwrap();
+    let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
+    let publickey_en = hex::encode(
         aead.encrypt(nonce, keypair[0].as_bytes().as_ref())
-            .expect("wallet public keyencryption failure!"),
-    )?;
-    let privatekey_en = String::from_utf8(
+            .expect("wallet public key encryption failure!"),
+    );
+    let privatekey_en = hex::encode(
         aead.encrypt(nonce, keypair[1].as_bytes().as_ref())
             .expect("wallet private key encryption failure!"),
-    )?;
+    );
     let _ = saveData(publickey_en, path.clone(), "pubkey".to_owned());
     let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
     info!("Saved wallet to {}", path);
@@ -318,17 +326,23 @@ fn main() {
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
         .author("Leo Cornelius")
-        .arg(Arg::with_name("config")
-                               .short("c")
-                               .long("config-file")
-                               .value_name("FILE")
-                               .help("(DOESNT WORK YET!!) Sets a custom config file, if not set will use node.conf")
-                               .takes_value(true))
-                               .arg(Arg::with_name("loglev")
-                               .long("log-level")
-                               .short("v")
-                               .multiple(true)
-                               .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: debug"))
+        .arg(
+            Arg::with_name("config")
+                .short("c")
+                .long("config-file")
+                .value_name("FILE")
+                .help(
+                    "(DOESNT WORK YET!!) Sets a custom config file, if not set will use node.conf",
+                )
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("loglev")
+                .long("log-level")
+                .short("v")
+                .multiple(true)
+                .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: debug"),
+        )
         .get_matches();
     match matches.value_of("loglev").unwrap_or(&"2") {
         "0" => simple_logger::init_with_level(log::Level::Error).unwrap(),
@@ -350,7 +364,7 @@ fn main() {
     println!("{}", art);
     info!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
     let config_ = config();
-    let _ =config_.save();
+    let _ = config_.save();
     info!("Checking for previous startup. DO NOT CLOSE PROGRAM NOW!!!");
     let startup_state: u16 = match database_present() {
         true => existingStartup(),
@@ -433,19 +447,34 @@ fn main() {
                     }
                 }
                 // TODO: !!!URGENT!!!, use custom set password
-                let key = GenericArray::clone_from_slice(b"wallet-password");
+                if config().wallet_password == Config::default().wallet_password {
+                    warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword>");
+                }
+                let mut padded = config().wallet_password.as_bytes().to_vec();
+                while padded.len() != 32 && padded.len() < 33 {
+                    padded.push(b"n"[0]);
+                }
+                let padded_string = String::from_utf8(padded).unwrap();
+                let key = GenericArray::clone_from_slice(padded_string.as_bytes());
                 let aead = Aes256Gcm::new(key);
-                // TODO: use unique nonce
-                let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
+                let mut padded = b"nonce".to_vec();
+                while padded.len() != 12 {
+                    padded.push(b"n"[0]);
+                }
+                let padded_string = String::from_utf8(padded).unwrap();
+                let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
                 let ciphertext = getData(
                     config().db_path + &"/wallets/wallet".to_owned(),
                     &"pubkey".to_owned(),
                 );
                 let pubkey = String::from_utf8(
-                    aead.decrypt(nonce, ciphertext.as_ref())
-                        .expect("decryption failure!"),
+                    hex::decode(
+                        aead.decrypt(nonce, ciphertext.as_ref())
+                            .expect("decryption failure!"),
+                    )
+                    .expect("failed to parse hex"),
                 )
-                .expect("failed to parse utf8");
+                .expect("failed to parse hex utf8");
                 // now priv key
                 let key = GenericArray::clone_from_slice(b"wallet-password");
                 let aead = Aes256Gcm::new(key);
@@ -456,16 +485,19 @@ fn main() {
                     &"privkey".to_owned(),
                 );
                 let privkey = String::from_utf8(
-                    aead.decrypt(nonce, ciphertext.as_ref())
-                        .expect("decryption failure!"),
+                    hex::decode(
+                        aead.decrypt(nonce, ciphertext.as_ref())
+                            .expect("decryption failure!"),
+                    )
+                    .expect("failed to parse hex"),
                 )
-                .expect("failed to parse utf8");
+                .expect("failed to parse hex utf8");
                 // now send block
                 send_block(pubkey, 0, privkey);
             }
             false => {
                 synced = true;
-                // TODO: !!!URGENT!!!, use custom set password
+                // TODO: !!!URGENT!!!, use custom set passwords
                 let key = GenericArray::clone_from_slice(b"wallet-password");
                 let aead = Aes256Gcm::new(key);
                 // TODO: use unique nonce
