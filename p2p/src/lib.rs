@@ -6,7 +6,9 @@ extern crate unwrap;
 extern crate avrio_blockchain;
 extern crate avrio_config;
 extern crate avrio_database;
-use avrio_blockchain::{generate_merkle_root_all, saveBlock, getBlockFromRaw, Block, check_block, enact_block};
+use avrio_blockchain::{
+    check_block, enact_block, generate_merkle_root_all, getBlockFromRaw, saveBlock, Block,
+};
 use avrio_config::config;
 use avrio_core::epoch::Epoch;
 use avrio_database::{getData, openDb, saveData};
@@ -695,12 +697,11 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             }
             let hash = String::from_utf8(buf.to_vec()).unwrap_or("error".to_owned());
             if hash != "".to_owned() {
-                let local_merkle = generate_merkle_root_all()
-                .unwrap_or_default();
+                let local_merkle = generate_merkle_root_all().unwrap_or_default();
                 if local_merkle != hash {
                     // Go back to the begining and sync again
                     // TODO: Improve the efficency of this, rather than reruning everything (eg having to get chain digest bla bla bla) just go back to getting invs
-                     return sync(&mut vec!(&mut a));
+                    return sync(&mut vec![&mut a]);
                 }
             }
         }
@@ -776,14 +777,17 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                                                     } else {
                                                         if let Err(e) = saveBlock(block.clone()) {
                                                             warn!("Failed to save block, gave error: {}. Retrying...", e);
-                                                            if let Err(e) = saveBlock(block.clone()) {
+                                                            if let Err(e) = saveBlock(block.clone())
+                                                            {
                                                                 warn!("Failed to save block, gave error: {}. Exiting", e);
                                                                 process::exit(1);
                                                             }
                                                         }
                                                         if let Err(e) = enact_block(block.clone()) {
                                                             warn!("Failed to enact block, gave error: {:?}. Retrying", e);
-                                                            if let Err(e) = enact_block(block.clone()) {
+                                                            if let Err(e) =
+                                                                enact_block(block.clone())
+                                                            {
                                                                 warn!("Failed to enact block, gave error: {}. Retrying", e);
                                                             }
                                                         }

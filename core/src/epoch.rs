@@ -5,9 +5,9 @@ extern crate avrio_config;
 
 extern crate rand;
 
+use avrio_crypto::Hashable;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use avrio_crypto::Hashable;
 extern crate bs58;
 #[derive(Default, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Epoch {

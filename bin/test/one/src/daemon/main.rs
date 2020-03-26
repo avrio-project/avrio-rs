@@ -292,7 +292,7 @@ fn send_block(chainKey: String, height: u64, private_key: String) {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64,
-                network: config().network_id,
+            network: config().network_id,
         },
         txns: transactions,
         hash: String::from(""),

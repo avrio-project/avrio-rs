@@ -145,7 +145,7 @@ impl Default for ConfigSave {
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
-                    time_beetween_sync: 5*60000,
+                    time_beetween_sync: 5 * 60000,
                 };
             } else {
                 return ConfigSave {
@@ -168,7 +168,7 @@ impl Default for ConfigSave {
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
-                    time_beetween_sync: 5*60000,
+                    time_beetween_sync: 5 * 60000,
                 };
             }
         } else {
@@ -192,7 +192,7 @@ impl Default for ConfigSave {
                 key_file_path: "wallet.keys".to_string(),
                 log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                 wallet_password: "wallet_password_123".to_string(),
-                time_beetween_sync: 5*60000,
+                time_beetween_sync: 5 * 60000,
             };
         }
     }
@@ -284,8 +284,8 @@ impl Default for NetworkConfig {
             commitee_size: 15,
             consensus_commitee_size: 21,
             assessor_node_count: 6,
-            min_suported_version: vec![0,1,0],
-            max_supported_version: vec![0,1,0],
+            min_suported_version: vec![0, 1, 0],
+            max_supported_version: vec![0, 1, 0],
         }
     }
 }

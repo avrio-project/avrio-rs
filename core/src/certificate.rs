@@ -121,10 +121,7 @@ pub fn generateCertificate(
     for nonce in 0..u64::max_value() {
         cert.nonce = nonce;
         cert.hash();
-        println!(
-            "{}",
-            cert.hash
-        );
+        println!("{}", cert.hash);
         if cert.checkDiff(&diff_cert) {
             break;
         }
