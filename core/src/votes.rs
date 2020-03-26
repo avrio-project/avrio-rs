@@ -93,6 +93,7 @@ impl Vote {
         bytes.extend(self.subject_public_key.as_bytes());
         bytes.extend(self.voter_public_key.as_bytes());
         bytes.extend(self.vote.to_string().as_bytes());
+        bytes.extend(self.nonce.to_string().as_bytes());
         bytes.extend(self.signature.as_bytes());
         bytes
     }
@@ -120,5 +121,36 @@ impl Vote {
         } else {
             return Ok(vote);
         }
+    }
+    pub fn signature_valid(&self) -> bool {
+        let msg: &[u8] = self.hash.as_bytes();
+        let peer_public_key = signature::UnparsedPublicKey::new(
+            &signature::ED25519,
+            hex::decode(self.voter_public_key.to_owned()).unwrap_or_else(|e| {
+                error!(
+                    "Failed to decode public key from hex {}, gave error {}",
+                    self.voter_public_key, e
+                );
+                return vec![0, 1, 0];
+            }),
+        );
+        let mut res: bool = true;
+        peer_public_key
+            .verify(
+                msg,
+                hex::decode(self.signature.to_owned())
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "failed to decode signature from hex {}, gave error {}",
+                            self.signature, e
+                        );
+                        return vec![0, 1, 0];
+                    })
+                    .as_ref(),
+            )
+            .unwrap_or_else(|_e| {
+                res = false;
+            });
+        return res;
     }
 }
