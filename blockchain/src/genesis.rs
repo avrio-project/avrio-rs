@@ -57,11 +57,12 @@ pub fn generateGenesisBlock(
             prev_hash: "00000000000".to_owned(),
             height: 0,
             timestamp: 0,
+            network: config().network_id,
         },
         hash: "".to_string(),
         txns: my_genesis_txns,
-        nonce: "0".to_owned(),
         signature: "".to_string(),
+        confimed: false,
         node_signatures: vec![],
     };
 

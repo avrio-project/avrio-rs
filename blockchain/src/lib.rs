@@ -31,8 +31,14 @@ pub enum blockValidationErrors {
     invalidTransaction,
     genesisBlockMissmatch,
     failedToGetGenesisBlock,
+    blockExists,
+    tooLittleSignatures,
+    badNodeSignature,
+    timestampInvalid,
+    networkMissmatch,
     other,
 }
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Header {
@@ -43,6 +49,7 @@ pub struct Header {
     pub prev_hash: String,
     pub height: u64,
     pub timestamp: u64,
+    pub network: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
@@ -50,9 +57,144 @@ pub struct Block {
     pub header: Header,
     pub txns: Vec<Transaction>,
     pub hash: String,
-    pub nonce: String,
     pub signature: String,
-    pub node_signatures: Vec<String>, // a block must be signed by at least 2/3*c nodes to be valid (ensures at least one honest node has signed it)
+    pub confimed: bool,
+    pub node_signatures: Vec<BlockSignature>, // a block must be signed by at least 2/3*c nodes to be valid (ensures at least one honest node has signed it)
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
+pub struct BlockSignature {
+    /// The signature of the vote
+    pub hash: String,
+    /// The timestamp at which the signature was created
+    pub timestamp: u64,
+    /// The hash of the block this signature is about        
+    pub block_hash: String,
+    /// The public key of the node which created this vote
+    pub signer_public_key: String,
+    /// The hash of the sig signed by the voter        
+    pub signature: String,
+    /// A nonce to prevent sig replay attacks
+    pub nonce: u64,
+}
+
+impl BlockSignature {
+    pub fn enact(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // we are presuming the vote is valid - if it is not this is going to mess stuff up!
+        if saveData(
+            self.nonce.to_string(),
+            config().db_path + &"/fn-certificates".to_owned(),
+            self.signer_public_key.clone(),
+        ) != 1
+        {
+            return Err("failed to update nonce".into());
+        } else {
+            return Ok(());
+        }
+    }
+    pub fn valid(&self) -> bool {
+        if getData(
+            config().db_path + &"/fn-certificates".to_owned(),
+            &self.signer_public_key,
+        ) == "-1".to_owned()
+        {
+            return false;
+        } else if self.hash != self.hash_return() {
+            return false;
+        } else if getData(
+            config().db_path
+                + &"/chains/".to_owned()
+                + &self.signer_public_key
+                + &"-chainsindex".to_owned(),
+            &"sigcount".to_owned(),
+        ) != self.nonce.to_string()
+        {
+            return false;
+        } else if self.timestamp - (config().transactionTimestampMaxOffset as u64)
+            < (SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis() as u64)
+            || self.timestamp + (config().transactionTimestampMaxOffset as u64)
+                < (SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_millis() as u64)
+        {
+            return false;
+        } else if !self.signature_valid() {
+            return false;
+        } else {
+            return true;
+        }
+    }
+    pub fn bytes(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = vec![];
+        bytes.extend(self.timestamp.to_string().as_bytes());
+        bytes.extend(self.block_hash.as_bytes());
+        bytes.extend(self.signer_public_key.as_bytes());
+        bytes.extend(self.nonce.to_string().as_bytes());
+        bytes
+    }
+    pub fn hash(&mut self) {
+        let as_bytes = self.bytes();
+        self.hash = hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
+    }
+    pub fn hash_return(&self) -> String {
+        let as_bytes = self.bytes();
+        return hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
+    }
+    pub fn sign(
+        &mut self,
+        private_key: String,
+    ) -> std::result::Result<(), ring::error::KeyRejected> {
+        let key_pair =
+            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let msg: &[u8] = self.hash.as_bytes();
+        self.signature = hex::encode(key_pair.sign(msg));
+        return Ok(());
+    }
+    pub fn bytes_all(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = vec![];
+        bytes.extend(self.hash.as_bytes());
+        bytes.extend(self.timestamp.to_string().as_bytes());
+        bytes.extend(self.block_hash.as_bytes());
+        bytes.extend(self.signer_public_key.as_bytes());
+        bytes.extend(self.nonce.to_string().as_bytes());
+        bytes.extend(self.signature.as_bytes());
+        bytes
+    }
+    pub fn signature_valid(&self) -> bool {
+        let msg: &[u8] = self.hash.as_bytes();
+        let peer_public_key = signature::UnparsedPublicKey::new(
+            &signature::ED25519,
+            hex::decode(self.signer_public_key.to_owned()).unwrap_or_else(|e| {
+                error!(
+                    "Failed to decode public key from hex {}, gave error {}",
+                    self.signer_public_key, e
+                );
+                return vec![0, 1, 0];
+            }),
+        );
+        let mut res: bool = true;
+        peer_public_key
+            .verify(
+                msg,
+                hex::decode(self.signature.to_owned())
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "failed to decode signature from hex {}, gave error {}",
+                            self.signature, e
+                        );
+                        return vec![0, 1, 0];
+                    })
+                    .as_ref(),
+            )
+            .unwrap_or_else(|_e| {
+                res = false;
+            });
+        return res;
+    }
 }
 /// Generates and saves the merkle root of the chain
 pub fn generate_merkle_root(
@@ -170,13 +312,17 @@ impl Block {
         for tx in self.txns.clone() {
             bytes.extend(tx.hash.as_bytes());
         }
-        bytes.extend(self.nonce.to_string().as_bytes());
         bytes
     }
     pub fn hash(&mut self) {
         let asbytes = self.bytes();
         let out = cryptonight(&asbytes, asbytes.len(), 0);
         self.hash = hex::encode(out);
+    }
+    pub fn hash_return(&self) -> String {
+        let asbytes = self.bytes();
+        let out = cryptonight(&asbytes, asbytes.len(), 0);
+        return hex::encode(out);
     }
     pub fn sign(
         &mut self,
@@ -223,8 +369,20 @@ impl Block {
         self == OtherBlock
     }
 }
-
+// TODO: enact block
+pub fn enact_block(blk: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    return Ok(());
+}
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {
+    if blk.header.network != config().network_id {
+        return Err(blockValidationErrors::networkMissmatch);
+    } else if blk.hash != blk.hash_return() {
+        return Err(blockValidationErrors::invalidBlockhash);
+    }
+    if getData(config().db_path + &"/checkpoints".to_owned(), &blk.hash) != "-1".to_owned() {
+        // we have this block in our checkpoints db and we know the hash is correct and therefore the block is valid
+        return Ok(());
+    }
     if blk.header.height == 0 {
         // This is a genesis block (the first block)
         // First we will check if there is a entry for this chain in the genesis blocks db
@@ -265,19 +423,56 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     return Err(blockValidationErrors::genesisBlockMissmatch);
                 } else if !blk.validSignature() {
                     return Err(blockValidationErrors::badSignature);
+                } else if getBlockFromRaw(blk.hash.clone()) != Block::default() {
+                    return Err(blockValidationErrors::blockExists);
+                } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
+                    < (SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards")
+                        .as_millis() as u64)
+                    || blk.header.timestamp + (config().transactionTimestampMaxOffset as u64)
+                        < (SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .expect("Time went backwards")
+                            .as_millis() as u64)
+                {
+                    return Err(blockValidationErrors::timestampInvalid);
                 }
                 return Ok(());
             }
         }
     } else {
         // not genesis block
+        if blk.confimed == true
+            && blk.node_signatures.len() < (2 / 3 * config().commitee_size) as usize
+        {
+            return Err(blockValidationErrors::tooLittleSignatures);
+        } else {
+            for signature in blk.clone().node_signatures {
+                if !signature.valid() {
+                    return Err(blockValidationErrors::badNodeSignature);
+                }
+            }
+        }
         if blk.header.prev_hash != getBlock(&blk.header.chain_key, &blk.header.height - 1).hash {
             return Err(blockValidationErrors::invalidPreviousBlockhash);
-        } else if let Err(e) = getAccount(&blk.header.chain_key) {
-            // this account allready exists, you can't have two genesis blocks
+        } else if let Err(_) = getAccount(&blk.header.chain_key) {
+            // this account doesn't exist, the first block must be a genesis block
             return Err(blockValidationErrors::other);
         } else if !blk.validSignature() {
             return Err(blockValidationErrors::badSignature);
+        } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
+            < (SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis() as u64)
+            || blk.header.timestamp + (config().transactionTimestampMaxOffset as u64)
+                < (SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_millis() as u64)
+        {
+            return Err(blockValidationErrors::timestampInvalid);
         }
         for txn in blk.txns {
             if !txn.validate_transaction() {
@@ -311,7 +506,8 @@ mod tests {
         let rngc = randc::SystemRandom::new();
         for i in 0..=1000 {
             let mut block = Block::default();
-            block.nonce = i.to_string();
+            block.header.network = config().network_id;
+
             let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
             let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
             let peer_public_key_bytes = key_pair.public_key().as_ref();
@@ -353,8 +549,8 @@ mod tests {
             assert_eq!(block.validSignature(), true);
             let block_clone = block.clone();
             println!("saving block");
-            let mut conf = Config::default();
-            conf.create();
+            let conf = Config::default();
+            let _ = conf.create();
             println!("Block: {:?}", block);
             saveBlock(block).unwrap();
             println!("reading block...");

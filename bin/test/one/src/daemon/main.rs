@@ -33,7 +33,7 @@ use avrio_config::{config, Config};
 extern crate avrio_core;
 use avrio_core::{
     account::{deltaFunds, getAccount, setAccount, Account},
-    certificate::{certificateErrors, difficulty_bytes_as_u64, generateCertificate, Certificate},
+    certificate::{certificateErrors, difficulty_bytes_as_u128, generateCertificate, Certificate},
     gas::*,
     transaction::Transaction,
 };
@@ -292,11 +292,12 @@ fn send_block(chainKey: String, height: u64, private_key: String) {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64,
+                network: config().network_id,
         },
         txns: transactions,
         hash: String::from(""),
         signature: String::from(""),
-        nonce: "1234".to_owned(),
+        confimed: false,
         node_signatures: vec![],
     };
     new_block.hash();
