@@ -2,20 +2,21 @@
 This file handles the generation, validation and saving of the fullnodes certificate
 */
 
-extern crate hex;
 use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
-extern crate cryptonight;
 use avrio_config::config;
 extern crate avrio_database;
 use crate::transaction::Transaction;
 use avrio_database::getData;
 
+use avrio_crypto::Hashable;
 use ring::{
     rand as randc,
     signature::{self, KeyPair},
 };
 use serde::{Deserialize, Serialize};
+extern crate bs58;
+#[derive(Debug)]
 
 pub enum certificateErrors {
     pubtransactionNotFound,
@@ -31,7 +32,7 @@ pub enum certificateErrors {
     difficultyLow,
     unknown,
 }
-#[derive(Deserialize, Serialize, Default)]
+#[derive(Deserialize, Serialize, Default, Debug)]
 pub struct Certificate {
     pub hash: String,
     pub publicKey: String,
@@ -40,10 +41,63 @@ pub struct Certificate {
     pub timestamp: u64,
     pub signature: String,
 }
-pub fn difficulty_bytes_as_u64(v: &Vec<u8>) -> u64 {
-    return v.clone().iter().sum::<u8>().into();
+pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
+    ((v[31] as u128) << 0xf * 8)
+        | ((v[30] as u128) << 0xe * 8)
+        | ((v[29] as u128) << 0xd * 8)
+        | ((v[28] as u128) << 0xc * 8)
+        | ((v[27] as u128) << 0xb * 8)
+        | ((v[26] as u128) << 0xa * 8)
+        | ((v[25] as u128) << 0x9 * 8)
+        | ((v[24] as u128) << 0x8 * 8)
+        | ((v[23] as u128) << 0x7 * 8)
+        | ((v[22] as u128) << 0x6 * 8)
+        | ((v[21] as u128) << 0x5 * 8)
+        | ((v[20] as u128) << 0x4 * 8)
+        | ((v[19] as u128) << 0x3 * 8)
+        | ((v[18] as u128) << 0x2 * 8)
+        | ((v[17] as u128) << 0x1 * 8)
+        | ((v[16] as u128) << 0x0 * 8)
 }
-
+#[cfg(test)]
+mod tests {
+    pub use crate::certificate::*;
+    use avrio_config::config;
+    use ring::{
+        rand as randc,
+        signature::{self, KeyPair},
+    };
+    #[test]
+    fn check_cert_diff() {
+        let mut conf = config();
+        conf.certificateDifficulty = 0x0fffffffffffffffffffffffffffffff;
+        conf.create().unwrap();
+        let rngc = randc::SystemRandom::new();
+        let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
+        let peer_public_key_bytes = key_pair.public_key().as_ref();
+        let target = 600 * 1000;
+        println!(
+            "generating cerificate now. Public key: {}",
+            bs58::encode(peer_public_key_bytes).into_string()
+        );
+        let cert = generateCertificate(
+            &bs58::encode(peer_public_key_bytes).into_string(),
+            &bs58::encode(pkcs8_bytes).into_string(),
+            &bs58::encode("txn hashhhh").into_string(),
+        )
+        .unwrap();
+        println!(
+            "Generated cert: {:?} in {} microsecconds.",
+            cert,
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis() as u64
+                - cert.timestamp
+        );
+    }
+}
 pub fn generateCertificate(
     pk: &String,
     privateKey: &String,
@@ -67,6 +121,10 @@ pub fn generateCertificate(
     for nonce in 0..u64::max_value() {
         cert.nonce = nonce;
         cert.hash();
+        println!(
+            "{}",
+            cert.hash
+        );
         if cert.checkDiff(&diff_cert) {
             break;
         }
@@ -76,6 +134,16 @@ pub fn generateCertificate(
         return Err(certificateErrors::signatureError);
     } else {
         return Ok(cert);
+    }
+}
+impl Hashable for Certificate {
+    fn bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![];
+        bytes.extend(self.publicKey.bytes());
+        bytes.extend(self.txnHash.bytes());
+        bytes.extend(self.nonce.to_owned().to_string().bytes());
+        bytes.extend(self.timestamp.to_owned().to_string().bytes());
+        bytes
     }
 }
 impl Certificate {
@@ -123,31 +191,38 @@ impl Certificate {
         }
     }
     pub fn sign(&mut self, private_key: &String) -> Result<(), ring::error::KeyRejected> {
-        let key_pair =
-            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(
+            bs58::decode(private_key)
+                .into_vec()
+                .unwrap_or(vec![0])
+                .as_ref(),
+        )?;
         let msg: &[u8] = self.hash.as_bytes();
-        self.signature = hex::encode(key_pair.sign(msg));
+        self.signature = bs58::encode(key_pair.sign(msg)).into_string();
         return Ok(());
     }
     pub fn validSignature(&self) -> bool {
         let msg: &[u8] = self.hash.as_bytes();
         let peer_public_key = signature::UnparsedPublicKey::new(
             &signature::ED25519,
-            hex::decode(self.publicKey.to_owned()).unwrap_or_else(|e| {
-                error!(
-                    "Failed to decode public key from hex {}, gave error {}",
-                    self.publicKey, e
-                );
-                return vec![0, 1, 0];
-            }),
+            bs58::decode(self.publicKey.to_owned())
+                .into_vec()
+                .unwrap_or_else(|e| {
+                    error!(
+                        "Failed to decode public key from base58 {}, gave error {}",
+                        self.publicKey, e
+                    );
+                    return vec![0, 1, 0];
+                }),
         );
         peer_public_key
             .verify(
                 msg,
-                hex::decode(self.signature.to_owned())
+                bs58::decode(self.signature.to_owned())
+                    .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
-                            "failed to decode signature from hex {}, gave error {}",
+                            "failed to decode signature from base58 {}, gave error {}",
                             self.signature, e
                         );
                         return vec![0, 1, 0];
@@ -160,8 +235,13 @@ impl Certificate {
         return true; // ^ wont unwrap if sig is invalid
     }
 
-    pub fn checkDiff(&self, diff: &u64) -> bool {
-        if difficulty_bytes_as_u64(&self.hash.as_bytes().to_vec()) < diff.to_owned() {
+    pub fn checkDiff(&self, diff: &u128) -> bool {
+        if difficulty_bytes_as_u128(
+            &bs58::decode(self.hash.clone())
+                .into_vec()
+                .unwrap_or(vec![0]),
+        ) < diff.to_owned()
+        {
             return true;
         } else {
             return false;
@@ -175,15 +255,10 @@ impl Certificate {
         bytes.extend(self.timestamp.to_owned().to_string().bytes());
         bytes
     }
-    fn hash(&mut self) {
-        let bytes = self.encodeForHashing();
-        unsafe {
-            cryptonight::set_params(655360, 32768);
-        }
-        let hash = cryptonight::cryptonight(&bytes, bytes.len(), 0);
-        self.hash = String::from(hex::encode(hash));
+    pub fn hash(&mut self) {
+        self.hash = self.hash_item();
     }
-    fn encodeForFile(&self) -> Vec<u8> {
+    pub fn encodeForFile(&self) -> Vec<u8> {
         let mut bytes = vec![];
         bytes.extend(self.hash.bytes());
         bytes.extend(self.publicKey.bytes());

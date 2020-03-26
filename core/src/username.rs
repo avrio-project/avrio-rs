@@ -3,9 +3,10 @@ Copyright 2020 The Avrio Core Developers
 This file handles the registartion and validation of txns.
 */
 
+use avrio_crypto::Hashable;
 use ring::signature::{self, KeyPair};
 use serde::{Deserialize, Serialize};
-
+extern crate bs58;
 #[derive(Debug, Default, PartialEq, PartialOrd, Ord, Eq, Deserialize, Serialize)]
 pub struct UsernameRegistation {
     pub hash: String,
@@ -15,9 +16,8 @@ pub struct UsernameRegistation {
     pub timestamp: u64,
     pub signature: String,
 }
-
-impl UsernameRegistation {
-    pub fn bytes(&self) -> Vec<u8> {
+impl Hashable for UsernameRegistation {
+    fn bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
         bytes.extend(self.public_key.as_bytes());
         bytes.extend(self.username.as_bytes());
@@ -25,26 +25,32 @@ impl UsernameRegistation {
         bytes.extend(self.timestamp.to_string().as_bytes());
         bytes
     }
+}
+impl UsernameRegistation {
     pub fn hash(&mut self) {
-        let as_bytes = self.bytes();
-        self.hash = hex::encode(cryptonight::cryptonight(&as_bytes, as_bytes.len(), 0));
+        self.hash = self.hash_item();
     }
     pub fn hash_return(&self) -> String {
-        let as_bytes = self.bytes();
-        return hex::encode(cryptonight::cryptonight(&as_bytes, as_bytes.len(), 0));
+        return self.hash_item();
     }
     pub fn sign(
         &mut self,
         private_key: &String,
     ) -> std::result::Result<(), ring::error::KeyRejected> {
-        let key_pair =
-            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(
+            bs58::decode(private_key)
+                .into_vec()
+                .unwrap_or(vec![0])
+                .as_ref(),
+        )?;
         let msg: &[u8] = self.hash.as_bytes();
-        self.signature = hex::encode(key_pair.sign(msg));
+        self.signature = bs58::encode(key_pair.sign(msg)).into_string();
         return Ok(());
     }
     pub fn verify_signature(&self) -> bool {
-        let public_key_bytes = hex::decode(self.public_key.clone()).unwrap_or(vec![5]);
+        let public_key_bytes = bs58::decode(self.public_key.clone())
+            .into_vec()
+            .unwrap_or(vec![5]);
         if public_key_bytes.len() == 1 && public_key_bytes[0] == 5 {
             return false;
         }
@@ -52,7 +58,9 @@ impl UsernameRegistation {
             signature::UnparsedPublicKey::new(&signature::ED25519, public_key_bytes);
         match peer_public_key.verify(
             self.hash.as_bytes(),
-            &hex::decode(&(self.signature).to_owned()).unwrap(),
+            &bs58::decode(&(self.signature).to_owned())
+                .into_vec()
+                .unwrap_or(vec![0]),
         ) {
             Ok(()) => {
                 return true;

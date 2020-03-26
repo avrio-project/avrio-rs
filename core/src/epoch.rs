@@ -7,7 +7,8 @@ extern crate rand;
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-
+use avrio_crypto::Hashable;
+extern crate bs58;
 #[derive(Default, PartialEq, Serialize, Deserialize, Debug)]
 pub struct Epoch {
     pub hash: String,
@@ -22,8 +23,29 @@ pub struct Epoch {
     pub average_vote: u8,
     pub nonce: u64,
 }
-
+impl Hashable for Epoch {
+    fn bytes(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = vec![];
+        bytes.extend(self.height.to_string().bytes());
+        bytes.extend(self.fullnodes_online.to_string().bytes());
+        bytes.extend(self.total_coins_movement.to_string().bytes());
+        bytes.extend(self.new_coins.to_string().bytes());
+        bytes.extend(self.burnt_coins.to_string().bytes());
+        bytes.extend(self.locked_coins.to_string().bytes());
+        bytes.extend(self.blocks.to_string().bytes());
+        bytes.extend(self.average_ttl.to_string().bytes());
+        bytes.extend(self.average_vote.to_string().bytes());
+        bytes.extend(self.nonce.to_string().bytes());
+        bytes
+    }
+}
 impl Epoch {
+    pub fn hash(&mut self) {
+        self.hash = self.hash_item();
+    }
+    pub fn hash_return(&self) -> String {
+        return self.hash_item();
+    }
     pub fn new() -> Epoch {
         let mut rng = rand::thread_rng();
         Epoch {

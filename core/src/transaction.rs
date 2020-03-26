@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 extern crate cryptonight;
 extern crate hex;
-use cryptonight::cryptonight;
+use avrio_crypto::Hashable;
 extern crate avrio_config;
+extern crate bs58;
 use avrio_config::config;
 extern crate rand;
+use std::collections::HashMap;
 
 use ring::signature::{self, KeyPair};
 
@@ -31,6 +33,23 @@ pub struct Transaction {
     pub nonce: u64,
     pub timestamp: u64,
     pub signature: String,
+}
+impl Hashable for Transaction {
+    fn bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![];
+
+        bytes.extend((self.amount.to_string()).bytes());
+        bytes.extend((self.extra.to_owned()).bytes());
+        bytes.extend(self.flag.to_string().bytes());
+        bytes.extend(self.sender_key.bytes());
+        bytes.extend(self.receive_key.bytes());
+        bytes.extend(self.access_key.as_bytes());
+        bytes.extend(self.unlock_time.to_string().as_bytes());
+        bytes.extend(((self.gas * self.gas_price.to_owned()).to_string()).bytes()); // aka fee
+        bytes.extend(self.timestamp.to_string().as_bytes());
+        bytes.extend((self.nonce.to_owned().to_string()).bytes());
+        bytes
+    }
 }
 impl Transaction {
     pub fn typeTransaction(&self) -> String {
@@ -180,7 +199,8 @@ impl Transaction {
             } else if self.extra.len() > 100 {
                 return false;
             } else {
-                let mut peer_public_key_bytes = hex::decode(&self.sender_key.to_owned())
+                let mut peer_public_key_bytes = bs58::decode(&self.sender_key.to_owned())
+                    .into_vec()
                     .unwrap_or_else(|e| {
                         warn!("Hex decoding peer public key gave error {}", e);
                         return vec![5];
@@ -188,11 +208,12 @@ impl Transaction {
                 if peer_public_key_bytes.len() == 1 && peer_public_key_bytes[0] == 5 {
                     // a public key will never be this short
                     // this is probably a username rather than a publickey
-                    peer_public_key_bytes = hex::decode(
+                    peer_public_key_bytes = bs58::decode(
                         getByUsername(&self.sender_key)
                             .unwrap_or_default()
                             .public_key,
                     )
+                    .into_vec()
                     .unwrap_or(vec![5]);
                     if peer_public_key_bytes.len() < 2 {
                         return false;
@@ -202,7 +223,9 @@ impl Transaction {
                     signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
                 match peer_public_key.verify(
                     self.hash.as_bytes(),
-                    &hex::decode(&(self.signature).to_owned()).unwrap(),
+                    &bs58::decode(&(self.signature).to_owned())
+                        .into_vec()
+                        .unwrap(),
                 ) {
                     Ok(()) => {}
                     _ => return false,
@@ -214,56 +237,32 @@ impl Transaction {
         }
         return true;
     }
-
-    pub fn bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![];
-
-        bytes.extend((self.amount.to_string()).bytes());
-        bytes.extend((self.extra.to_owned()).bytes());
-        bytes.extend(self.flag.to_string().bytes());
-        bytes.extend(self.sender_key.bytes());
-        bytes.extend(self.receive_key.bytes());
-        bytes.extend(self.access_key.as_bytes());
-        bytes.extend(self.unlock_time.to_string().as_bytes());
-        bytes.extend(((self.gas * self.gas_price.to_owned()).to_string()).bytes()); // aka fee
-        bytes.extend(self.timestamp.to_string().as_bytes());
-        bytes.extend((self.nonce.to_owned().to_string()).bytes());
-        bytes
-    }
     pub fn hash(&mut self) {
-        let asbytes = self.bytes();
-        let out = cryptonight(&asbytes, asbytes.len(), 0);
-        self.hash = hex::encode(out);
+        self.hash = self.hash_item();
     }
     pub fn hashReturn(&self) -> String {
-        let asbytes = self.bytes();
-
-        let out = cryptonight(&asbytes, asbytes.len(), 0);
-        return hex::encode(out);
+        return self.hash_item();
     }
     pub fn sign(
         &mut self,
         private_key: &String,
     ) -> std::result::Result<(), ring::error::KeyRejected> {
-        let key_pair =
-            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(
+            bs58::decode(private_key).into_vec().unwrap().as_ref(),
+        )?;
         let msg: &[u8] = self.hash.as_bytes();
-        self.signature = hex::encode(key_pair.sign(msg));
+        self.signature = bs58::encode(key_pair.sign(msg)).into_string();
         return Ok(());
     }
 }
-
-pub fn hashBytes(asbytes: Vec<u8>) -> String {
-    unsafe {
-        let out = cryptonight(&asbytes, asbytes.len(), 0);
-        return hex::encode(out);
+pub struct item {
+    pub cont: String,
+}
+impl Hashable for item {
+    fn bytes(&self) -> Vec<u8> {
+        self.cont.as_bytes().to_vec()
     }
 }
-
-fn hash(subject: String) -> String {
-    let asBytes = subject.as_bytes();
-    unsafe {
-        let out = cryptonight(&asBytes, asBytes.len(), 0);
-        return hex::encode(out);
-    }
+pub fn hash(subject: String) -> String {
+    return item { cont: subject }.hash_item();
 }

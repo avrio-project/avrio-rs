@@ -14,3 +14,5 @@ avrio_config = {path = "../config"}
 hex = "0.4"
 cryptonight-rs = { path ="../crypto/cn-rs"}
 rand = "0.7"
+bs58 = "0.3.0"
+avrio_crypto = {path = "../crypto"}

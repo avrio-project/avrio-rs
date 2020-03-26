@@ -4,7 +4,8 @@ Copyright the Avrio Core Developers 2020
 This file handles the creation/ calculation and validation of node votes
 */
 extern crate cryptonight;
-use cryptonight::cryptonight;
+use avrio_crypto::Hashable;
+extern crate bs58;
 use std::time::Instant;
 extern crate hex;
 use ring::{
@@ -30,7 +31,17 @@ pub struct Vote {
     /// A nonce to prevent vote replay attacks
     pub nonce: u64,
 }
-
+impl Hashable for Vote {
+    fn bytes(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = vec![];
+        bytes.extend(self.timestamp.to_string().as_bytes());
+        bytes.extend(self.subject_public_key.as_bytes());
+        bytes.extend(self.voter_public_key.as_bytes());
+        bytes.extend(self.vote.to_string().as_bytes());
+        bytes.extend(self.nonce.to_string().as_bytes());
+        bytes
+    }
+}
 impl Vote {
     pub fn calculate(prt: u64, ttl: u64, tvt: u64, tvc: u32, attl: u64) -> u8 {
         let config = config();
@@ -62,28 +73,22 @@ impl Vote {
         }
         return vote;
     }
-    pub fn bytes(&self) -> Vec<u8> {
-        let mut bytes: Vec<u8> = vec![];
-        bytes.extend(self.timestamp.to_string().as_bytes());
-        bytes.extend(self.subject_public_key.as_bytes());
-        bytes.extend(self.voter_public_key.as_bytes());
-        bytes.extend(self.vote.to_string().as_bytes());
-        bytes.extend(self.nonce.to_string().as_bytes());
-        bytes
-    }
+
     pub fn hash(&mut self) {
-        let as_bytes = self.bytes();
-        self.hash = hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
+        self.hash = self.hash_item();
     }
     pub fn hash_return(&self) -> String {
-        let as_bytes = self.bytes();
-        return hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
+        return self.hash_item();
     }
     pub fn sign(&mut self, private_key: String) -> Result<(), ring::error::KeyRejected> {
-        let key_pair =
-            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(
+            bs58::decode(private_key)
+                .into_vec()
+                .unwrap_or(vec![0])
+                .as_ref(),
+        )?;
         let msg: &[u8] = self.hash.as_bytes();
-        self.signature = hex::encode(key_pair.sign(msg));
+        self.signature = bs58::encode(key_pair.sign(msg)).into_string();
         return Ok(());
     }
     pub fn bytes_all(&self) -> Vec<u8> {
@@ -126,19 +131,22 @@ impl Vote {
         let msg: &[u8] = self.hash.as_bytes();
         let peer_public_key = signature::UnparsedPublicKey::new(
             &signature::ED25519,
-            hex::decode(self.voter_public_key.to_owned()).unwrap_or_else(|e| {
-                error!(
-                    "Failed to decode public key from hex {}, gave error {}",
-                    self.voter_public_key, e
-                );
-                return vec![0, 1, 0];
-            }),
+            bs58::decode(self.voter_public_key.to_owned())
+                .into_vec()
+                .unwrap_or_else(|e| {
+                    error!(
+                        "Failed to decode public key from hex {}, gave error {}",
+                        self.voter_public_key, e
+                    );
+                    return vec![0, 1, 0];
+                }),
         );
         let mut res: bool = true;
         peer_public_key
             .verify(
                 msg,
-                hex::decode(self.signature.to_owned())
+                bs58::decode(self.signature.to_owned())
+                    .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
                             "failed to decode signature from hex {}, gave error {}",
