@@ -24,7 +24,7 @@ pub struct NetworkConfig {
     pub max_reward: u32,
     pub min_vote: u8,
     pub probatory_epoch_count: u8,
-    pub certificateDifficulty: u64,
+    pub certificateDifficulty: u128,
     pub fullnode_lock_amount: u64,
     pub transactionTimestampMaxOffset: u32,
     pub max_time_to_live: u64,
@@ -35,6 +35,8 @@ pub struct NetworkConfig {
     pub commitee_size: u8,
     pub assessor_node_count: u8,
     pub consensus_commitee_size: u8,
+    pub min_suported_version: Vec<u8>,
+    pub max_supported_version: Vec<u8>,
 }
 /// This is what is saved in a file, the stuff the user can change and edit to fit their needs
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -88,7 +90,7 @@ pub struct Config {
     pub max_reward: u32,
     pub min_vote: u8,
     pub probatory_epoch_count: u8,
-    pub certificateDifficulty: u64,
+    pub certificateDifficulty: u128,
     pub fullnode_lock_amount: u64,
     pub transactionTimestampMaxOffset: u32,
     pub max_time_to_live: u64,
@@ -101,6 +103,8 @@ pub struct Config {
     pub assessor_node_count: u8,
     pub consensus_commitee_size: u8,
     pub time_beetween_sync: u64,
+    pub min_suported_version: Vec<u8>,
+    pub max_supported_version: Vec<u8>,
 }
 
 pub fn config() -> Config {
@@ -239,6 +243,8 @@ impl ConfigSave {
             commitee_size: nconf.commitee_size,
             consensus_commitee_size: nconf.consensus_commitee_size,
             assessor_node_count: nconf.assessor_node_count,
+            min_suported_version: nconf.min_suported_version,
+            max_supported_version: nconf.max_supported_version,
         };
     }
 }
@@ -278,6 +284,8 @@ impl Default for NetworkConfig {
             commitee_size: 15,
             consensus_commitee_size: 21,
             assessor_node_count: 6,
+            min_suported_version: vec![0,1,0],
+            max_supported_version: vec![0,1,0],
         }
     }
 }
