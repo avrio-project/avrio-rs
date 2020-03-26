@@ -1,0 +1,9 @@
+[package]
+name = "avrio_crypto"
+version = "0.1.0"
+authors = ["Leo Cornelius <leocornelius019@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
+edition = "2018"
+license = "MIT"
+[dependencies]
+lyra2 = "0.2.1"
+bs58 = "0.3.0"
