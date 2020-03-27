@@ -7,4 +7,4 @@ license = "MIT"
 [dependencies]
 lyra2 = "0.2.1"
 bs58 = "0.3.0"
-argonautica = "0.2.0"
+rust-argon2 = "0.8"
