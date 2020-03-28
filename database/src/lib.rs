@@ -43,9 +43,9 @@ pub fn savePeerlist(list: &Vec<SocketAddr>, path: String) {}
 
 pub fn getData(path: String, key: &String) -> String {
     let db = DB::open_default(path).unwrap();
-    let data: String;
+    let mut data: String;
     match db.get(key) {
-        Ok(Some(value)) => data = value.to_utf8().unwrap().to_string(),
+        Ok(Some(value)) => data = String::from_utf8(value).unwrap_or("".to_owned()),
         Ok(None) => data = "-1".to_owned(),
         Err(_e) => data = "0".to_owned(),
     }

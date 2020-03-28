@@ -206,7 +206,8 @@ pub fn generate_merkle_root(
     let mut iter = db.raw_iterator();
     iter.seek_to_first();
     while iter.valid() {
-        chain_vec.push(String::from_utf8(iter.value().unwrap_or(vec![])).unwrap_or_default());
+        chain_vec
+            .push(String::from_utf8(iter.value().unwrap_or(&[0; 1]).to_vec()).unwrap_or_default());
         iter.next();
     }
     let merkle = merkle::MerkleTree::from_vec(&SHA256, chain_vec);
@@ -225,7 +226,7 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
         iter.seek_to_first();
         while iter.valid() {
             if let Some(chain) = iter.value() {
-                if let Ok(chain_string) = String::from_utf8(chain) {
+                if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
                     let root_read = getData(
                         config().db_path
                             + &"/".to_owned()

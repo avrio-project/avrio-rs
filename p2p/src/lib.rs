@@ -126,7 +126,7 @@ fn sendInventories(
             iter.seek_to_first();
             while iter.valid() {
                 if let Some(chain) = iter.value() {
-                    if let Ok(chain_string) = String::from_utf8(chain) {
+                    if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
                         if let Ok(inv_db) = openDb(
                             config().db_path
                                 + &"/chains".to_owned()
@@ -137,7 +137,7 @@ fn sendInventories(
                             inviter.seek_to_first();
                             while inviter.valid() {
                                 if let Some(inv) = iter.value() {
-                                    if let Ok(inv_string) = String::from_utf8(inv) {
+                                    if let Ok(inv_string) = String::from_utf8(inv.to_vec()) {
                                         let inv_des: Inventory =
                                             serde_json::from_str(&inv_string).unwrap_or_default();
                                         if inv_des == Inventory::default() {
@@ -173,11 +173,9 @@ fn sendInventories(
                                         warn!(
                                             "Found corrupted inventory at key: {}",
                                             String::from_utf8(
-                                                iter.key().unwrap_or(
-                                                    b"error getting index, (key err)"
-                                                        .to_owned()
-                                                        .to_vec()
-                                                )
+                                                iter.key()
+                                                    .unwrap_or(b"error getting index, (key err)")
+                                                    .to_vec()
                                             )
                                             .unwrap_or("error getting index (utf8 err)".to_owned())
                                         );
@@ -189,8 +187,7 @@ fn sendInventories(
                         warn!(
                             "Found corrupted chain at key: {}",
                             String::from_utf8(
-                                iter.key()
-                                    .unwrap_or(b"error getting index".to_owned().to_vec())
+                                iter.key().unwrap_or(b"error getting index").to_vec()
                             )
                             .unwrap_or("error getting index".to_owned())
                         );
@@ -198,11 +195,8 @@ fn sendInventories(
                 } else {
                     warn!(
                         "Found corrupted chain at key: {}",
-                        String::from_utf8(
-                            iter.key()
-                                .unwrap_or(b"error getting index".to_owned().to_vec())
-                        )
-                        .unwrap_or("error getting index".to_owned())
+                        String::from_utf8(iter.key().unwrap_or(b"error getting index").to_vec())
+                            .unwrap_or("error getting index".to_owned())
                     );
                 }
                 trace!(
@@ -712,7 +706,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             chainiter.seek_to_first();
             while chainiter.valid() {
                 if let Some(chain) = chainiter.value() {
-                    if let Ok(chain_string) = String::from_utf8(chain) {
+                    if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
                         if let Ok(inv_db) = openDb(
                             config().db_path
                                 + &"/chains".to_owned()
@@ -722,7 +716,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                             let mut iter = inv_db.raw_iterator();
                             iter.seek_to_first();
                             if let Some(inv) = iter.value() {
-                                if let Ok(inv_string) = String::from_utf8(inv) {
+                                if let Ok(inv_string) = String::from_utf8(inv.to_vec()) {
                                     let inv_des: Inventory =
                                         serde_json::from_str(&inv_string).unwrap_or_default();
                                     if inv_des == Inventory::default() {
@@ -737,7 +731,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                                             iter.value()
                                         );
                                         let block: String = String::from_utf8(
-                                            iter.value().unwrap_or(b"get value failed".to_vec()),
+                                            iter.value().unwrap_or(b"get value failed").to_vec(),
                                         )
                                         .unwrap_or("get value failed".to_string());
                                         if getBlockFromRaw((&block).to_string()) != Block::default()
@@ -799,9 +793,11 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                                 } else {
                                     warn!(
                                         "Found corrupted inventory at key: {}",
-                                        String::from_utf8(iter.key().unwrap_or(
-                                            b"error getting index, (key err)".to_owned().to_vec()
-                                        ))
+                                        String::from_utf8(
+                                            iter.key()
+                                                .unwrap_or(b"error getting index, (key err)")
+                                                .to_vec()
+                                        )
                                         .unwrap_or("error getting index (utf8 err)".to_owned())
                                     );
                                 }
