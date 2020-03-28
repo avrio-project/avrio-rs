@@ -6,7 +6,7 @@ extern crate avrio_config;
 extern crate bs58;
 use avrio_config::config;
 extern crate rand;
-use std::collections::HashMap;
+
 
 use ring::signature::{self, KeyPair};
 

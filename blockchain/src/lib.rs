@@ -8,18 +8,18 @@ use avrio_database::*;
 use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate log;
-use merkle::*;
+
 use ring::{
     digest::{Context, Digest, SHA256},
     rand as randc,
     signature::{self, KeyPair},
 };
 extern crate rand;
-use rand::Rng;
+
 extern crate cryptonightrs;
-use bincode::{deserialize, serialize};
+
 use cryptonightrs::cryptonight;
-use serde_json::*;
+
 use std::fs::File;
 use std::io::prelude::*;
 #[derive(Debug)]
@@ -371,7 +371,7 @@ impl Block {
     }
 }
 // TODO: enact block
-pub fn enact_block(blk: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+pub fn enact_block(_blk: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
     return Ok(());
 }
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {

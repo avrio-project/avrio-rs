@@ -3,7 +3,7 @@ use avrio_database::{getData, saveData};
 use serde::{Deserialize, Serialize};
 extern crate avrio_config;
 use avrio_config::config;
-use std::process::exit;
+
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Accesskey {

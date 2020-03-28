@@ -76,7 +76,7 @@ mod tests {
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
         let peer_public_key_bytes = key_pair.public_key().as_ref();
-        let target = 600 * 1000;
+        let _target = 600 * 1000;
         println!(
             "generating cerificate now. Public key: {}",
             bs58::encode(peer_public_key_bytes).into_string()

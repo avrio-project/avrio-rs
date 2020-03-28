@@ -105,7 +105,7 @@ pub struct ChainDigestPeer {
 pub fn sync_needed() -> bool {
     return true;
 }
-pub fn prop_block(blk: Block) -> Result<u64, Box<dyn std::error::Error>> {
+pub fn prop_block(_blk: Block) -> Result<u64, Box<dyn std::error::Error>> {
     return Ok(0); // TODO: send block to all peers and await a response, return Ok(number of peers who responded)
 }
 
@@ -357,7 +357,7 @@ fn get_mode(v: Vec<String>) -> String {
 /// It returns Ok(()) on succsess and handles the inventory generation, inventory saving, block geting, block validation,
 /// block saving, block enacting and informing the user of the progress.
 /// If you simply want to sync all chains then use the sync function bellow.
-pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+pub fn sync_chain(_chain: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
     return Ok(());
 }
 
@@ -371,8 +371,8 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<(), Box<dyn std
 /// the peer is malicously withholding them. For this reason only do this if you trust the peer or will be checking the blockchain
 /// with a diferent peer afterwards.
 pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
-    let mut peers: Vec<TcpStream> = vec![];
-    let mut pc: u32 = 0;
+    let _peers: Vec<TcpStream> = vec![];
+    let _pc: u32 = 0;
     let _i: usize = 0;
     let mut chainDigests: Vec<ChainDigestPeer> = vec![];
     let _empty_string = "".to_string();
@@ -824,9 +824,9 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
             Ok(_) => {
                 match deformMsg(&String::from_utf8(data.to_vec()).unwrap(), &mut peer_clone) {
                     Some(_a) => {
-                        let handshake_string = "handshake".to_owned();
+                        let _handshake_string = "handshake".to_owned();
                         match _a {
-                            handshake_string => {
+                            _handshake_string => {
                                 /* we just recieved a handshake, now we send ours
                                 This is in the following format
                                 network id, our peer id, our node type;
@@ -1011,7 +1011,7 @@ fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> 
         return Err("Failed to get peer addr".into());
     }
 }
-pub fn sendInventoriesDigest(peer: &mut TcpStream, amount: String) {
+pub fn sendInventoriesDigest(_peer: &mut TcpStream, _amount: String) {
     ()
 }
 
