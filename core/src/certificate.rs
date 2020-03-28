@@ -57,7 +57,25 @@ pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
         | ((v[19] as u128) << 0x3 * 8)
         | ((v[18] as u128) << 0x2 * 8)
         | ((v[17] as u128) << 0x1 * 8)
-        | ((v[16] as u128) << 0x0 * 8)
+        | ((v[18] as u128) << 0x0 * 8)
+        | ((v[19] as u128) << 0x0 * 8)
+        | ((v[20] as u128) << 0x0 * 8)
+        | ((v[21] as u128) << 0x0 * 8)
+        | ((v[22] as u128) << 0x0 * 8)
+        | ((v[23] as u128) << 0x0 * 8)
+        | ((v[24] as u128) << 0x0 * 8)
+        | ((v[25] as u128) << 0x0 * 8)
+}
+pub fn number_of_proceding_a(s: String) -> u8 {
+    let mut fufilled: u8 = 0;
+    for c in s.chars() {
+        if c != 'A' {
+            return fufilled;
+        } else {
+            fufilled += 1;
+        }
+    }
+    return fufilled;
 }
 #[cfg(test)]
 mod tests {
@@ -68,10 +86,36 @@ mod tests {
         signature::{self, KeyPair},
     };
     #[test]
-    fn check_cert_diff() {
+    fn hash_rate() {
+        println!("Starting hashrate test");
+        let start = SystemTime::now();
+        let mut cert: Certificate = Certificate {
+            hash: String::from(""),
+            publicKey: String::from(""),
+            txnHash: String::from(""),
+            nonce: 0,
+            timestamp: 0,
+            signature: String::from(""),
+        };
+        while SystemTime::now()
+            .duration_since(start)
+            .expect("Time went backwards")
+            .as_millis()
+            < 60 * 1000
+        {
+            cert.nonce += 1;
+            cert.hash();
+        }
+        let hashrate = cert.nonce / 60;
+        println!("hashrate: {} h/s", hashrate);
+    }
+
+    #[test]
+    fn test_cert_diff() {
         let mut conf = config();
-        conf.certificateDifficulty = 0x0fffffffffffffffffffffffffffffff;
-        conf.create().unwrap();
+        let diff = 4;
+
+        conf.save();
         let rngc = randc::SystemRandom::new();
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
@@ -81,20 +125,22 @@ mod tests {
             "generating cerificate now. Public key: {}",
             bs58::encode(peer_public_key_bytes).into_string()
         );
+    
         let cert = generateCertificate(
             &bs58::encode(peer_public_key_bytes).into_string(),
             &bs58::encode(pkcs8_bytes).into_string(),
             &bs58::encode("txn hashhhh").into_string(),
+            diff,
         )
         .unwrap();
         println!(
-            "Generated cert: {:?} in {} microsecconds.",
+            "Generated cert: {:?} in {} secconds.",
             cert,
-            SystemTime::now()
+            (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64
-                - cert.timestamp
+                - cert.timestamp) / 1000
         );
     }
 }
@@ -102,6 +148,7 @@ pub fn generateCertificate(
     pk: &String,
     privateKey: &String,
     txnHash: &String,
+    diff: u128,
 ) -> Result<Certificate, certificateErrors> {
     let mut cert: Certificate = Certificate {
         hash: String::from(""),
@@ -117,11 +164,10 @@ pub fn generateCertificate(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_millis() as u64;
-    let diff_cert = config().certificateDifficulty;
+    let diff_cert = diff; //config().certificateDifficulty;
     for nonce in 0..u64::max_value() {
         cert.nonce = nonce;
         cert.hash();
-        println!("{}", cert.hash);
         if cert.checkDiff(&diff_cert) {
             break;
         }
@@ -233,12 +279,8 @@ impl Certificate {
     }
 
     pub fn checkDiff(&self, diff: &u128) -> bool {
-        if difficulty_bytes_as_u128(
-            &bs58::decode(self.hash.clone())
-                .into_vec()
-                .unwrap_or(vec![0]),
-        ) < diff.to_owned()
-        {
+        let fufilled: u8 = 0;
+        if number_of_proceding_a(self.hash.clone()) as u128 == diff.to_owned() {
             return true;
         } else {
             return false;

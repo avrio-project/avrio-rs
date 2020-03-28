@@ -7,4 +7,7 @@ license = "MIT"
 [dependencies]
 lyra2 = "0.2.1"
 bs58 = "0.3.0"
-rust-argon2 = "0.8"
+scrypt = "0.2.0"
+blake = "2.0.0"
+bcrypt = "0.6.3"
+sha2 = "0.8.1"
