@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 #[macro_use]
 extern crate log;
 
+extern crate bs58;
+
 use ring::{
     digest::{Context, Digest, SHA256},
     rand as randc,
@@ -16,12 +18,11 @@ use ring::{
 };
 extern crate rand;
 
-extern crate cryptonightrs;
-
-use cryptonightrs::cryptonight;
+use avrio_crypto::Hashable;
 
 use std::fs::File;
 use std::io::prelude::*;
+
 #[derive(Debug)]
 pub enum blockValidationErrors {
     invalidBlockhash,
@@ -78,6 +79,17 @@ pub struct BlockSignature {
     pub nonce: u64,
 }
 
+impl Hashable for BlockSignature {
+    fn bytes(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = vec![];
+        bytes.extend(self.timestamp.to_string().as_bytes());
+        bytes.extend(self.block_hash.as_bytes());
+        bytes.extend(self.signer_public_key.as_bytes());
+        bytes.extend(self.nonce.to_string().as_bytes());
+        bytes
+    }
+}
+
 impl BlockSignature {
     pub fn enact(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         // we are presuming the vote is valid - if it is not this is going to mess stuff up!
@@ -128,30 +140,24 @@ impl BlockSignature {
             return true;
         }
     }
-    pub fn bytes(&self) -> Vec<u8> {
-        let mut bytes: Vec<u8> = vec![];
-        bytes.extend(self.timestamp.to_string().as_bytes());
-        bytes.extend(self.block_hash.as_bytes());
-        bytes.extend(self.signer_public_key.as_bytes());
-        bytes.extend(self.nonce.to_string().as_bytes());
-        bytes
-    }
     pub fn hash(&mut self) {
-        let as_bytes = self.bytes();
-        self.hash = hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
+        self.hash = self.hash_item();
     }
     pub fn hash_return(&self) -> String {
-        let as_bytes = self.bytes();
-        return hex::encode(cryptonight(&as_bytes, as_bytes.len(), 0));
+        return self.hash_item();
     }
     pub fn sign(
         &mut self,
         private_key: String,
     ) -> std::result::Result<(), ring::error::KeyRejected> {
-        let key_pair =
-            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(
+            bs58::decode(private_key)
+                .into_vec()
+                .unwrap_or_default()
+                .as_ref(),
+        )?;
         let msg: &[u8] = self.hash.as_bytes();
-        self.signature = hex::encode(key_pair.sign(msg));
+        self.signature = bs58::encode(key_pair.sign(msg)).into_string();
         return Ok(());
     }
     pub fn bytes_all(&self) -> Vec<u8> {
@@ -168,22 +174,25 @@ impl BlockSignature {
         let msg: &[u8] = self.hash.as_bytes();
         let peer_public_key = signature::UnparsedPublicKey::new(
             &signature::ED25519,
-            hex::decode(self.signer_public_key.to_owned()).unwrap_or_else(|e| {
-                error!(
-                    "Failed to decode public key from hex {}, gave error {}",
-                    self.signer_public_key, e
-                );
-                return vec![0, 1, 0];
-            }),
+            bs58::decode(self.signer_public_key.to_owned())
+                .into_vec()
+                .unwrap_or_else(|e| {
+                    error!(
+                        "Failed to decode public key from bs58 {}, gave error {}",
+                        self.signer_public_key, e
+                    );
+                    return vec![0, 1, 0];
+                }),
         );
         let mut res: bool = true;
         peer_public_key
             .verify(
                 msg,
-                hex::decode(self.signature.to_owned())
+                bs58::decode(self.signature.to_owned())
+                    .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
-                            "failed to decode signature from hex {}, gave error {}",
+                            "failed to decode signature from bs58 {}, gave error {}",
                             self.signature, e
                         );
                         return vec![0, 1, 0];
@@ -285,8 +294,8 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-impl Header {
-    pub fn bytes(&self) -> Vec<u8> {
+impl Hashable for Header {
+    fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
         bytes.extend(self.version_major.to_string().as_bytes());
@@ -298,15 +307,15 @@ impl Header {
         bytes.extend(self.timestamp.to_string().as_bytes());
         bytes
     }
+}
+impl Header {
     pub fn hash(&mut self) -> String {
-        let asbytes = self.bytes();
-        let out = cryptonight(&asbytes, asbytes.len(), 0);
-        return hex::encode(out);
+        return self.hash_item();
     }
 }
 
-impl Block {
-    pub fn bytes(&self) -> Vec<u8> {
+impl Hashable for Block {
+    fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
         bytes.extend(self.header.bytes());
@@ -315,46 +324,48 @@ impl Block {
         }
         bytes
     }
+}
+impl Block {
     pub fn hash(&mut self) {
-        let asbytes = self.bytes();
-        let out = cryptonight(&asbytes, asbytes.len(), 0);
-        self.hash = hex::encode(out);
+        self.hash = self.hash_item();
     }
     pub fn hash_return(&self) -> String {
-        let asbytes = self.bytes();
-        let out = cryptonight(&asbytes, asbytes.len(), 0);
-        return hex::encode(out);
+        return self.hash_item();
     }
     pub fn sign(
         &mut self,
         private_key: &String,
     ) -> std::result::Result<(), ring::error::KeyRejected> {
-        let key_pair =
-            signature::Ed25519KeyPair::from_pkcs8(hex::decode(private_key).unwrap().as_ref())?;
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(
+            bs58::decode(private_key).into_vec().unwrap().as_ref(),
+        )?;
         let msg: &[u8] = self.hash.as_bytes();
-        self.signature = hex::encode(key_pair.sign(msg));
+        self.signature = bs58::encode(key_pair.sign(msg)).into_string();
         return Ok(());
     }
     pub fn validSignature(&self) -> bool {
         let msg: &[u8] = self.hash.as_bytes();
         let peer_public_key = signature::UnparsedPublicKey::new(
             &signature::ED25519,
-            hex::decode(self.header.chain_key.to_owned()).unwrap_or_else(|e| {
-                error!(
-                    "Failed to decode public key from hex {}, gave error {}",
-                    self.header.chain_key, e
-                );
-                return vec![0, 1, 0];
-            }),
+            bs58::decode(self.header.chain_key.to_owned())
+                .into_vec()
+                .unwrap_or_else(|e| {
+                    error!(
+                        "Failed to decode public key from bs58 {}, gave error {}",
+                        self.header.chain_key, e
+                    );
+                    return vec![0, 1, 0];
+                }),
         );
         let mut res: bool = true;
         peer_public_key
             .verify(
                 msg,
-                hex::decode(self.signature.to_owned())
+                bs58::decode(self.signature.to_owned())
+                    .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
-                            "failed to decode signature from hex {}, gave error {}",
+                            "failed to decode signature from bs58 {}, gave error {}",
                             self.signature, e
                         );
                         return vec![0, 1, 0];
@@ -489,16 +500,20 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
 pub mod genesis;
 #[cfg(test)]
 mod tests {
-    use crate::*;
     use crate::rand::Rng;
+    use crate::*;
     use avrio_config::*;
     extern crate simple_logger;
-    fn hash(subject: String) -> String {
-        let asBytes = subject.as_bytes();
-        unsafe {
-            let out = cryptonight(&asBytes, asBytes.len(), 0);
-            return hex::encode(out);
+    pub struct item {
+        pub cont: String,
+    }
+    impl Hashable for item {
+        fn bytes(&self) -> Vec<u8> {
+            self.cont.as_bytes().to_vec()
         }
+    }
+    pub fn hash(subject: String) -> String {
+        return item { cont: subject }.hash_item();
     }
     #[test]
     fn test_block() {
@@ -532,21 +547,21 @@ mod tests {
                     timestamp: 0,
                     unlock_time: 0,
                 };
-                txn.sender_key = hex::encode(peer_public_key_bytes);
+                txn.sender_key = bs58::encode(peer_public_key_bytes).into_string();
                 txn.hash();
                 // Sign the hash
                 let msg: &[u8] = txn.hash.as_bytes();
-                txn.signature = hex::encode(key_pair.sign(msg));
+                txn.signature = bs58::encode(key_pair.sign(msg)).into_string();
                 let peer_public_key =
                     signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
-                //peer_public_key.verify(msg, hex::decode(&txn.signature.to_owned()).unwrap().as_ref()).unwrap();
+                //peer_public_key.verify(msg, bs58::decode(&txn.signature.to_owned()).unwrap().as_ref()).unwrap();
                 block.txns.push(txn);
                 i_t += 1;
             }
             block.hash();
             let msg: &[u8] = block.hash.as_bytes();
-            block.signature = hex::encode(key_pair.sign(msg));
-            block.header.chain_key = hex::encode(peer_public_key_bytes);
+            block.signature = bs58::encode(key_pair.sign(msg)).into_string();
+            block.header.chain_key = bs58::encode(peer_public_key_bytes).into_string();
             println!("constructed block: {}, checking signature...", block.hash);
             assert_eq!(block.validSignature(), true);
             let block_clone = block.clone();
