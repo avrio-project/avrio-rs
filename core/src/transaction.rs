@@ -7,12 +7,11 @@ extern crate bs58;
 use avrio_config::config;
 extern crate rand;
 
-
 use ring::signature::{self, KeyPair};
 
 extern crate avrio_database;
 use crate::{
-    account::{getAccount, getByUsername, Account},
+    account::{getAccount, getByUsername, Accesskey, Account},
     certificate::Certificate,
     gas::*,
 };
@@ -62,6 +61,7 @@ impl Transaction {
             'b' => "burn".to_string(),
             'w' => "burn with return".to_string(),
             'm' => "message".to_string(),
+            'c' => "claim".to_owned(), // This is only availble on the testnet it will be removed before the mainet
             _ => "unknown".to_string(),
         };
     }
@@ -69,7 +69,18 @@ impl Transaction {
     pub fn validate_transaction(&self) -> bool {
         let mut acc: Account = Account::default();
         let acc_try = getAccount(&self.sender_key);
-        if let Ok(account) = acc_try {
+        let txn_count = avrio_database::getData(
+            config().db_path
+                + &"/chains/".to_owned()
+                + &self.sender_key
+                + &"-chainindex".to_owned(),
+            &"txncount".to_owned(),
+        );
+        if self.nonce.to_string() != txn_count {
+            return false;
+        } else if self.hashReturn() != self.hash {
+            return false;
+        } else if let Ok(account) = acc_try {
             acc = account;
         } else {
             // if getting the account via self.sender_key failed it is probably a username, try that now
@@ -77,7 +88,7 @@ impl Transaction {
             if let Ok(account_from_username) = acc_try_username {
                 acc = account_from_username;
             } else {
-                // if that fialed it wasnt a username/ the username was invalid (to us) - tell the user this and exit
+                // if that failed it wasnt a username/ the username was invalid (to us) - tell the user this and exit
                 debug!(
                     "Failed to Get Account, sender key: {}. Not a valid username or publickey",
                     self.sender_key
@@ -194,15 +205,13 @@ impl Transaction {
         if self.access_key == "" {
             if acc.balance > self.amount {
                 return false;
-            } else if self.hashReturn() != self.hash {
-                return false;
             } else if self.extra.len() > 100 {
                 return false;
             } else {
                 let mut peer_public_key_bytes = bs58::decode(&self.sender_key.to_owned())
                     .into_vec()
                     .unwrap_or_else(|e| {
-                        warn!("Hex decoding peer public key gave error {}", e);
+                        debug!("Base58 decoding peer public key gave error {}", e);
                         return vec![5];
                     });
                 if peer_public_key_bytes.len() == 1 && peer_public_key_bytes[0] == 5 {
@@ -232,8 +241,39 @@ impl Transaction {
                 }
             }
         } else {
-            // have access key
-            return true; // todo
+            let mut key_to_use: Accesskey = Accesskey::default();
+            for key in acc.access_keys {
+                if self.access_key == key.key {
+                    key_to_use = key;
+                }
+            }
+            if key_to_use == Accesskey::default() {
+                return false;
+            } else if key_to_use.allowance < self.amount {
+                return false;
+            } else {
+                let mut peer_public_key_bytes = bs58::decode(&self.access_key.to_owned())
+                    .into_vec()
+                    .unwrap_or_else(|e| {
+                        debug!("Base58 decoding peer access key gave error {}", e);
+                        return vec![5];
+                    });
+                if peer_public_key_bytes.len() == 1 && peer_public_key_bytes[0] == 5 {
+                    // a access key will never be this short
+                    return false;
+                }
+                let peer_public_key =
+                    signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
+                match peer_public_key.verify(
+                    self.hash.as_bytes(),
+                    &bs58::decode(&(self.signature).to_owned())
+                        .into_vec()
+                        .unwrap(),
+                ) {
+                    Ok(()) => {}
+                    _ => return false,
+                }
+            }
         }
         return true;
     }
