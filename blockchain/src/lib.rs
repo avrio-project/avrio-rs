@@ -490,6 +490,7 @@ pub mod genesis;
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use crate::rand::Rng;
     use avrio_config::*;
     extern crate simple_logger;
     fn hash(subject: String) -> String {
