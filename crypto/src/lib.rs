@@ -11,7 +11,6 @@ extern crate bs58;
 // scrypt
 extern crate scrypt;
 
-use scrypt::{scrypt_check, scrypt_simple, ScryptParams};
 pub trait Hashable {
     fn bytes(&self) -> Vec<u8>;
 
@@ -57,8 +56,10 @@ pub trait Hashable {
         }
         let salt = sk.to_string();
         drop(sk);
-        let lyra2res_two = sum((bs58::encode(blakeresult_two).into_string() + &salt).as_bytes().to_vec());
-         
+        let lyra2res_two = sum((bs58::encode(blakeresult_two).into_string() + &salt)
+            .as_bytes()
+            .to_vec());
+
         // A final sha256 round on the lyra res
         let mut hasher = Sha256::new();
         hasher.input(lyra2res_two);

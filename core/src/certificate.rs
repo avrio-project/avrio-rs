@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_cert_diff() {
-        let mut conf = config();
+        let conf = config();
         let diff = 4;
 
         conf.save();
@@ -125,7 +125,7 @@ mod tests {
             "generating cerificate now. Public key: {}",
             bs58::encode(peer_public_key_bytes).into_string()
         );
-    
+
         let cert = generateCertificate(
             &bs58::encode(peer_public_key_bytes).into_string(),
             &bs58::encode(pkcs8_bytes).into_string(),
@@ -140,7 +140,8 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64
-                - cert.timestamp) / 1000
+                - cert.timestamp)
+                / 1000
         );
     }
 }
@@ -279,7 +280,7 @@ impl Certificate {
     }
 
     pub fn checkDiff(&self, diff: &u128) -> bool {
-        let fufilled: u8 = 0;
+        let _fufilled: u8 = 0;
         if number_of_proceding_a(self.hash.clone()) as u128 == diff.to_owned() {
             return true;
         } else {

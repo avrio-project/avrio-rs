@@ -12,7 +12,7 @@ extern crate log;
 extern crate bs58;
 
 use ring::{
-    digest::{Context, Digest, SHA256},
+    digest::SHA256,
     rand as randc,
     signature::{self, KeyPair},
 };
@@ -521,7 +521,7 @@ mod tests {
         let mut i_t: u64 = 0;
         let mut rng = rand::thread_rng();
         let rngc = randc::SystemRandom::new();
-        for i in 0..=1000 {
+        for _i in 0..=1000 {
             let mut block = Block::default();
             block.header.network = config().network_id;
 
@@ -552,7 +552,7 @@ mod tests {
                 // Sign the hash
                 let msg: &[u8] = txn.hash.as_bytes();
                 txn.signature = bs58::encode(key_pair.sign(msg)).into_string();
-                let peer_public_key =
+                let _peer_public_key =
                     signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
                 //peer_public_key.verify(msg, bs58::decode(&txn.signature.to_owned()).unwrap().as_ref()).unwrap();
                 block.txns.push(txn);

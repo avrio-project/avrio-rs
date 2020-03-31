@@ -7,6 +7,7 @@ rpc/lib.rs -
 #![feature(proc_macro_hygiene, decl_macro)]
 
 extern crate avrio_core;
+use avrio_blockchain::getBlockFromRaw;
 use avrio_core::account::{getAccount, Account};
 #[macro_use]
 extern crate rocket;
@@ -29,8 +30,17 @@ fn get_balance(chain: String) -> String {
         + " }"
 }
 
+#[get("/getBlock/<hash>")]
+fn get_block(hash: String) -> String {
+    let blk = getBlockFromRaw(hash);
+    serde_json::to_string(&blk).unwrap_or_default()
+}
+
 pub fn start_server() {
     rocket::ignite()
-        .mount("/json_rpc", routes![must_provide_method, get_balance])
+        .mount(
+            "/json_rpc",
+            routes![must_provide_method, get_balance, get_block],
+        )
         .launch();
 }

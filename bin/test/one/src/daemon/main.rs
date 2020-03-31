@@ -11,11 +11,9 @@ use std::time::Duration;
 use std::thread;
 
 extern crate clap;
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg};
 
 use std::fs::create_dir_all;
-
-use serde_json::*;
 
 extern crate ring;
 use ring::{
@@ -31,12 +29,7 @@ pub extern crate avrio_config;
 use avrio_config::{config, Config};
 
 extern crate avrio_core;
-use avrio_core::{
-    account::{deltaFunds, getAccount, setAccount, Account},
-    certificate::{certificateErrors, difficulty_bytes_as_u128, generateCertificate, Certificate},
-    gas::*,
-    transaction::Transaction,
-};
+use avrio_core::transaction::Transaction;
 
 extern crate avrio_p2p;
 use avrio_p2p::{new_connection, prop_block, rec_server, sync, sync_needed};
@@ -45,13 +38,15 @@ extern crate avrio_blockchain;
 use avrio_blockchain::{genesis::*, *};
 
 extern crate avrio_database;
-use avrio_database::{getData, getPeerList, saveData, savePeerlist};
+use avrio_database::{getData, getPeerList, saveData};
 
 #[macro_use]
 extern crate log;
 extern crate simple_logger;
 
 extern crate hex;
+
+use avrio_rpc::start_server;
 
 fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let config = config();
@@ -123,13 +118,13 @@ fn connectSeednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStr
     let mut i: usize = 0;
     let mut conn_count: u8 = 0;
     while i < seednodes.iter().count() - 1 {
-        let mut error = new_connection(seednodes[i]);
+        let error = new_connection(seednodes[i]);
         match error {
             Ok(_) => {
                 info!("Connected to {:?}::{:?}", seednodes[i], 11523);
                 conn_count += 1;
-                let mut peer = error.unwrap();
-                let mut peer_cloned = peer.stream.try_clone().unwrap();
+                let peer = error.unwrap();
+                let peer_cloned = peer.stream.try_clone().unwrap();
                 connected_peers.push(peer_cloned);
             }
             _ => warn!(
@@ -143,7 +138,7 @@ fn connectSeednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStr
 }
 fn firstStartUp() -> u16 {
     info!("First startup detected, creating file structure");
-    let mut state = createFileStructure();
+    let state = createFileStructure();
     if let Err(e) = state {
         error!("Failed to create  filestructure, recieved error: {:?}.  (Fatal). Try checking permissions.", e);
         process::exit(1); // Faling to create the file structure is fatal but probaly just a permisions error
@@ -216,7 +211,7 @@ fn firstStartUp() -> u16 {
         " Launching P2p server on 127.0.0.1::{:?}",
         config().p2p_port
     );
-    let p2p_handler = thread::spawn(|| {
+    let _p2p_handler = thread::spawn(|| {
         if rec_server() != 1 {
             error!(
                 "Error launching P2p server on 127.0.0.1::{:?} (Fatal)",
@@ -226,7 +221,7 @@ fn firstStartUp() -> u16 {
         }
     });
     thread::sleep(Duration::from_millis(500));
-    let peerlist: Vec<SocketAddr>;
+    let _peerlist: Vec<SocketAddr>;
     let mut conn_nodes = 0;
     let mut trys: u8 = 0;
     let mut connected_peers: Vec<TcpStream> = vec![];
@@ -258,7 +253,7 @@ fn firstStartUp() -> u16 {
         let mut connected_peers_mut: Vec<&mut TcpStream> = vec![];
         connected_peers_mut.push(&mut peer_val);
         if connected_peers_mut.len() == con_peer_len {
-            let sync = sync(&mut connected_peers_mut);
+            let _sync = sync(&mut connected_peers_mut);
         }
     }
     info!("Generating Node Cerificate (for self)");
@@ -302,7 +297,7 @@ fn send_block(chainKey: String, height: u64, private_key: String) {
     };
     new_block.hash();
     new_block.sign(&private_key);
-    let mut new_block_s: String = "".to_string();
+    let _new_block_s: String = "".to_string();
     if let Ok(_) = check_block(new_block.clone()) {
         let state = prop_block(new_block.clone());
         if let Err(e) = state {
@@ -366,6 +361,8 @@ fn main() {
     info!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
     let config_ = config();
     let _ = config_.save();
+    info!("Launching RPC server");
+    start_server();
     info!("Checking for previous startup. DO NOT CLOSE PROGRAM NOW!!!");
     let startup_state: u16 = match database_present() {
         true => existingStartup(),

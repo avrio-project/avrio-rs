@@ -252,7 +252,7 @@ impl Transaction {
             } else if key_to_use.allowance < self.amount {
                 return false;
             } else {
-                let mut peer_public_key_bytes = bs58::decode(&self.access_key.to_owned())
+                let peer_public_key_bytes = bs58::decode(&self.access_key.to_owned())
                     .into_vec()
                     .unwrap_or_else(|e| {
                         debug!("Base58 decoding peer access key gave error {}", e);

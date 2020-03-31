@@ -8,5 +8,6 @@ members = [
   "p2p",
   "rpc",
   "crypto",
-  "bin/test/one"
+  "bin/test/one",
+  "node"
 ]

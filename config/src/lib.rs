@@ -6,7 +6,6 @@ use std::io::prelude::*;
 extern crate log;
 use dirs::*;
 
-
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
 /// This is the struct that holds the built in , network params that are set by the core devs and the same for everyone
 #[derive(Serialize, Deserialize, Debug, Clone)]

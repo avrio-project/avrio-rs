@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 extern crate avrio_config;
 use avrio_config::config;
 
-
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Accesskey {
     // Access keys are keys that provide limited access to a wallet - it allows one wallet to be split

@@ -1,10 +1,15 @@
 [package]
 name = "avrio_rpc"
 version = "0.1.0"
-authors = ["Arielh25 <areilhurdle@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
+authors = [
+    "Arielh25 <areilhurdle@gmail.com>",
+    "TheDevMinerTV <tobigames200@gmail.com>"
+]
 edition = "2018"
+
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 rocket = { version = "0.4.4", default-features = false }
-avrio_core = { path = "../core"}
+avrio_core = { path = "../core" }
+avrio_blockchain = { path = "../blockchain" }

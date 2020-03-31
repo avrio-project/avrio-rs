@@ -1,0 +1,10 @@
+[package]
+name = "avrio_node"
+version = "0.1.0"
+authors = ["Leo Cornelius <leocornelius019@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+avrio_core = { path = "../core" }
+avrio_p2p = { path = "../p2p" }
+serde_json = "1"
