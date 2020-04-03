@@ -10,11 +10,13 @@ extern crate rand;
 use ring::signature::{self, KeyPair};
 
 extern crate avrio_database;
+
 use crate::{
     account::{getAccount, getByUsername, Accesskey, Account},
     certificate::Certificate,
     gas::*,
 };
+
 use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Transaction {
@@ -62,6 +64,7 @@ impl Transaction {
             'w' => "burn with return".to_string(),
             'm' => "message".to_string(),
             'c' => "claim".to_owned(), // This is only availble on the testnet it will be removed before the mainet
+            'i' => "create invite".to_owned(),
             _ => "unknown".to_string(),
         };
     }
@@ -164,25 +167,6 @@ impl Transaction {
                 }
             }
         };
-        if self.flag == 'f' {
-            if self.amount < config().fullnode_lock_amount {
-                return false;
-            } else if self.unlock_time - (config().transactionTimestampMaxOffset as u64)
-                < (SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Time went backwards")
-                    .as_millis() as u64)
-                    + (config().fullnode_lock_time * config().target_epoch_length)
-                || self.unlock_time + (config().transactionTimestampMaxOffset as u64)
-                    < (SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Time went backwards")
-                        .as_millis() as u64)
-                        + (config().fullnode_lock_time * config().target_epoch_length)
-            {
-                return false;
-            }
-        }
         if self.timestamp > self.unlock_time {
             return false;
         }
@@ -295,14 +279,14 @@ impl Transaction {
         return Ok(());
     }
 }
-pub struct item {
+pub struct Item {
     pub cont: String,
 }
-impl Hashable for item {
+impl Hashable for Item {
     fn bytes(&self) -> Vec<u8> {
         self.cont.as_bytes().to_vec()
     }
 }
 pub fn hash(subject: String) -> String {
-    return item { cont: subject }.hash_item();
+    return Item { cont: subject }.hash_item();
 }

@@ -10,35 +10,36 @@ use crate::transaction::Transaction;
 use avrio_database::getData;
 
 use avrio_crypto::Hashable;
-use ring::{
-    rand as randc,
-    signature::{self, KeyPair},
-};
+use ring::signature::{self, KeyPair};
 use serde::{Deserialize, Serialize};
 extern crate bs58;
+
 #[derive(Debug)]
 
-pub enum certificateErrors {
-    pubtransactionNotFound,
-    walletAlreadyRegistered,
-    lockedFundsInsufficent,
-    parsingError,
-    internalError,
-    signatureError,
-    otherTransactionIssue,
-    timestampHigh,
-    transactionNotOwnedByAccount,
-    transactionNotLock,
-    difficultyLow,
-    unknown,
+pub enum CertificateErrors {
+    TransactionNotFound,
+    WalletAlreadyRegistered,
+    LockedFundsInsufficent,
+    FundLockTimeInsufficent,
+    ParsingError,
+    InternalError,
+    SignatureError,
+    OtherTransactionIssue,
+    TimestampHigh,
+    TransactionNotOwnedByAccount,
+    TransactionNotLock,
+    DifficultyLow,
+    Unknown,
 }
 #[derive(Deserialize, Serialize, Default, Debug)]
 pub struct Certificate {
     pub hash: String,
-    pub publicKey: String,
-    pub txnHash: String,
+    pub public_key: String,
+    pub txn_hash: String,
     pub nonce: u64,
     pub timestamp: u64,
+    pub invite: String,
+    pub invite_sig: String,
     pub signature: String,
 }
 pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
@@ -91,10 +92,12 @@ mod tests {
         let start = SystemTime::now();
         let mut cert: Certificate = Certificate {
             hash: String::from(""),
-            publicKey: String::from(""),
-            txnHash: String::from(""),
+            public_key: String::from(""),
+            txn_hash: String::from(""),
             nonce: 0,
             timestamp: 0,
+            invite: "inv".into(),
+            invite_sig: "inv_sig".into(),
             signature: String::from(""),
         };
         while SystemTime::now()
@@ -115,7 +118,7 @@ mod tests {
         let conf = config();
         let diff = 4;
 
-        conf.save();
+        let _ = conf.save();
         let rngc = randc::SystemRandom::new();
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
@@ -126,11 +129,12 @@ mod tests {
             bs58::encode(peer_public_key_bytes).into_string()
         );
 
-        let cert = generateCertificate(
+        let cert = generate_certificate(
             &bs58::encode(peer_public_key_bytes).into_string(),
             &bs58::encode(pkcs8_bytes).into_string(),
             &bs58::encode("txn hashhhh").into_string(),
             diff,
+            "inv".into(),
         )
         .unwrap();
         println!(
@@ -145,22 +149,29 @@ mod tests {
         );
     }
 }
-pub fn generateCertificate(
+pub fn generate_certificate(
     pk: &String,
-    privateKey: &String,
-    txnHash: &String,
+    private_key: &String,
+    txn_hash: &String,
     diff: u128,
-) -> Result<Certificate, certificateErrors> {
+    invite: String,
+) -> Result<Certificate, CertificateErrors> {
+    let key_pair =
+        signature::Ed25519KeyPair::from_pkcs8(bs58::decode(&invite).into_vec().unwrap().as_ref())
+            .unwrap();
+    let peer_public_key_bytes = key_pair.public_key().as_ref();
     let mut cert: Certificate = Certificate {
         hash: String::from(""),
-        publicKey: String::from(""),
-        txnHash: String::from(""),
+        public_key: String::from(""),
+        txn_hash: String::from(""),
         nonce: 0,
+        invite: bs58::encode(peer_public_key_bytes).into_string(),
+        invite_sig: "inv_sig".into(),
         timestamp: 0,
         signature: String::from(""),
     };
-    cert.publicKey = pk.to_owned();
-    cert.txnHash = txnHash.to_owned();
+    cert.public_key = pk.to_owned();
+    cert.txn_hash = txn_hash.to_owned();
     cert.timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
@@ -169,13 +180,13 @@ pub fn generateCertificate(
     for nonce in 0..u64::max_value() {
         cert.nonce = nonce;
         cert.hash();
-        if cert.checkDiff(&diff_cert) {
+        if cert.check_diff(&diff_cert) {
             break;
         }
     }
     drop(diff_cert);
-    if let Err(_e) = cert.sign(&privateKey) {
-        return Err(certificateErrors::signatureError);
+    if let Err(_e) = cert.sign(&private_key, invite) {
+        return Err(CertificateErrors::SignatureError);
     } else {
         return Ok(cert);
     }
@@ -183,58 +194,79 @@ pub fn generateCertificate(
 impl Hashable for Certificate {
     fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
-        bytes.extend(self.publicKey.bytes());
-        bytes.extend(self.txnHash.bytes());
+        bytes.extend(self.public_key.bytes());
+        bytes.extend(self.txn_hash.bytes());
         bytes.extend(self.nonce.to_owned().to_string().bytes());
+        bytes.extend(self.invite.bytes());
+        bytes.extend(self.invite_sig.bytes());
         bytes.extend(self.timestamp.to_owned().to_string().bytes());
         bytes
     }
 }
 impl Certificate {
-    pub fn validate(&mut self) -> Result<(), certificateErrors> {
+    pub fn validate(&mut self) -> Result<(), CertificateErrors> {
         let cert = self;
         cert.hash();
         let diff_cert = config().certificateDifficulty;
-        if !cert.checkDiff(&diff_cert) {
-            return Err(certificateErrors::difficultyLow);
-        } else if !cert.validSignature() {
-            return Err(certificateErrors::signatureError);
+        if !cert.check_diff(&diff_cert) {
+            return Err(CertificateErrors::DifficultyLow);
+        } else if !cert.valid_signature() {
+            return Err(CertificateErrors::SignatureError);
         } else if cert.timestamp
             > SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64
         {
-            return Err(certificateErrors::timestampHigh);
+            return Err(CertificateErrors::TimestampHigh);
         }
-        let txn: Transaction = serde_json::from_str(&getData(
-            config().db_path + "/transactions.db",
-            &cert.txnHash,
-        ))
-        .unwrap_or_else(|e| {
-            warn!("failed to deserilise Tx, gave error: {}", e);
-            return Transaction::default();
-        }); // get the txn to check if it is correct
+        let block_hash = getData(config().db_path + "/transactions.db", &cert.txn_hash);
+        let blk = getBlockFromRaw(block_hash); // get the txn to check if it is correct
+        let mut txn: Transaction = Default::default();
+        for transaction in blk.txns {
+            if transaction.hash == cert.txn_hash {
+                txn = transaction;
+            }
+        }
         if txn == Transaction::default() {
-            return Err(certificateErrors::otherTransactionIssue);
+            return Err(CertificateErrors::OtherTransactionIssue);
         }
-        if txn.sender_key != cert.publicKey {
-            return Err(certificateErrors::transactionNotOwnedByAccount);
+        if txn.sender_key != cert.public_key {
+            return Err(CertificateErrors::TransactionNotOwnedByAccount);
         } else if txn.typeTransaction() != "lock" {
-            return Err(certificateErrors::transactionNotLock);
+            return Err(CertificateErrors::TransactionNotLock);
         } else if txn.amount != config().fullnode_lock_amount {
-            return Err(certificateErrors::lockedFundsInsufficent);
+            return Err(CertificateErrors::LockedFundsInsufficent);
         } else if getData(
             config().db_path + "/certifcates.db",
-            &(cert.publicKey.to_owned() + &"-cert".to_owned()),
+            &(cert.public_key.to_owned() + &"-cert".to_owned()),
         ) != "-1".to_string()
         {
-            return Err(certificateErrors::walletAlreadyRegistered);
+            return Err(CertificateErrors::WalletAlreadyRegistered);
+        }
+        if txn.unlock_time - (config().transactionTimestampMaxOffset as u64)
+            < (SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis() as u64)
+                + (config().fullnode_lock_time * config().target_epoch_length)
+            || txn.unlock_time + (config().transactionTimestampMaxOffset as u64)
+                < (SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_millis() as u64)
+                    + (config().fullnode_lock_time * config().target_epoch_length)
+        {
+            return Err(CertificateErrors::FundLockTimeInsufficent);
         } else {
             return Ok(());
         }
     }
-    pub fn sign(&mut self, private_key: &String) -> Result<(), ring::error::KeyRejected> {
+    pub fn sign(
+        &mut self,
+        private_key: &String,
+        invite: String,
+    ) -> Result<(), ring::error::KeyRejected> {
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(
             bs58::decode(private_key)
                 .into_vec()
@@ -243,18 +275,26 @@ impl Certificate {
         )?;
         let msg: &[u8] = self.hash.as_bytes();
         self.signature = bs58::encode(key_pair.sign(msg)).into_string();
+
+        // now sign with the invite
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(
+            bs58::decode(invite).into_vec().unwrap_or(vec![0]).as_ref(),
+        )?;
+        let msg: &[u8] = self.public_key.as_bytes();
+        self.invite_sig = bs58::encode(key_pair.sign(msg)).into_string();
+
         return Ok(());
     }
-    pub fn validSignature(&self) -> bool {
+    pub fn valid_signature(&self) -> bool {
         let msg: &[u8] = self.hash.as_bytes();
         let peer_public_key = signature::UnparsedPublicKey::new(
             &signature::ED25519,
-            bs58::decode(self.publicKey.to_owned())
+            bs58::decode(self.public_key.to_owned())
                 .into_vec()
                 .unwrap_or_else(|e| {
                     error!(
                         "Failed to decode public key from base58 {}, gave error {}",
-                        self.publicKey, e
+                        self.public_key, e
                     );
                     return vec![0, 1, 0];
                 }),
@@ -276,10 +316,43 @@ impl Certificate {
             .unwrap_or_else(|_e| {
                 return ();
             });
+
+        // now invite sig
+
+        let msg: &[u8] = self.public_key.as_bytes();
+        let peer_public_key = signature::UnparsedPublicKey::new(
+            &signature::ED25519,
+            bs58::decode(self.invite.to_owned())
+                .into_vec()
+                .unwrap_or_else(|e| {
+                    error!(
+                        "Failed to decode public key from base58 {}, gave error {}",
+                        self.public_key, e
+                    );
+                    return vec![0, 1, 0];
+                }),
+        );
+        peer_public_key
+            .verify(
+                msg,
+                bs58::decode(self.invite_sig.to_owned())
+                    .into_vec()
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "failed to decode signature from base58 {}, gave error {}",
+                            self.invite_sig, e
+                        );
+                        return vec![0, 1, 0];
+                    })
+                    .as_ref(),
+            )
+            .unwrap_or_else(|_e| {
+                return ();
+            });
         return true; // ^ wont unwrap if sig is invalid
     }
 
-    pub fn checkDiff(&self, diff: &u128) -> bool {
+    pub fn check_diff(&self, diff: &u128) -> bool {
         let _fufilled: u8 = 0;
         if number_of_proceding_a(self.hash.clone()) as u128 == diff.to_owned() {
             return true;
@@ -287,25 +360,55 @@ impl Certificate {
             return false;
         }
     }
-    pub fn encodeForHashing(&self) -> Vec<u8> {
-        let mut bytes = vec![];
-        bytes.extend(self.publicKey.bytes());
-        bytes.extend(self.txnHash.bytes());
-        bytes.extend(self.nonce.to_owned().to_string().bytes());
-        bytes.extend(self.timestamp.to_owned().to_string().bytes());
-        bytes
-    }
     pub fn hash(&mut self) {
         self.hash = self.hash_item();
     }
-    pub fn encodeForFile(&self) -> Vec<u8> {
-        let mut bytes = vec![];
-        bytes.extend(self.hash.bytes());
-        bytes.extend(self.publicKey.bytes());
-        bytes.extend(self.txnHash.bytes());
-        bytes.extend(self.nonce.to_owned().to_string().bytes());
-        bytes.extend(self.timestamp.to_owned().to_string().bytes());
-        bytes.extend(self.signature.bytes());
-        bytes
-    }
+}
+
+/// irelavant clone from blockchain lib to preven cylic dependencys
+#[derive(Serialize, Deserialize, Default)]
+pub struct _Header_Clone {
+    pub version_major: u8,
+    pub version_breaking: u8,
+    pub version_minor: u8,
+    pub chain_key: String,
+    pub prev_hash: String,
+    pub height: u64,
+    pub timestamp: u64,
+    pub network: Vec<u8>,
+}
+/// irelavant clone from blockchain lib to preven cylic dependencys
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct _Block_Clone {
+    pub header: _Header_Clone,
+    pub txns: Vec<Transaction>,
+    pub hash: String,
+    pub signature: String,
+    pub confimed: bool,
+    pub node_signatures: Vec<_BlockSignature_Clone>,
+}
+#[derive(Serialize, Deserialize, Default)]
+/// irelavant clone from blockchain lib to preven cylic dependencys
+
+pub struct _BlockSignature_Clone {
+    pub hash: String,
+    pub timestamp: u64,
+    pub block_hash: String,
+    pub signer_public_key: String,
+    pub signature: String,
+    pub nonce: u64,
+}
+
+use std::fs::File;
+use std::io::prelude::*;
+
+/// irelavant clone from blockchain lib to preven cylic dependencys
+fn getBlockFromRaw(hash: String) -> _Block_Clone {
+    // returns the block when you only know the hash by opeining the raw blk-HASH.dat file (where hash == the block hash)
+    let mut file =
+        File::open(config().db_path + &"/blocks/blk-".to_owned() + &hash + ".dat").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents);
+    return serde_json::from_str(&contents).unwrap_or_default();
 }
