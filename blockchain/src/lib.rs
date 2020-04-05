@@ -278,11 +278,14 @@ pub fn getBlock(chainkey: &String, height: u64) -> Block {
 
 pub fn getBlockFromRaw(hash: String) -> Block {
     // returns the block when you only know the hash by opeining the raw blk-HASH.dat file (where hash == the block hash)
-    let mut file =
-        File::open(config().db_path + &"/blocks/blk-".to_owned() + &hash + ".dat").unwrap();
-    let mut contents = String::new();
-    file.read_to_string(&mut contents);
-    return serde_json::from_str(&contents).unwrap_or_default();
+    if let Ok(mut file) = File::open(config().db_path + &"/blocks/blk-".to_owned() + &hash + ".dat")
+    {
+        let mut contents = String::new();
+        file.read_to_string(&mut contents);
+        return serde_json::from_str(&contents).unwrap_or_default();
+    } else {
+        return Block::default();
+    }
 }
 
 pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {

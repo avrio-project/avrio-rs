@@ -48,9 +48,12 @@ extern crate hex;
 
 use avrio_rpc::start_server;
 
+extern crate avrio_crypto;
+use avrio_crypto::Wallet;
+
 fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let config = config();
-    let path = config.db_path + &"/wallets".to_owned() + &keypair[0];
+    let path = config.db_path + &"/wallets/".to_owned() + &keypair[0];
     if config.wallet_password == Config::default().wallet_password {
         warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword>");
     }
@@ -82,14 +85,11 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
 }
 
 fn generateKeypair(out: &mut Vec<String>) {
-    let rngc = randc::SystemRandom::new();
-    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
-    let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
-    let peer_public_key_bytes = key_pair.public_key().as_ref();
-    out.push(hex::encode(peer_public_key_bytes));
-    out.push(hex::encode(pkcs8_bytes));
+    let wallet: Wallet = Wallet::gen();
+    out.push(wallet.public_key.clone());
+    out.push(wallet.private_key);
     let mut config = config();
-    config.chain_key = hex::encode(peer_public_key_bytes);
+    config.chain_key = wallet.public_key;
     let _ = config.save();
 }
 
@@ -154,11 +154,15 @@ fn firstStartUp() -> u16 {
         process::exit(1);
     } else {
         info!(
-            "Succsessfully created keypair with chain key {}",
-            chainKey[0]
+            "Succsessfully created keypair with address: {}",
+            Wallet::from_private_key(chainKey[1].clone()).address()
         );
         if let Err(e) = save_wallet(&chainKey) {
-            error!("Failed to save wallet: {}, gave error: {}", chainKey[0], e);
+            error!(
+                "Failed to save wallet: {}, gave error: {}",
+                Wallet::from_private_key(chainKey[1].clone()).address(),
+                e
+            );
             process::exit(1);
         }
     }
@@ -167,13 +171,13 @@ fn firstStartUp() -> u16 {
         if e == genesisBlockErrors::BlockNotFound {
             info!(
                 "No genesis block found for chain: {}, generating",
-                chainKey[0]
+                Wallet::from_private_key(chainKey[1].clone()).address()
             );
             genesis_block = generateGenesisBlock(chainKey[0].clone(), chainKey[1].clone());
         } else {
             error!(
                 "Database error occoured when trying to get genesisblock for chain: {}. (Fatal)",
-                chainKey[0]
+                Wallet::from_private_key(chainKey[1].clone()).address()
             );
             process::exit(1);
         }
@@ -362,7 +366,9 @@ fn main() {
     let config_ = config();
     let _ = config_.save();
     info!("Launching RPC server");
-    start_server();
+    let _rpc_server_handle = thread::spawn(|| {
+        start_server();
+    });
     info!("Checking for previous startup. DO NOT CLOSE PROGRAM NOW!!!");
     let startup_state: u16 = match database_present() {
         true => existingStartup(),

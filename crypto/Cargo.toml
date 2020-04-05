@@ -1,9 +1,13 @@
 [package]
 name = "avrio_crypto"
 version = "0.1.0"
-authors = ["Leo Cornelius <leocornelius019@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
+authors = [
+    "Leo Cornelius <leocornelius019@gmail.com>",
+    "TheDevMinerTV <tobigames200@gmail.com>"
+]
 edition = "2018"
 license = "MIT"
+
 [dependencies]
 lyra2 = "0.2.1"
 bs58 = "0.3.0"
@@ -11,3 +15,5 @@ scrypt = "0.2.0"
 blake = "2.0.0"
 bcrypt = "0.6.3"
 sha2 = "0.8.1"
+ring = "0.16.12"
+avrio_config = { path = "../config" }

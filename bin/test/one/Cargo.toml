@@ -23,7 +23,7 @@ avrio_database = { path = "../../../database" }
 avrio_config = "0.2.3"
 avrio_blockchain = { path = "../../../blockchain" }
 avrio_p2p = { path = "../../../p2p" }
-cryptonight-rs = { path = "../../../crypto/cn-rs" }
+avrio_crypto = { path = "../../../crypto" }
 clap = "2.33.0"
 ring = "0.16.11"
 serde_json = "1"

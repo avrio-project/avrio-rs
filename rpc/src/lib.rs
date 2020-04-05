@@ -11,6 +11,7 @@ use avrio_blockchain::getBlockFromRaw;
 use avrio_core::account::{getAccount, Account};
 #[macro_use]
 extern crate rocket;
+use rocket::config::{Config, Environment, LoggingLevel};
 #[get("/")]
 fn must_provide_method() -> &'static str {
     "{ \"response\": 400, \"error\": \"Must provide a method\" }"
@@ -37,7 +38,12 @@ fn get_block(hash: String) -> String {
 }
 
 pub fn start_server() {
-    rocket::ignite()
+    let config = 
+    Config::build(Environment::Staging)
+            .log_level(LoggingLevel::Off) // disables logging
+            .finalize()
+            .unwrap();
+    rocket::custom(config)
         .mount(
             "/json_rpc",
             routes![must_provide_method, get_balance, get_block],
