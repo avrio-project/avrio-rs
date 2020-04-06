@@ -14,12 +14,7 @@ extern crate clap;
 use clap::{App, Arg};
 
 use std::fs::create_dir_all;
-
-extern crate ring;
-use ring::{
-    rand as randc,
-    signature::{self, KeyPair},
-};
+    
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::process;
@@ -84,7 +79,7 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
     return Ok(());
 }
 
-fn generateKeypair(out: &mut Vec<String>) {
+fn generate_keypair(out: &mut Vec<String>) {
     let wallet: Wallet = Wallet::gen();
     out.push(wallet.public_key.clone());
     out.push(wallet.private_key);
@@ -107,14 +102,14 @@ fn database_present() -> bool {
     }
 }
 
-fn createFileStructure() -> std::result::Result<(), Box<dyn std::error::Error>> {
+fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>> {
     create_dir_all(config().db_path + &"/blocks".to_string())?;
     create_dir_all(config().db_path + &"/chains".to_string())?;
     create_dir_all(config().db_path + &"/wallets".to_string())?;
     return Ok(());
 }
 
-fn connectSeednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
+fn connect_seednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
     let mut i: usize = 0;
     let mut conn_count: u8 = 0;
     while i < seednodes.iter().count() - 1 {
@@ -136,48 +131,48 @@ fn connectSeednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStr
     }
     return conn_count;
 }
-fn firstStartUp() -> u16 {
+fn first_start_up() -> u16 {
     info!("First startup detected, creating file structure");
-    let state = createFileStructure();
+    let state = create_file_structure();
     if let Err(e) = state {
         error!("Failed to create  filestructure, recieved error: {:?}.  (Fatal). Try checking permissions.", e);
         process::exit(1); // Faling to create the file structure is fatal but probaly just a permisions error
     } else {
-        info!("Succsesfuly created filestructure");
+        info!("Sucessfuly created filestructure");
     }
     drop(state);
     info!("Creating Chain for self");
-    let mut chainKey: Vec<String> = vec![]; // 0 = pubkey, 1 = privkey
-    generateKeypair(&mut chainKey);
-    if chainKey[0] == "0".to_owned() {
+    let mut chain_key: Vec<String> = vec![]; // 0 = pubkey, 1 = privkey
+    generate_keypair(&mut chain_key);
+    if chain_key[0] == "0".to_owned() {
         error!("failed to create keypair (Fatal)");
         process::exit(1);
     } else {
         info!(
             "Succsessfully created keypair with address: {}",
-            Wallet::from_private_key(chainKey[1].clone()).address()
+            Wallet::from_private_key(chain_key[1].clone()).address()
         );
-        if let Err(e) = save_wallet(&chainKey) {
+        if let Err(e) = save_wallet(&chain_key) {
             error!(
                 "Failed to save wallet: {}, gave error: {}",
-                Wallet::from_private_key(chainKey[1].clone()).address(),
+                Wallet::from_private_key(chain_key[1].clone()).address(),
                 e
             );
             process::exit(1);
         }
     }
-    let mut genesis_block = getGenesisBlock(&chainKey[0]);
+    let mut genesis_block = getGenesisBlock(&chain_key[0]);
     if let Err(e) = genesis_block {
         if e == genesisBlockErrors::BlockNotFound {
             info!(
                 "No genesis block found for chain: {}, generating",
-                Wallet::from_private_key(chainKey[1].clone()).address()
+                Wallet::from_private_key(chain_key[1].clone()).address()
             );
-            genesis_block = generateGenesisBlock(chainKey[0].clone(), chainKey[1].clone());
+            genesis_block = generateGenesisBlock(chain_key[0].clone(), chain_key[1].clone());
         } else {
             error!(
                 "Database error occoured when trying to get genesisblock for chain: {}. (Fatal)",
-                Wallet::from_private_key(chainKey[1].clone()).address()
+                Wallet::from_private_key(chain_key[1].clone()).address()
             );
             process::exit(1);
         }
@@ -241,7 +236,7 @@ fn firstStartUp() -> u16 {
         if trys > 0 {
             warn!("Failed to connect to any seednodes, retrying");
         }
-        conn_nodes = connectSeednodes(seednodes, &mut connected_peers);
+        conn_nodes = connect_seednodes(seednodes, &mut connected_peers);
         trys += 1;
     }
     info!("Connected to seednode(s), polling for peerlist (this may take some time)");
@@ -249,7 +244,7 @@ fn firstStartUp() -> u16 {
     //peer.write()
     //}
     //peerlist = getPeerList().unwrap();
-    //conn_nodes += connectSeednodes(peerlist, &mut connected_peers);
+    //conn_nodes += connect_seednodes(peerlist, &mut connected_peers);
     thread::sleep(Duration::from_millis(2500));
     info!("Started syncing");
     let con_peer_len = connected_peers.len();
@@ -267,7 +262,7 @@ fn firstStartUp() -> u16 {
     return 1;
 }
 
-fn send_block(chainKey: String, height: u64, private_key: String) {
+fn send_block(chain_key: String, height: u64, private_key: String) {
     // create block
     let transactions: Vec<Transaction> = vec![
         //todo
@@ -275,7 +270,7 @@ fn send_block(chainKey: String, height: u64, private_key: String) {
     let prev_hash = "00000000".to_owned();
     if height != 0 {
         getData(
-            config().db_path + &"/".to_owned() + &chainKey + &"-invs".to_owned(),
+            config().db_path + &"/".to_owned() + &chain_key + &"-invs".to_owned(),
             &(height - 1).to_string(),
         );
     }
@@ -284,7 +279,7 @@ fn send_block(chainKey: String, height: u64, private_key: String) {
             version_major: 0,
             version_breaking: 0,
             version_minor: 0,
-            chain_key: chainKey.clone(),
+            chain_key: chain_key.clone(),
             prev_hash,
             height,
             timestamp: SystemTime::now()
@@ -300,7 +295,7 @@ fn send_block(chainKey: String, height: u64, private_key: String) {
         node_signatures: vec![],
     };
     new_block.hash();
-    new_block.sign(&private_key);
+    let _ = new_block.sign(&private_key);
     let _new_block_s: String = "".to_string();
     if let Ok(_) = check_block(new_block.clone()) {
         let state = prop_block(new_block.clone());
@@ -317,7 +312,7 @@ fn send_block(chainKey: String, height: u64, private_key: String) {
 }
 
 // TODO: write existing start up code
-fn existingStartup() -> u16 {
+fn existing_startup() -> u16 {
     return 1;
 }
 
@@ -371,8 +366,8 @@ fn main() {
     });
     info!("Checking for previous startup. DO NOT CLOSE PROGRAM NOW!!!");
     let startup_state: u16 = match database_present() {
-        true => existingStartup(),
-        false => firstStartUp(),
+        true => existing_startup(),
+        false => first_start_up(),
     };
     let mut synced: bool = false;
     if startup_state == 1 {
@@ -387,7 +382,7 @@ fn main() {
                     if let Ok(mut peer_struct) = res {
                         let mut peers: Vec<&mut TcpStream> = vec![];
                         peers.push(&mut peer_struct.stream);
-                        sync(&mut peers);
+                        let _ =sync(&mut peers);
                         info!("Successfully synced with the network!");
                         synced = true;
                     }
@@ -445,7 +440,7 @@ fn main() {
                     if let Ok(mut peer_struct) = res {
                         let mut peers: Vec<&mut TcpStream> = vec![];
                         peers.push(&mut peer_struct.stream);
-                        sync(&mut peers);
+                        let _ = sync(&mut peers);
                         info!("Successfully synced with the network!");
                         synced = true;
                     }
