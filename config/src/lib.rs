@@ -113,7 +113,7 @@ pub fn config() -> Config {
             return Config::default();
         } else {
             let conf: ConfigSave = serde_json::from_str(&data).unwrap_or_default();
-            return conf.toConfig();
+            return conf.to_config();
         }
     } else {
         return Config::default();
@@ -198,7 +198,7 @@ impl Default for ConfigSave {
 }
 
 impl ConfigSave {
-    pub fn toConfig(&self) -> Config {
+    pub fn to_config(&self) -> Config {
         let nconf = NetworkConfig::default();
         return Config {
             db_path: self.db_path.to_owned(),
@@ -249,7 +249,7 @@ impl ConfigSave {
 }
 impl Default for Config {
     fn default() -> Config {
-        return ConfigSave::default().toConfig();
+        return ConfigSave::default().to_config();
     }
 }
 
@@ -290,7 +290,7 @@ impl Default for NetworkConfig {
 }
 
 impl Config {
-    pub fn toSave(self) -> ConfigSave {
+    pub fn to_save(self) -> ConfigSave {
         ConfigSave {
             db_path: self.db_path,
             max_connections: self.max_connections,
@@ -315,14 +315,14 @@ impl Config {
     pub fn create(self) -> io::Result<()> {
         // create file
         let mut file = File::create("node.conf")?;
-        file.write_all(serde_json::to_string(&self.toSave()).unwrap().as_bytes())?;
+        file.write_all(serde_json::to_string(&self.to_save()).unwrap().as_bytes())?;
         Ok(())
     }
     /// This is how you save the config, it is a expensive function on devices with slow storage as it opens and writes to the file
     pub fn save(self) -> io::Result<()> {
         // save to exisiting/ update
         let mut file = File::open("node.conf")?;
-        file.write_all(serde_json::to_string(&self.toSave()).unwrap().as_bytes())?;
+        file.write_all(serde_json::to_string(&self.to_save()).unwrap().as_bytes())?;
         Ok(())
     }
 }
