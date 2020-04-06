@@ -440,11 +440,12 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     return Err(blockValidationErrors::badSignature);
                 } else if getBlockFromRaw(blk.hash.clone()) != Block::default() {
                     return Err(blockValidationErrors::blockExists);
-                } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
-                    > (SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Time went backwards")
-                        .as_millis() as u64)
+                } else if blk.header.height != 0
+                    && blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
+                        > (SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .expect("Time went backwards")
+                            .as_millis() as u64)
                 {
                     return Err(blockValidationErrors::timestampInvalid);
                 } else if blk.header.height != 0
