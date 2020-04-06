@@ -441,15 +441,14 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 } else if getBlockFromRaw(blk.hash.clone()) != Block::default() {
                     return Err(blockValidationErrors::blockExists);
                 } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
-                    < (SystemTime::now()
+                    > (SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards")
                         .as_millis() as u64)
-                    || blk.header.timestamp + (config().transactionTimestampMaxOffset as u64)
-                        < (SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .expect("Time went backwards")
-                            .as_millis() as u64)
+                {
+                    return Err(blockValidationErrors::timestampInvalid);
+                } else if blk.header.height != 0
+                    && getBlockFromRaw(blk.header.prev_hash).header.timestamp > blk.header.timestamp
                 {
                     return Err(blockValidationErrors::timestampInvalid);
                 }
@@ -477,15 +476,14 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
         } else if !blk.validSignature() {
             return Err(blockValidationErrors::badSignature);
         } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
-            < (SystemTime::now()
+            > (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64)
-            || blk.header.timestamp + (config().transactionTimestampMaxOffset as u64)
-                < (SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Time went backwards")
-                    .as_millis() as u64)
+        {
+            return Err(blockValidationErrors::timestampInvalid);
+        } else if blk.header.height != 0
+            && getBlockFromRaw(blk.header.prev_hash).header.timestamp > blk.header.timestamp
         {
             return Err(blockValidationErrors::timestampInvalid);
         }
