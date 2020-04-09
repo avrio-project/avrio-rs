@@ -15,6 +15,13 @@ Testnet one, aimed at P2p + block/ txn code testing
 name = "avrio-daemon"
 path = "src/daemon/main.rs"
 
+#[[bin]]
+#name = "seednode"
+#path = "src/daemon/seednode/main.rs"
+#
+#[[bin]]
+#name = "avrio-wallet"
+#path = "src/wallet/main.rs"
 [dependencies]
 simple_logger = "1.5.0"
 log = "0.4"
