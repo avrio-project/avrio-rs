@@ -29,6 +29,7 @@ pub enum CertificateErrors {
     TransactionNotOwnedByAccount,
     TransactionNotLock,
     DifficultyLow,
+    InvalidInvite,
     Unknown,
 }
 #[derive(Deserialize, Serialize, Default, Debug)]
@@ -38,6 +39,7 @@ pub struct Certificate {
     pub txn_hash: String,
     pub nonce: u64,
     pub timestamp: u64,
+    pub valid_until: u64,
     pub invite: String,
     pub invite_sig: String,
     pub signature: String,
@@ -96,6 +98,7 @@ mod tests {
             txn_hash: String::from(""),
             nonce: 0,
             timestamp: 0,
+            valid_until: 0,
             invite: "inv".into(),
             invite_sig: "inv_sig".into(),
             signature: String::from(""),
@@ -165,6 +168,7 @@ pub fn generate_certificate(
         public_key: String::from(""),
         txn_hash: String::from(""),
         nonce: 0,
+        valid_until: 0,
         invite: bs58::encode(peer_public_key_bytes).into_string(),
         invite_sig: "inv_sig".into(),
         timestamp: 0,
@@ -177,6 +181,18 @@ pub fn generate_certificate(
         .expect("Time went backwards")
         .as_millis() as u64;
     let diff_cert = diff; //config().certificateDifficulty;
+    let block_hash = getData(config().db_path + "/transactions.db", &cert.txn_hash);
+    let blk = getBlockFromRaw(block_hash); // get the txn to check if it is correct
+    let mut txn: Transaction = Default::default();
+    for transaction in blk.txns {
+        if transaction.hash == cert.txn_hash {
+            txn = transaction;
+        }
+    }
+    if txn == Transaction::default() {
+        return Err(CertificateErrors::OtherTransactionIssue);
+    }
+    cert.valid_until = txn.unlock_time;
     for nonce in 0..u64::max_value() {
         cert.nonce = nonce;
         cert.hash();
@@ -200,6 +216,8 @@ impl Hashable for Certificate {
         bytes.extend(self.invite.bytes());
         bytes.extend(self.invite_sig.bytes());
         bytes.extend(self.timestamp.to_owned().to_string().bytes());
+        bytes.extend(self.valid_until.to_owned().to_string().bytes());
+
         bytes
     }
 }
@@ -237,12 +255,21 @@ impl Certificate {
             return Err(CertificateErrors::TransactionNotLock);
         } else if txn.amount != config().fullnode_lock_amount {
             return Err(CertificateErrors::LockedFundsInsufficent);
-        } else if getData(
+        }
+        let got_data = getData(
             config().db_path + "/certifcates.db",
             &(cert.public_key.to_owned() + &"-cert".to_owned()),
-        ) != "-1".to_string()
-        {
-            return Err(CertificateErrors::WalletAlreadyRegistered);
+        );
+        if got_data != "-1".to_string() {
+            let exisiting_cert: Certificate = serde_json::from_str(&got_data).unwrap_or_default();
+            if exisiting_cert.valid_until
+                > (SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_millis() as u64)
+            {
+                return Err(CertificateErrors::WalletAlreadyRegistered);
+            }
         }
         if txn.unlock_time - (config().transactionTimestampMaxOffset as u64)
             < (SystemTime::now()

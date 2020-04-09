@@ -22,6 +22,22 @@ use ring::{
 extern crate avrio_config;
 use avrio_config::config;
 
+pub struct Keypair {
+    pub public_key: Publickey,
+    pub private_key: Privatekey,
+}
+
+pub fn generate_keypair() -> Keypair {
+    let rngc = randc::SystemRandom::new();
+        let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
+        let peer_public_key_bytes = key_pair.public_key().as_ref();
+        Keypair {
+            public_key: bs58::encode(peer_public_key_bytes).into_string(),
+            private_key: bs58::encode(pkcs8_bytes).into_string(),
+        }
+}
+
 pub trait Hashable {
     fn bytes(&self) -> Vec<u8>;
 
@@ -82,8 +98,8 @@ pub trait Hashable {
     }
 }
 
-struct StringHash {
-    s: String,
+pub struct StringHash {
+    pub s: String,
 }
 impl Hashable for StringHash {
     fn bytes(&self) -> Vec<u8> {
