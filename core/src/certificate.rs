@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
 use avrio_config::config;
 extern crate avrio_database;
-use crate::transaction::Transaction;
+use crate::{transaction::Transaction, invite::valid};
 use avrio_database::getData;
 
 use avrio_crypto::Hashable;
@@ -285,6 +285,8 @@ impl Certificate {
                     + (config().fullnode_lock_time * config().target_epoch_length)
         {
             return Err(CertificateErrors::FundLockTimeInsufficent);
+        } else if !valid(&cert.invite) {
+            return Err(CertificateErrors::InvalidInvite);
         } else {
             return Ok(());
         }
