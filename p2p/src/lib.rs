@@ -230,7 +230,7 @@ pub fn sendBlock(hash: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std:
 }
 /// This function asks the peer to sync, if they accept you can begin syncing
 pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
-    let peer_to_use_unwraped = peer.try_clone().unwrap();
+    let mut peer_to_use_unwraped = peer.try_clone().unwrap();
     let syncreqres = sendData(
         "syncreq".to_string(),
         &mut peer_to_use_unwraped.try_clone().unwrap(),
@@ -265,8 +265,8 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
     drop(v);
-    info!(
-        "REcived: m {}",
+    debug!(
+        "(SYNC REQ) Recieved: {}",
         String::from_utf8(buf.to_vec()).unwrap_or("utf8 failed".to_string())
     );
     let deformed: P2pdata = serde_json::from_str(&msg_c).unwrap_or(P2pdata::default());
@@ -279,9 +279,9 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
         return Err("rejected syncack".into());
     } else {
         info!("Recieved incorect message from peer (in context syncrequest). Message: {}. This could be caused by outdated software - check you are up to date!", deformed.message);
-        info!("Treating message as sync decline, choosing new peer...");
-        // choose the next fasted peer from our socket list
-        return Err("assumed rejected syncack".into());
+        info!("Retrying syncack with same peer...");
+        // try again
+        return syncack_peer(&mut peer_to_use_unwraped);
     }
 }
 /// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
@@ -470,8 +470,9 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         let res = getData(config().db_path + &"/epochs".to_owned(), &get_ci_res);
         if res == "-1".to_owned() || res == "0".to_owned() {
             warn!("Failed to epoch number for hash: {} from epoches db, probably corupted. Syncing from zero...", get_ci_res);
+            info!("If this is your first launch you can ignore this, if not then check your wallets as they may be corrupted too!");
         } else if res == "0".to_owned() {
-            warn!("Cant find epoch with hash: {} in epoches db. probably a result of a terminated sync", get_ci_res);
+            warn!("Cant find epoch with hash: {} in epoches db. Probably a result of a terminated sync", get_ci_res);
         } else {
             let _epoch: Epoch = Epoch::default();
         }
@@ -506,11 +507,12 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     if deformed.message_type != 0x46 {
         amount_to_sync = 0;
     } else {
-        amount_to_sync = deformed.message.parse().unwrap();
+        amount_to_sync = deformed.message.parse().unwrap_or(0);
     }
     let print_synced_every: u64;
     match amount_to_sync {
-        0..=100 => print_synced_every = 10,
+        0..=9 => print_synced_every = 1,
+        10..=100 => print_synced_every = 10,
         101..=500 => print_synced_every = 50,
         501..=1000 => print_synced_every = 100,
         1001..=10000 => print_synced_every = 500,
