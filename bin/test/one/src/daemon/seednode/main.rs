@@ -285,4 +285,7 @@ fn main() {
             process::exit(1);
         }
     });
+    loop {
+        // Now we loop until shutdown
+    }
 }
