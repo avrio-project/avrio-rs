@@ -38,11 +38,10 @@ fn get_block(hash: String) -> String {
 }
 
 pub fn start_server() {
-    let config = 
-    Config::build(Environment::Staging)
-            .log_level(LoggingLevel::Off) // disables logging
-            .finalize()
-            .unwrap();
+    let config = Config::build(Environment::Staging)
+        .log_level(LoggingLevel::Off) // disables logging
+        .finalize()
+        .unwrap();
     rocket::custom(config)
         .mount(
             "/json_rpc",

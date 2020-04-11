@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
 use avrio_config::config;
 extern crate avrio_database;
-use crate::{transaction::Transaction, invite::valid};
+use crate::{invite::valid, transaction::Transaction};
 use avrio_database::getData;
 
 use avrio_crypto::Hashable;

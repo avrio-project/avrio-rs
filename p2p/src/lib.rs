@@ -352,7 +352,7 @@ fn get_mode(v: Vec<String>) -> String {
     return (**map.iter().max_by_key(|(_, v)| *v).unwrap().0).to_string();
 }
 
-// TODO
+// TODO sync specific chain func
 /// This function syncs the specifyed chain only from the peer specifyed.
 /// It returns Ok(()) on succsess and handles the inventory generation, inventory saving, block geting, block validation,
 /// block saving, block enacting and informing the user of the progress.
@@ -591,7 +591,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                     config().db_path
                         + &"/chains".to_string()
                         + &inventory.chain
-                        + &"-inventorys".to_string(),
+                        + &"-invs".to_string(),
                     &inventory.height.to_string(),
                 );
                 if try_get == "-1".to_string() {
@@ -619,7 +619,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                     config().db_path
                         + &"/chains".to_string()
                         + &inventory.chain
-                        + &"-inventorys".to_string(),
+                        + &"-invs".to_string(),
                     inventory.height.to_string(),
                 );
                 match save_res {
@@ -713,7 +713,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                             config().db_path
                                 + &"/chains".to_owned()
                                 + &chain_string
-                                + &"-inv".to_owned(),
+                                + &"-invs".to_owned(),
                         ) {
                             let mut iter = inv_db.raw_iterator();
                             iter.seek_to_first();

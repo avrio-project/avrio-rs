@@ -4,6 +4,8 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::process;
 #[macro_use]
 extern crate log;
+extern crate avrio_config;
+use avrio_config::config;
 #[derive(Debug, Serialize, Deserialize)]
 struct PeerlistSave {
     peers: Vec<String>,
@@ -30,16 +32,39 @@ pub fn saveData(serialized: String, path: String, key: String) -> u8 {
     db.put(key, serialized);
     return 1;
 }
-/// Gets the saved peerlist
-// TODO: getPeerList
-pub fn getPeerList() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
-    return Ok(vec![SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        12345,
-    )]);
+
+pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
+    let s = getData(
+        config().db_path + &"/peers".to_string(),
+        &"white".to_string(),
+    );
+    if s == "-1".to_owned() {
+        return Err("peerlist not found".into());
+    } else {
+        let peerlist: PeerlistSave = serde_json::from_str(&s)?;
+        let mut as_socket_addr: Vec<SocketAddr> = vec![];
+        for peer in peerlist.peers {
+            as_socket_addr.push(peer.parse()?);
+        }
+        return Ok(as_socket_addr);
+    }
 }
-// TODO: Save the vec of SocketAddrs to peerlist db
-pub fn savePeerlist(_list: &Vec<SocketAddr>, _path: String) {}
+
+pub fn save_peerlist(
+    _list: &Vec<SocketAddr>,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut as_string: Vec<String> = vec![];
+    for peer in _list {
+        as_string.push(peer.to_string());
+    }
+    let s = serde_json::to_string(&as_string)?;
+    saveData(
+        s,
+        config().db_path + &"/peers".to_string(),
+        "white".to_string(),
+    );
+    return Ok(());
+}
 
 pub fn getData(path: String, key: &String) -> String {
     let db = DB::open_default(path).unwrap();

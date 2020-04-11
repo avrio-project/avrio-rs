@@ -14,7 +14,6 @@ extern crate clap;
 use clap::{App, Arg};
 
 use std::fs::create_dir_all;
-    
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::process;
@@ -33,7 +32,7 @@ extern crate avrio_blockchain;
 use avrio_blockchain::{genesis::*, *};
 
 extern crate avrio_database;
-use avrio_database::{getData, getPeerList, saveData};
+use avrio_database::{getData, get_peerlist, saveData};
 
 #[macro_use]
 extern crate log;
@@ -243,7 +242,7 @@ fn first_start_up() -> u16 {
     //for peer in connected_peers.clone() {
     //peer.write()
     //}
-    //peerlist = getPeerList().unwrap();
+    //peerlist = get_peerlist().unwrap();
     //conn_nodes += connect_seednodes(peerlist, &mut connected_peers);
     thread::sleep(Duration::from_millis(2500));
     info!("Started syncing");
@@ -376,13 +375,13 @@ fn main() {
         match sync_needed() {
             // do we need to sync
             true => {
-                let pl: Vec<SocketAddr> = getPeerList().unwrap();
+                let pl: Vec<SocketAddr> = get_peerlist().unwrap();
                 for peer in pl {
                     let res = new_connection(peer);
                     if let Ok(mut peer_struct) = res {
                         let mut peers: Vec<&mut TcpStream> = vec![];
                         peers.push(&mut peer_struct.stream);
-                        let _ =sync(&mut peers);
+                        let _ = sync(&mut peers);
                         info!("Successfully synced with the network!");
                         synced = true;
                     }
@@ -434,7 +433,7 @@ fn main() {
         match sync_needed() {
             // do we need to sync
             true => {
-                let pl: Vec<SocketAddr> = getPeerList().unwrap();
+                let pl: Vec<SocketAddr> = get_peerlist().unwrap();
                 for peer in pl {
                     let res = new_connection(peer);
                     if let Ok(mut peer_struct) = res {

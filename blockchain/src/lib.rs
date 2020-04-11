@@ -234,26 +234,27 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
         let mut iter = db.raw_iterator();
         iter.seek_to_first();
         while iter.valid() {
-            if let Some(chain) = iter.value() {
+            if let Some(chain) = iter.key() {
                 if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
                     let root_read = getData(
                         config().db_path
-                            + &"/".to_owned()
+                            + &"/chains/".to_owned()
                             + &chain_string
                             + &"-chainsindex".to_owned(),
                         &"digest".to_owned(),
                     );
                     if root_read == "-1".to_owned() || root_read == "0".to_owned() {
-                        roots.push(generate_merkle_root(chain_string).unwrap_or("".to_owned()));
+                        roots.push(generate_merkle_root(chain_string).unwrap_or("a".to_owned()));
                     } else {
                         roots.push(root_read);
                     }
                 }
             }
+            iter.next();
         }
     }
     let merkle = merkle::MerkleTree::from_vec(&SHA256, roots);
-    let root = String::from_utf8(merkle.root_hash().clone())?;
+    let root = bs58::encode(merkle.root_hash().clone()).into_string();
     let _ = saveData(
         root.clone(),
         config().db_path + &"/chains/masterchainindex".to_owned(),
@@ -294,7 +295,37 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
     let mut file =
         File::create(config().db_path + &"/blocks/blk-".to_owned() + &block.hash + ".dat")?;
     file.write_all(&encoded)?;
-    Ok(())
+    if block.header.height == 0 {
+        if saveData(
+            "".to_owned(),
+            config().db_path + &"/chainlist".to_owned(),
+            block.header.chain_key.clone(),
+        ) == 0
+        {
+            return Err("Genesis block detected but failed to add chain to chainslist".into());
+        }
+    }
+    let inv_sender_res = saveData(
+        block.hash.clone(),
+        config().db_path + &"/chains/".to_owned() + &block.header.chain_key + &"-invs".to_owned(),
+        block.header.height.to_string(),
+    );
+    for txn in block.txns {
+        let inv_receiver_res = saveData(
+            block.hash.clone(),
+            config().db_path + &"/chains/".to_owned() + &txn.receive_key + &"-invs".to_owned(),
+            block.header.height.to_string(),
+        );
+        if inv_receiver_res != 1 {
+            return Err("failed to save reciver inv".into());
+        }
+    }
+    if inv_sender_res != 1 {
+        return Err("failed to save sender inv".into());
+    } else {
+        generate_merkle_root_all()?;
+    }
+    return Ok(());
 }
 
 impl Hashable for Header {

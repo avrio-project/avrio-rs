@@ -29,13 +29,13 @@ pub struct Keypair {
 
 pub fn generate_keypair() -> Keypair {
     let rngc = randc::SystemRandom::new();
-        let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
-        let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
-        let peer_public_key_bytes = key_pair.public_key().as_ref();
-        Keypair {
-            public_key: bs58::encode(peer_public_key_bytes).into_string(),
-            private_key: bs58::encode(pkcs8_bytes).into_string(),
-        }
+    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
+    let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
+    let peer_public_key_bytes = key_pair.public_key().as_ref();
+    Keypair {
+        public_key: bs58::encode(peer_public_key_bytes).into_string(),
+        private_key: bs58::encode(pkcs8_bytes).into_string(),
+    }
 }
 
 pub trait Hashable {

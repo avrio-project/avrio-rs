@@ -14,7 +14,31 @@ pub enum genesisBlockErrors {
     OtherDb,
     Other,
 }
-pub fn getGenesisTxns() -> Vec<Transaction> {
+
+pub fn genesis_blocks() -> Vec<Block> {
+    //example
+    vec![
+        Block { 
+            header: Header { 
+                version_major: 0,
+                version_breaking: 0,
+                version_minor: 0,
+                chain_key: "5ohL19qYPbp9eK1UNBjjasL9Vum1Ge1NAjMUE81xpkBb".to_owned(), 
+                prev_hash: bs58::encode("0".to_owned()).into_string(), 
+                height: 0, 
+                timestamp: 0, 
+                network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101] 
+            }, 
+            txns: vec![], 
+            hash: "HDgfnUKNXQSu9Gv6aYcqcqeryYyehF19EqdAYETVqrw7".to_owned(), 
+            signature: "5wzafcinKZ22gtbSKWWT9vKxB79dWU3CJRqWJemvv4DLhzkarASk32HskJfqznKfXjK5WCzW2Vu2ZmZm5AqucvRn".to_owned(), 
+            confimed: false, 
+            node_signatures: vec![] 
+        }
+    ]
+}
+
+pub fn get_genesis_txns() -> Vec<Transaction> {
     return vec![
         // any txns to be in the genesis block are defined here, below is a template for one.
         Transaction {
@@ -41,7 +65,7 @@ pub fn generateGenesisBlock(
     privKey: String,
 ) -> Result<Block, genesisBlockErrors> {
     let mut my_genesis_txns: Vec<Transaction> = vec![];
-    let genesis_txns = getGenesisTxns();
+    let genesis_txns = get_genesis_txns();
     for tx in genesis_txns {
         if tx.receive_key == chainKey {
             my_genesis_txns.push(tx);
@@ -70,27 +94,12 @@ pub fn generateGenesisBlock(
     genesis_block.sign(&privKey);
     return Ok(genesis_block);
 }
-/// Reads the genesis block for this chain from the genesis blcoks db
+/// Reads the genesis block for this chain from the list of blocks
 pub fn getGenesisBlock(chainkey: &String) -> Result<Block, genesisBlockErrors> {
-    let data = getData(config().db_path + &"/genesis-blocks".to_string(), chainkey);
-    let _none = String::from("-1");
-    let _zero = String::from("0");
-    return match data {
-        _none => Err(genesisBlockErrors::BlockNotFound),
-        _zero => Err(genesisBlockErrors::OtherDb),
-        _ => {
-            let b: Block = serde_json::from_str(&data).unwrap_or_else(|e| {
-                warn!(
-                    "Failed to parse genesis block from blob {}, gave error: {}",
-                    &data, e
-                );
-                return Block::default();
-            });
-            if b == Block::default() {
-                return Err(genesisBlockErrors::Other);
-            } else {
-                return Ok(b);
-            }
+    for block in genesis_blocks() {
+        if block.header.chain_key == *chainkey {
+            return Ok(block);
         }
-    };
+    }
+    return Err(genesisBlockErrors::BlockNotFound);
 }
