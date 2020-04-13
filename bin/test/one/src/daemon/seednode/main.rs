@@ -410,7 +410,7 @@ fn main() {
             let _ = txn.sign(&wall.private_key);
             // TODO: FIX!!
             let inv_db = openDb(
-                config().db_path + &"/chains".to_string() + &wall.public_key + &"-invs".to_string(),
+                config().db_path + &"/chains/".to_string() + &wall.public_key + &"-invs".to_string(),
             )
             .unwrap();
             let mut invIter = getIter(&inv_db);
@@ -616,7 +616,7 @@ fn main() {
                         // TODO: FIX!!
                         let inv_db = openDb(
                             config().db_path
-                                + &"/chains".to_string()
+                                + &"/chains/".to_string()
                                 + &wall.public_key
                                 + &"-invs".to_string(),
                         )
