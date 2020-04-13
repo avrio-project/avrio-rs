@@ -15,27 +15,51 @@ pub enum genesisBlockErrors {
     Other,
 }
 
+extern crate avrio_crypto;
+use avrio_crypto::Wallet;
+
 pub fn genesis_blocks() -> Vec<Block> {
     //example
-    vec![
-        Block { 
-            header: Header { 
-                version_major: 0,
-                version_breaking: 0,
-                version_minor: 0,
-                chain_key: "5ohL19qYPbp9eK1UNBjjasL9Vum1Ge1NAjMUE81xpkBb".to_owned(), 
-                prev_hash: bs58::encode("0".to_owned()).into_string(), 
-                height: 0, 
-                timestamp: 0, 
-                network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101] 
-            }, 
-            txns: vec![], 
-            hash: "HDgfnUKNXQSu9Gv6aYcqcqeryYyehF19EqdAYETVqrw7".to_owned(), 
-            signature: "5wzafcinKZ22gtbSKWWT9vKxB79dWU3CJRqWJemvv4DLhzkarASk32HskJfqznKfXjK5WCzW2Vu2ZmZm5AqucvRn".to_owned(), 
-            confimed: false, 
-            node_signatures: vec![] 
-        }
-    ]
+    let priv_key= "GD8M1Qm17WXoukx8QqqfvXY5t8ft7APi9iUqUXAytM1dUsiZxCwaDyMhn7pNDBaybagw6QVgYkye5oosd2zmoeiFRak1MjoUSi5Nfen6PQHrzj6y3FrR".to_owned();
+    let wall = Wallet::from_private_key(priv_key);
+    let mut txn = Transaction {
+        hash: String::from(""),
+        amount: 10000, // 1 AIO
+        extra: String::from(""),
+        flag: 'c',
+        sender_key: wall.public_key.clone(),
+        receive_key: String::from(""),
+        access_key: String::from(""),
+        unlock_time: 0,
+        gas_price: 10, // 0.001 AIO
+        gas: 0,        // claim uses 0 fee
+        max_gas: u64::max_value(),
+        nonce: 0,
+        timestamp: 0,
+        signature: String::from(""),
+    };
+    txn.hash();
+    let _ = txn.sign(&wall.private_key);
+    let mut blk = Block {
+        header: Header {
+            version_major: 0,
+            version_breaking: 0,
+            version_minor: 0,
+            chain_key: wall.public_key.clone(),
+            prev_hash: bs58::encode("0".to_owned()).into_string(),
+            height: 0,
+            timestamp: 0,
+            network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101],
+        },
+        txns: vec![txn],
+        hash: "".to_owned(),
+        signature: "".to_owned(),
+        confimed: false,
+        node_signatures: vec![],
+    };
+    blk.hash();
+    let _ = blk.sign(&wall.private_key);
+    vec![blk]
 }
 
 pub fn get_genesis_txns() -> Vec<Transaction> {

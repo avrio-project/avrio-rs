@@ -107,12 +107,12 @@ mod tests {
             .duration_since(start)
             .expect("Time went backwards")
             .as_millis()
-            < 60 * 1000
+            < 120 * 1000
         {
             cert.nonce += 1;
             cert.hash();
         }
-        let hashrate = cert.nonce / 60;
+        let hashrate = cert.nonce / 120;
         println!("hashrate: {} h/s", hashrate);
     }
 
@@ -257,7 +257,7 @@ impl Certificate {
             return Err(CertificateErrors::LockedFundsInsufficent);
         }
         let got_data = getData(
-            config().db_path + "/certifcates.db",
+            config().db_path + &"/fn-certificates".to_owned(),
             &(cert.public_key.to_owned() + &"-cert".to_owned()),
         );
         if got_data != "-1".to_string() {

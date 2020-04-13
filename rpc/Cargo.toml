@@ -13,3 +13,6 @@ serde = { version = "1.0", features = ["derive"] }
 rocket = { version = "0.4.4", default-features = false }
 avrio_core = { path = "../core" }
 avrio_blockchain = { path = "../blockchain" }
+avrio_database = { path = "../database" }
+avrio_config = { path = "../config" }
+avrio_p2p = { path = "../p2p" }

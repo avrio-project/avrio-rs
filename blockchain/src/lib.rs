@@ -3,7 +3,10 @@ extern crate avrio_core;
 extern crate avrio_database;
 use crate::genesis::{genesisBlockErrors, getGenesisBlock};
 use avrio_config::config;
-use avrio_core::{account::getAccount, transaction::*};
+use avrio_core::{
+    account::{getAccount, setAccount, Account},
+    transaction::*,
+};
 use avrio_database::*;
 use serde::{Deserialize, Serialize};
 #[macro_use]
@@ -29,7 +32,7 @@ pub enum blockValidationErrors {
     badSignature,
     indexMissmatch,
     invalidPreviousBlockhash,
-    invalidTransaction,
+    invalidTransaction(TransactionValidationErrors),
     genesisBlockMissmatch,
     failedToGetGenesisBlock,
     blockExists,
@@ -295,16 +298,6 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
     let mut file =
         File::create(config().db_path + &"/blocks/blk-".to_owned() + &block.hash + ".dat")?;
     file.write_all(&encoded)?;
-    if block.header.height == 0 {
-        if saveData(
-            "".to_owned(),
-            config().db_path + &"/chainlist".to_owned(),
-            block.header.chain_key.clone(),
-        ) == 0
-        {
-            return Err("Genesis block detected but failed to add chain to chainslist".into());
-        }
-    }
     let inv_sender_res = saveData(
         block.hash.clone(),
         config().db_path + &"/chains/".to_owned() + &block.header.chain_key + &"-invs".to_owned(),
@@ -319,6 +312,7 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
         if inv_receiver_res != 1 {
             return Err("failed to save reciver inv".into());
         }
+        let _ = saveData(block.hash, config().db_path + &"/transactions".to_owned(), txn.hash);
     }
     if inv_sender_res != 1 {
         return Err("failed to save sender inv".into());
@@ -415,8 +409,43 @@ impl Block {
         self == OtherBlock
     }
 }
-// TODO: enact block
-pub fn enact_block(_blk: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+// TODO: finish enact block
+pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    if block.header.height == 0 {
+        if saveData(
+            "".to_owned(),
+            config().db_path + &"/chainlist".to_owned(),
+            block.header.chain_key.clone(),
+        ) == 0
+        {
+            return Err("failed to add chain to chainslist".into());
+        } else {
+            let newacc = Account::new(block.header.chain_key.clone());
+            if setAccount(&newacc) != 1 {
+                return Err("failed to save new account".into());
+            }
+        }
+        if avrio_database::getData(
+            config().db_path
+                + &"/chains/".to_owned()
+                + &block.header.chain_key
+                + &"-chainindex".to_owned(),
+            &"txncount".to_owned(),
+        ) == "-1".to_owned()
+        {
+            avrio_database::saveData(
+                "0".to_string(),
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &block.header.chain_key
+                    + &"-chainindex".to_owned(),
+                "txncount".to_owned(),
+            );
+        }
+    }
+    for txn in block.txns {
+        txn.enact()?;
+    }
     return Ok(());
 }
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {
@@ -520,8 +549,8 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             return Err(blockValidationErrors::timestampInvalid);
         }
         for txn in blk.txns {
-            if !txn.validate_transaction() {
-                return Err(blockValidationErrors::invalidTransaction);
+            if let Err(e) = txn.valid() {
+                return Err(blockValidationErrors::invalidTransaction(e));
             } else {
                 return Ok(());
             }

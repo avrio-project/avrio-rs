@@ -1,5 +1,5 @@
 // Testnet one,
-// This testnet foucouses on the P2p code, on launch a node will conect to the seed node(/s),
+// This testnet foucuses on the P2p code, on launch a node will conect to the seed node(/s),
 // get the peer list and connect to the other nodes on this peerlist. The node then registers.
 //
 
@@ -44,6 +44,8 @@ use avrio_rpc::start_server;
 
 extern crate avrio_crypto;
 use avrio_crypto::Wallet;
+
+use text_io::read;
 
 fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let config = config();

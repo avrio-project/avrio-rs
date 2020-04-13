@@ -228,6 +228,7 @@ mod tests {
     fn test_address_prefix() {
         for _ in 0..1000 {
             let wallet = Wallet::gen();
+            println!("wallet: {:?}", wallet);
             let addr = wallet.address();
             assert_eq!(addr[0..1].to_owned(), "1".to_owned());
         }

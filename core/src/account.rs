@@ -13,16 +13,30 @@ pub struct Accesskey {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+/// A account is a representaion of a wallet - it includes balance, a public
 pub struct Account {
-    // A account is a representaion of a wallet - it includes balance, a public
-    pub public_key: String, // key (which is used as a index for storing) and the list of access keys.
+    /// key (which is used as a index for storing) and the list of access keys.
+    pub public_key: String,
     pub username: String,
     pub balance: u64,
     pub locked: u64,
+    pub level: u8,
     pub access_keys: Vec<Accesskey>,
 }
 
+pub fn to_atomc(amount: f64) -> u64 {
+    return (amount * (10_i64.pow(config().decimal_places as u32) as f64)) as u64;
+}
+
+pub fn to_dec(amount: u64) -> f64 {
+    amount as f64 / (10_i64.pow(config().decimal_places as u32)) as f64
+}
+
 impl Account {
+    /// Used to get the blance of an account in decimal form not atomic (eg 0.3452 AIO or 345.2)
+    pub fn balance_ui(&self) -> Result<f64, Box<dyn std::error::Error>> {
+        return Ok(to_dec(self.balance));
+    }
     pub fn save(&self) -> Result<(), ()> {
         match setAccount(self) {
             0 => {
@@ -43,6 +57,7 @@ impl Account {
             username: "".to_string(),
             balance: 0,
             locked: 0,
+            level: 0,
             access_keys: vec![Accesskey {
                 key: String::from(""),
                 allowance: 0,
@@ -97,8 +112,7 @@ pub fn setAccount(acc: &Account) -> u8 {
             panic!("Failed to serilise account");
         });
     });
-    saveData(serialized, path, acc.public_key.clone());
-    return 1;
+    return saveData(serialized, path, acc.public_key.clone());
 }
 /// Gets the account assosiated with the public_key provided
 /// if the account does not exist it returns an err
@@ -143,8 +157,7 @@ pub fn deltaFunds(
         // minus funds
         if access_key == "" {
             // none provdied/ using main key
-            let after_change = acc.balance - amount;
-            if after_change < 0 {
+            if acc.balance < amount {
                 // insufffient funds
                 warn!(
                     "changing funds for account {} would produce negative balance!",
