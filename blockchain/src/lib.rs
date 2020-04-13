@@ -312,7 +312,9 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
         if inv_receiver_res != 1 {
             return Err("failed to save reciver inv".into());
         }
-        let _ = saveData(block.hash.clone(), config().db_path + &"/transactions".to_owned(), txn.hash);
+        if saveData(block.hash.clone(), config().db_path + &"/transactions".to_owned(), txn.hash) != 1  {
+            return Err("failed to add transaction to transaction db".into());
+        }
     }
     if inv_sender_res != 1 {
         return Err("failed to save sender inv".into());
