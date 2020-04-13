@@ -124,6 +124,8 @@ impl Transaction {
             }
             deltaFunds(&sendacc.public_key, self.amount, 0, String::from(""))?;
             deltaFunds(&reqacc.public_key, self.amount, 1, String::from(""))?;
+            deltaFunds(&sendacc.public_key, self.gas_price * self.gas, 0, String::from(""))?;
+
             let txn_count: u64 = avrio_database::getData(
                 config().db_path
                     + &"/chains/".to_owned()
