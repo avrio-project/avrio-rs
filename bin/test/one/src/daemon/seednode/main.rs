@@ -408,7 +408,6 @@ fn main() {
             .unwrap();
             txn.hash();
             let _ = txn.sign(&wall.private_key);
-            // TODO: FIX!!
             let inv_db = openDb(
                 config().db_path + &"/chains/".to_string() + &wall.public_key + &"-invs".to_string(),
             )
@@ -457,6 +456,8 @@ fn main() {
                 blk.txns[0].hash,
                 ouracc.balance_ui().unwrap()
             );
+            drop(invIter);
+            drop(inv_db);
         } else if read == "get_balance" {
             info!(
                 "Your balance: {} AIO",
@@ -635,6 +636,8 @@ fn main() {
                             invIter.next();
                         }
                         let height: u64 = highest_so_far;
+                        drop(invIter);
+                        drop(inv_db);
                         let mut blk = Block {
                             header: Header {
                                 version_major: 0,
