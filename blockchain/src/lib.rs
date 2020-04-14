@@ -208,6 +208,116 @@ impl BlockSignature {
         return res;
     }
 }
+
+/// Returns true if int is odd
+pub fn odd(x: u64) -> bool {
+    (x % 2) != 0
+}
+
+#[derive(Default, PartialEq, Debug)]
+struct MerklePair {
+    pub root: String,
+    pub chain_1_hash: String,
+    pub chain_2_hash: String,
+    pub chain_1_key: String,
+    pub chain_2_key: String,
+}
+
+pub fn from_vec(mut chain_digests: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if chain_digests.len() < 1 {
+        return Err("too small".into());
+    }
+    while odd(chain_digests.len() as u64) {
+        chain_digests.push(0.to_string());
+    }
+    let mut i: u64 = 0;
+    let mut pairs: Vec<MerklePair> = vec![];
+    let mut chunked = chain_digests.chunks(2);
+    while let Some(s) = chunked.next() {
+        let mut chain_one_merkle = read_merkle_root(&s[0]);
+        let mut chain_two_merkle = read_merkle_root(&s[1]);
+        if chain_one_merkle == "".to_owned() {
+            chain_one_merkle = generate_merkle_root(s[0].clone()).unwrap_or_default();
+        }
+        if chain_two_merkle == "".to_owned() {
+            chain_two_merkle = generate_merkle_root(s[1].clone()).unwrap_or_default();
+        }
+        let root = hash_merkle_pair((chain_one_merkle.clone(), chain_two_merkle.clone));
+        pairs.push(MerklePair {
+            root,
+            chain_1_key: s[0].clone(),
+            chain_2_key: s[1].clone(),
+            chain_1_hash: chain_one_merkle,
+            chain_2_hash: chain_two_merkle,
+        });
+    }
+    while odd(pairs.len() as u64) {
+        pairs.push(Default::default());
+    }
+    let mut i: usize =0;
+    while pairs.len() > 0 {
+        let root = hash_merkle_pair((pairs[i].root, pairs[i+1].root));
+        pairs.push(MerklePair {
+            root,
+            chain_1_key: "".to_owned(),
+            chain_2_key: "".to_owned(),
+            chain_1_hash: pairs[i].root,
+            chain_2_hash: pairs[i+1 ].root,
+        });
+    }
+    let mut chuncked_pairs = pairs.chunks(2);
+
+    return Ok(());
+}
+
+pub fn hash_merkle_pair(pair: (String, String)) -> String {
+    return bs58::encode(avrio_crypto::raw_lyra(pair.0 + &pair.1)).into_string();
+}
+
+pub fn read_root() -> String {
+    return getData(
+        config().db_path + &"/chaindigest".to_owned(),
+        &"root".to_owned(),
+    );
+}
+
+pub fn read_merkle_root(chain: &String) -> String {
+    let mr_chain = getData(
+        config().db_path + &"/chaindigest".to_owned(),
+        &(chain.to_owned() + &"-root".to_owned()),
+    );
+    if mr_chain == "-1".to_owned() || mr_chain == "0".to_owned() {
+        return "".to_owned();
+    } else {
+        return mr_chain;
+    }
+}
+
+pub fn read_merkle_root_at(
+    chain: String,
+    level: u64,
+) -> Result<String, Box<dyn std::error::Error>> {
+    if getData(
+        config().db_path + &"/chaindigest".to_owned(),
+        &"levels".to_owned(),
+    )
+    .parse::<u64>()
+    .unwrap_or_default()
+        < level
+    {
+        return Err("level out of bounds".into());
+    }
+    let at_l = getData(
+        config().db_path + &"/chaindigest".to_owned(),
+        &(chain + "-lv" + &level.to_string()),
+    );
+    if at_l == "-1" || at_l == "0".to_string() {
+        return Err("level out of bounds for chain".into());
+    } else {
+        return Ok(at_l);
+    }
+}
+
 /// Generates and saves the merkle root of the chain
 pub fn generate_merkle_root(
     chain: String,
@@ -312,7 +422,12 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
         if inv_receiver_res != 1 {
             return Err("failed to save reciver inv".into());
         }
-        if saveData(block.hash.clone(), config().db_path + &"/transactions".to_owned(), txn.hash) != 1  {
+        if saveData(
+            block.hash.clone(),
+            config().db_path + &"/transactions".to_owned(),
+            txn.hash,
+        ) != 1
+        {
             return Err("failed to add transaction to transaction db".into());
         }
     }

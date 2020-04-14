@@ -38,6 +38,16 @@ pub fn generate_keypair() -> Keypair {
     }
 }
 
+pub fn raw_lyra(s: String) -> String {
+     // First we calculate the bytes of the object being passed to us
+     let bytes = s.as_bytes();
+
+     // Lyra on the bytes
+     let lyra2res = sum(bytes.to_vec());
+     let hash: String = bs58::encode(lyra2res).into_string();
+     return hash;
+}
+
 pub trait Hashable {
     fn bytes(&self) -> Vec<u8>;
 
