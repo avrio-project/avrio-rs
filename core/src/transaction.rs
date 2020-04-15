@@ -12,7 +12,7 @@ use ring::signature;
 extern crate avrio_database;
 
 use crate::{
-    account::{deltaFunds, getAccount, getByUsername, Accesskey, Account},
+    account::{deltaFunds, getAccount, getByUsername, open_or_create, Accesskey, Account},
     certificate::Certificate,
     gas::*,
 };
@@ -38,6 +38,7 @@ pub enum TransactionValidationErrors {
     BadHash,
     NonMessageWithoutRecipitent,
     ExtraTooLarge,
+    LowGas,
     Other,
 }
 
@@ -101,31 +102,16 @@ impl Transaction {
     pub fn enact(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let txn_type: String = self.typeTransaction();
         if txn_type == "normal".to_owned() {
-            let sendacc: Account;
-            if let Ok(sender) = getAccount(&self.sender_key) {
-                sendacc = sender;
-            } else {
-                if let Ok(sender_by_uname) = getByUsername(&self.sender_key) {
-                    sendacc = sender_by_uname;
-                } else {
-                    return Err("failed to get send acc".into());
-                }
-            }
+            let mut sendacc = open_or_create(&self.sender_key);
 
-            let reqacc: Account;
-            if let Ok(recer) = getAccount(&self.receive_key) {
-                reqacc = recer;
-            } else {
-                if let Ok(recer_by_uname) = getByUsername(&self.receive_key) {
-                    reqacc = recer_by_uname;
-                } else {
-                    return Err("failed to get rec acc".into());
-                }
+            let mut reqacc: Account = open_or_create(&self.receive_key);
+            sendacc.balance -= self.gas * self.gas_price;
+            if self.sender_key != self.receive_key {
+                sendacc.balance -= self.amount;
+                reqacc.balance += self.amount;
+                reqacc.save().unwrap();
             }
-            deltaFunds(&sendacc.public_key, self.amount, 0, String::from(""))?;
-            deltaFunds(&reqacc.public_key, self.amount, 1, String::from(""))?;
-            deltaFunds(&sendacc.public_key, self.gas_price * self.gas, 0, String::from(""))?;
-
+            sendacc.save().unwrap();
             let txn_count: u64 = avrio_database::getData(
                 config().db_path
                     + &"/chains/".to_owned()
@@ -148,17 +134,23 @@ impl Transaction {
         // TODO: Check we are on the testnet
         } else if txn_type == "claim".to_owned() {
             // »!testnet only!«
-            let acc: Account;
-            if let Ok(sender) = getAccount(&self.sender_key) {
-                acc = sender;
+            let mut acc: Account = open_or_create(&self.sender_key);
+            acc.balance += self.amount;
+            let _ = acc.save();
+        } else if txn_type == "username registraion".to_string() {
+            let mut acc = getAccount(&self.sender_key).unwrap_or_default();
+            if acc == Account::default() {
+                return Err("failed to get account for username addition".into());
+            } else if acc.username != "".to_owned() {
+                return Err("account has username already".into());
             } else {
-                if let Ok(sender_by_uname) = getByUsername(&self.sender_key) {
-                    acc = sender_by_uname;
-                } else {
-                    return Err("failed to get send acc".into());
+                acc.username = self.extra.clone();
+                acc.balance -= self.amount;
+                acc.balance -= self.gas * self.gas_price;
+                if let Err(_) = acc.save() {
+                    return Err("failed to save account (after username addition)".into());
                 }
             }
-            deltaFunds(&acc.public_key, self.amount, 1, String::from(""))?;
         } else {
             return Err("unsuported txn type".into());
         }
@@ -166,8 +158,7 @@ impl Transaction {
     }
 
     pub fn valid(&self) -> Result<(), TransactionValidationErrors> {
-        let acc: Account;
-        let acc_try = getAccount(&self.sender_key);
+        let acc: Account = open_or_create(&self.sender_key);
         let txn_count = avrio_database::getData(
             config().db_path
                 + &"/chains/".to_owned()
@@ -179,23 +170,7 @@ impl Transaction {
             return Err(TransactionValidationErrors::BadNonce);
         } else if self.hash_return() != self.hash {
             return Err(TransactionValidationErrors::BadHash);
-        } else if let Ok(account) = acc_try {
-            acc = account;
-        } else {
-            // if getting the account via self.sender_key failed it is probably a username, try that now
-            let acc_try_username = getByUsername(&self.sender_key);
-            if let Ok(account_from_username) = acc_try_username {
-                acc = account_from_username;
-            } else {
-                // if that failed it wasnt a username/ the username was invalid (to us) - tell the user this and exit
-                error!(
-                    "Failed to Get Account, sender key: {}. Not a valid username or publickey",
-                    self.sender_key
-                );
-                return Err(TransactionValidationErrors::AccountMissing);
-            }
-        }
-        if self.amount < 1 && self.flag != 'm' {
+        } else if self.amount < 1 && self.flag != 'm' {
             // the min amount sendable (1 miao) unless the txn is a message txn
             return Err(TransactionValidationErrors::InsufficentAmount);
         }
@@ -244,13 +219,33 @@ impl Transaction {
         }
         match self.flag {
             'n' => {
-                if self.max_gas < (TX_GAS + GAS_PER_EXTRA_BYTE_NORMAL).into() {
+                if self.max_gas
+                    < (TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64))
+                        .into()
+                {
                     return Err(TransactionValidationErrors::MaxGasExpended);
+                }
+                if self.gas
+                    < (TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64))
+                        .into()
+                {
+                    return Err(TransactionValidationErrors::LowGas);
                 }
             }
             'm' => {
-                if self.max_gas < GAS_PER_EXTRA_BYTE_MESSAGE.into() {
+                if self.max_gas
+                    < (TX_GAS as u64
+                        + (GAS_PER_EXTRA_BYTE_MESSAGE as u64 * self.extra.len() as u64))
+                        .into()
+                {
                     return Err(TransactionValidationErrors::MaxGasExpended);
+                }
+                if self.gas
+                    < (TX_GAS as u64
+                        + (GAS_PER_EXTRA_BYTE_MESSAGE as u64 * self.extra.len() as u64))
+                        .into()
+                {
+                    return Err(TransactionValidationErrors::LowGas);
                 }
             }
             'c' => {}
@@ -258,6 +253,9 @@ impl Transaction {
             _ => {
                 if self.max_gas < TX_GAS.into() {
                     return Err(TransactionValidationErrors::MaxGasExpended);
+                }
+                if self.gas < TX_GAS.into() {
+                    return Err(TransactionValidationErrors::LowGas);
                 }
             }
         };
@@ -276,7 +274,7 @@ impl Transaction {
             return Err(TransactionValidationErrors::BadTimestamp);
         }
         if self.access_key == "" {
-            if acc.balance < self.amount && self.flag != 'c' {
+            if acc.balance < (self.amount + (self.gas * self.gas_price)) && self.flag != 'c' {
                 return Err(TransactionValidationErrors::InsufficentBalance);
             } else if self.extra.len() > 100 {
                 return Err(TransactionValidationErrors::TooLarge);

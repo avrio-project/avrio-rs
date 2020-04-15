@@ -76,3 +76,13 @@ pub fn getData(path: String, key: &String) -> String {
     }
     return data;
 }
+
+pub fn getDataDb(db: &DB, key: &String) -> String {
+    let data: String;
+    match db.get(key) {
+        Ok(Some(value)) => data = String::from_utf8(value).unwrap_or("".to_owned()),
+        Ok(None) => data = "-1".to_owned(),
+        Err(_e) => data = "0".to_owned(),
+    }
+    return data;
+}
