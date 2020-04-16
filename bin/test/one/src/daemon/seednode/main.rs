@@ -179,13 +179,11 @@ fn main() {
         create_file_structure().unwrap();
     }
     info!("Avrio Seednode Daemon successfully launched");
-    let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
-    if chainsdigest == "GKot5hBsd81kMupNCXHaqbhv3huEbxAFMLnpcX2hniwn".to_owned() {
+    if config().chain_key == "".to_owned() {
         generate_chains().unwrap();
-        info!("Saved genesis block(s)");
+        let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
+        info!("Chain digest: {}", chainsdigest);
     }
-    let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
-    info!("Chain digest: {}", chainsdigest);
     let pl = get_peerlist();
     match pl {
         // do we need to sync

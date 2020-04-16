@@ -50,6 +50,12 @@ pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error
     }
 }
 
+pub fn add_peer(peer: SocketAddr) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut current_peer_list = get_peerlist()?;
+    current_peer_list.push(peer);
+    return save_peerlist(&current_peer_list);
+}
+
 pub fn save_peerlist(
     _list: &Vec<SocketAddr>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {

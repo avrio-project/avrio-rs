@@ -1,12 +1,9 @@
-// Testnet one,
-// This testnet foucuses on the P2p code, on launch a node will conect to the seed node(/s),
-// get the peer list and connect to the other nodes on this peerlist. The node then registers.
-//
-
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 
 use std::time::Duration;
+
+use std::io::{self, BufRead, Write};
 
 use std::thread;
 
@@ -23,16 +20,19 @@ pub extern crate avrio_config;
 use avrio_config::{config, Config};
 
 extern crate avrio_core;
-use avrio_core::transaction::Transaction;
+use avrio_core::{account::to_atomc, transaction::Transaction};
 
 extern crate avrio_p2p;
 use avrio_p2p::{new_connection, prop_block, rec_server, sync, sync_needed};
 
 extern crate avrio_blockchain;
-use avrio_blockchain::{genesis::*, *};
+use avrio_blockchain::{
+    genesis::{generateGenesisBlock, genesisBlockErrors, genesis_blocks, getGenesisBlock},
+    *,
+};
 
 extern crate avrio_database;
-use avrio_database::{getData, get_peerlist, saveData};
+use avrio_database::{getData, getIter, get_peerlist, openDb, saveData};
 
 #[macro_use]
 extern crate log;
@@ -47,13 +47,50 @@ use avrio_crypto::Wallet;
 
 use text_io::read;
 
+fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
+    for block in genesis_blocks() {
+        info!(
+            "addr: {}",
+            Wallet::new(block.header.chain_key.clone(), "".to_owned()).address()
+        );
+        if getBlockFromRaw(block.hash.clone()) != block {
+            saveBlock(block.clone())?;
+            enact_block(block)?;
+        }
+    }
+    return Ok(());
+}
+
+fn database_present() -> bool {
+    let get_res = getData(
+        config().db_path + &"/chains/masterchainindex".to_owned(),
+        &"digest".to_owned(),
+    );
+    if get_res == "-1".to_owned() {
+        return false;
+    } else if get_res == "0".to_string() {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    create_dir_all(config().db_path + &"/blocks".to_string())?;
+    create_dir_all(config().db_path + &"/chains".to_string())?;
+    create_dir_all(config().db_path + &"/wallets".to_string())?;
+    create_dir_all(config().db_path + &"/accounts".to_string())?;
+    create_dir_all(config().db_path + &"/usernames".to_string())?;
+    return Ok(());
+}
+
 fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let config = config();
-    let path = config.db_path + &"/wallets/".to_owned() + &keypair[0];
-    if config.wallet_password == Config::default().wallet_password {
+    let conf = config();
+    let path = conf.db_path + &"/wallets/".to_owned() + &keypair[0];
+    if conf.wallet_password == Config::default().wallet_password {
         warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword>");
     }
-    let mut padded = config.wallet_password.as_bytes().to_vec();
+    let mut padded = conf.wallet_password.as_bytes().to_vec();
     while padded.len() != 32 && padded.len() < 33 {
         padded.push(b"n"[0]);
     }
@@ -84,236 +121,9 @@ fn generate_keypair(out: &mut Vec<String>) {
     let wallet: Wallet = Wallet::gen();
     out.push(wallet.public_key.clone());
     out.push(wallet.private_key);
-    let mut config = config();
-    config.chain_key = wallet.public_key;
-    let _ = config.save();
-}
-
-fn database_present() -> bool {
-    let get_res = getData(
-        config().db_path + &"/chainsindex".to_owned(),
-        &"digest".to_owned(),
-    );
-    if get_res == "-1".to_owned() {
-        return false;
-    } else if get_res == "0".to_string() {
-        return false;
-    } else {
-        return true;
-    }
-}
-
-fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    create_dir_all(config().db_path + &"/blocks".to_string())?;
-    create_dir_all(config().db_path + &"/chains".to_string())?;
-    create_dir_all(config().db_path + &"/wallets".to_string())?;
-    return Ok(());
-}
-
-fn connect_seednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
-    let mut i: usize = 0;
-    let mut conn_count: u8 = 0;
-    while i < seednodes.iter().count() - 1 {
-        let error = new_connection(seednodes[i]);
-        match error {
-            Ok(_) => {
-                info!("Connected to {:?}::{:?}", seednodes[i], 11523);
-                conn_count += 1;
-                let peer = error.unwrap();
-                let peer_cloned = peer.stream.try_clone().unwrap();
-                connected_peers.push(peer_cloned);
-            }
-            _ => warn!(
-                "Failed to connect to {:?}:: {:?}, returned error {:?}",
-                seednodes[i], 11523, error
-            ),
-        };
-        i += 1;
-    }
-    return conn_count;
-}
-fn first_start_up() -> u16 {
-    info!("First startup detected, creating file structure");
-    let state = create_file_structure();
-    if let Err(e) = state {
-        error!("Failed to create  filestructure, recieved error: {:?}.  (Fatal). Try checking permissions.", e);
-        process::exit(1); // Faling to create the file structure is fatal but probaly just a permisions error
-    } else {
-        info!("Sucessfuly created filestructure");
-    }
-    drop(state);
-    info!("Creating Chain for self");
-    let mut chain_key: Vec<String> = vec![]; // 0 = pubkey, 1 = privkey
-    generate_keypair(&mut chain_key);
-    if chain_key[0] == "0".to_owned() {
-        error!("failed to create keypair (Fatal)");
-        process::exit(1);
-    } else {
-        info!(
-            "Succsessfully created keypair with address: {}",
-            Wallet::from_private_key(chain_key[1].clone()).address()
-        );
-        if let Err(e) = save_wallet(&chain_key) {
-            error!(
-                "Failed to save wallet: {}, gave error: {}",
-                Wallet::from_private_key(chain_key[1].clone()).address(),
-                e
-            );
-            process::exit(1);
-        }
-    }
-    let mut genesis_block = getGenesisBlock(&chain_key[0]);
-    if let Err(e) = genesis_block {
-        if e == genesisBlockErrors::BlockNotFound {
-            info!(
-                "No genesis block found for chain: {}, generating",
-                Wallet::from_private_key(chain_key[1].clone()).address()
-            );
-            genesis_block = generateGenesisBlock(chain_key[0].clone(), chain_key[1].clone());
-        } else {
-            error!(
-                "Database error occoured when trying to get genesisblock for chain: {}. (Fatal)",
-                Wallet::from_private_key(chain_key[1].clone()).address()
-            );
-            process::exit(1);
-        }
-    }
-    let genesis_block = genesis_block.unwrap();
-    let genesis_block_clone = genesis_block.clone();
-    match check_block(genesis_block) {
-        Err(error) => {
-            error!(
-                "Failed to validate generated genesis block. Gave error: {:?}, block dump: {:?}. (Fatal)",
-                error, genesis_block_clone
-            );
-            process::exit(1);
-        }
-        Ok(_) => info!(
-            "Succsessfully generated genesis block with hash {}",
-            genesis_block_clone.hash
-        ),
-    }
-    let e_code = saveBlock(genesis_block_clone);
-    match e_code {
-        Ok(_) => {
-            info!("Sucsessfully saved genesis block!");
-            drop(e_code);
-        }
-        Err(e) => {
-            error!(
-                "Failed to save genesis block gave error code: {:?} (fatal)!",
-                e
-            );
-            process::exit(1);
-        }
-    };
-    info!(
-        " Launching P2p server on 127.0.0.1::{:?}",
-        config().p2p_port
-    );
-    let _p2p_handler = thread::spawn(|| {
-        if rec_server() != 1 {
-            error!(
-                "Error launching P2p server on 127.0.0.1::{:?} (Fatal)",
-                config().p2p_port
-            );
-            process::exit(1);
-        }
-    });
-    thread::sleep(Duration::from_millis(500));
-    let _peerlist: Vec<SocketAddr>;
-    let mut conn_nodes = 0;
-    let mut trys: u8 = 0;
-    let mut connected_peers: Vec<TcpStream> = vec![];
-    connected_peers.push(new_connection(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(99, 248, 224, 55)), 56789)).unwrap().stream);
-    while connected_peers.len() < 1 {
-        let seednodes: Vec<SocketAddr> = vec![
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(99, 248, 224, 55)), 56789),
-        ];
-        if trys > 49 {
-            process::exit(1);
-        }
-        if trys > 0 {
-            warn!("Failed to connect to any seednodes, retrying");
-        }
-        conn_nodes = connect_seednodes(seednodes, &mut connected_peers);
-        trys += 1;
-    }
-    info!("Connected to seednode(s), polling for peerlist (this may take some time)");
-    //for peer in connected_peers.clone() {
-    //peer.write()
-    //}
-    //peerlist = get_peerlist().unwrap();
-    //conn_nodes += connect_seednodes(peerlist, &mut connected_peers);
-    thread::sleep(Duration::from_millis(2500));
-    info!("Started syncing");
-    let con_peer_len = connected_peers.len();
-    for mut peer_val in connected_peers {
-        let mut connected_peers_mut: Vec<&mut TcpStream> = vec![];
-        connected_peers_mut.push(&mut peer_val);
-        if connected_peers_mut.len() == con_peer_len {
-            let _sync = sync(&mut connected_peers_mut);
-        }
-    }
-    info!("Generating Node Cerificate (for self)");
-    // TODO: generate node certificate
-    info!("Registering with network");
-    // TODO: send the certificate to peers
-    return 1;
-}
-
-fn send_block(chain_key: String, height: u64, private_key: String) {
-    // create block
-    let transactions: Vec<Transaction> = vec![
-        //todo
-    ];
-    let prev_hash = "00000000".to_owned();
-    if height != 0 {
-        getData(
-            config().db_path + &"/".to_owned() + &chain_key + &"-invs".to_owned(),
-            &(height - 1).to_string(),
-        );
-    }
-    let mut new_block = Block {
-        header: Header {
-            version_major: 0,
-            version_breaking: 0,
-            version_minor: 0,
-            chain_key: chain_key.clone(),
-            prev_hash,
-            height,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_millis() as u64,
-            network: config().network_id,
-        },
-        txns: transactions,
-        hash: String::from(""),
-        signature: String::from(""),
-        confimed: false,
-        node_signatures: vec![],
-    };
-    new_block.hash();
-    let _ = new_block.sign(&private_key);
-    let _new_block_s: String = "".to_string();
-    if let Ok(_) = check_block(new_block.clone()) {
-        let state = prop_block(new_block.clone());
-        if let Err(e) = state {
-            // there was an error
-            error!(
-                "Failed to propiagte block {:?}, encountered error: {:?}",
-                new_block.hash, e
-            ); // tell them the error
-            error!("Block dump: non serilised {:?}", new_block); // now flood their eyes
-            process::exit(1);
-        }
-    }
-}
-
-// TODO: write existing start up code
-fn existing_startup() -> u16 {
-    return 1;
+    let mut conf = config();
+    conf.chain_key = wallet.public_key;
+    let _ = conf.save();
 }
 
 fn main() {
@@ -322,24 +132,22 @@ fn main() {
         .about("This is the offical daemon for the avrio network.")
         .author("Leo Cornelius")
         .arg(
-            Arg::with_name("config")
+            Arg::with_name("conf")
                 .short("c")
-                .long("config-file")
+                .long("conf-file")
                 .value_name("FILE")
-                .help(
-                    "(DOESNT WORK YET!!) Sets a custom config file, if not set will use node.conf",
-                )
+                .help("(DOESNT WORK YET!!) Sets a custom conf file, if not set will use node.conf")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("loglev")
                 .long("log-level")
                 .short("v")
-                .multiple(true)
+                .value_name("loglev-val")
                 .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: debug"),
         )
         .get_matches();
-    match matches.value_of("loglev").unwrap_or(&"2") {
+    match matches.value_of("loglev-val").unwrap_or(&"2") {
         "0" => simple_logger::init_with_level(log::Level::Error).unwrap(),
         "1" => simple_logger::init_with_level(log::Level::Warn).unwrap(),
         "2" => simple_logger::init_with_level(log::Level::Info).unwrap(),
@@ -356,177 +164,762 @@ fn main() {
 #######  #   #  #   #    #  #     #
 #     #   # #   #    #   #  #     #
 #     #    #    #     # ### ####### ";
+    let mut chain_key: Vec<String> = vec![]; // 0 = pubkey, 1 = privkey
     println!("{}", art);
     info!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
-    let config_ = config();
-    let _ = config_.save();
+    let conf = config();
+    conf.create().unwrap();
     info!("Launching RPC server");
     let _rpc_server_handle = thread::spawn(|| {
         start_server();
     });
-    info!("Checking for previous startup. DO NOT CLOSE PROGRAM NOW!!!");
-    let startup_state: u16 = match database_present() {
-        true => existing_startup(),
-        false => first_start_up(),
-    };
-    let mut synced: bool = false;
-    if startup_state == 1 {
-        // succsess
-        info!("Avrio Daemon succsessfully launched");
-        match sync_needed() {
-            // do we need to sync
-            true => {
-                let pl: Vec<SocketAddr> = get_peerlist().unwrap();
-                for peer in pl {
-                    let res = new_connection(peer);
-                    if let Ok(mut peer_struct) = res {
-                        let mut peers: Vec<&mut TcpStream> = vec![];
-                        peers.push(&mut peer_struct.stream);
-                        let _ = sync(&mut peers);
-                        info!("Successfully synced with the network!");
-                        synced = true;
-                    }
-                }
-            }
-            false => {
-                info!("Succsessfully synced with the network!");
-                synced = true;
+    let mut synced: bool = true;
+
+    if !database_present() {
+        create_file_structure().unwrap();
+    }
+    if config().chain_key == "".to_owned() {
+        generate_chains().unwrap();
+        let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
+        info!("Chain digest: {}", chainsdigest);
+    }
+    if config().chain_key == "".to_owned() {
+        info!("Generating a chain for self");
+        generate_keypair(&mut chain_key);
+        if chain_key[0] == "0".to_owned() {
+            error!("failed to create keypair (Fatal)");
+            process::exit(1);
+        } else {
+            info!(
+                "Succsessfully created keypair with address: {}",
+                Wallet::from_private_key(chain_key[1].clone()).address()
+            );
+            if let Err(e) = save_wallet(&chain_key) {
+                error!(
+                    "Failed to save wallet: {}, gave error: {}",
+                    Wallet::from_private_key(chain_key[1].clone()).address(),
+                    e
+                );
+                process::exit(1);
             }
         }
-    } else {
-        error!("Failed to start avrio daemon (Fatal)");
-        panic!();
-    }
-    if sync_needed() == false
-    // check in case a new block has been released since we syned
-    {
-        // TODO: !!!URGENT!!!, use custom set password
-        let key = GenericArray::clone_from_slice(b"wallet-password");
-        let aead = Aes256Gcm::new(key);
-        // TODO: use unique nonce
-        let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
-        let ciphertext = getData(
-            config().db_path + &"/wallets/wallet".to_owned(),
-            &"pubkey".to_owned(),
-        );
-        let pubkey = String::from_utf8(
-            aead.decrypt(nonce, ciphertext.as_ref())
-                .expect("decryption failure!"),
-        )
-        .expect("failed to parse utf8");
-        // now priv key
-        let key = GenericArray::clone_from_slice(b"wallet-password");
-        let aead = Aes256Gcm::new(key);
-        // TODO: use unique nonce
-        let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
-        let ciphertext = getData(
-            config().db_path + &"/wallets/wallet".to_owned(),
-            &"privkey".to_owned(),
-        );
-        let privkey = String::from_utf8(
-            aead.decrypt(nonce, ciphertext.as_ref())
-                .expect("decryption failure!"),
-        )
-        .expect("failed to parse utf8");
-        // now send block
-        send_block(pubkey, 0, privkey);
-    } else {
-        match sync_needed() {
-            // do we need to sync
-            true => {
-                let pl: Vec<SocketAddr> = get_peerlist().unwrap();
-                for peer in pl {
-                    let res = new_connection(peer);
-                    if let Ok(mut peer_struct) = res {
-                        let mut peers: Vec<&mut TcpStream> = vec![];
-                        peers.push(&mut peer_struct.stream);
-                        let _ = sync(&mut peers);
-                        info!("Successfully synced with the network!");
-                        synced = true;
-                    }
-                }
-                // TODO: !!!URGENT!!!, use custom set password
-                if config().wallet_password == Config::default().wallet_password {
-                    warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword>");
-                }
-                let mut padded = config().wallet_password.as_bytes().to_vec();
-                while padded.len() != 32 && padded.len() < 33 {
-                    padded.push(b"n"[0]);
-                }
-                let padded_string = String::from_utf8(padded).unwrap();
-                let key = GenericArray::clone_from_slice(padded_string.as_bytes());
-                let aead = Aes256Gcm::new(key);
-                let mut padded = b"nonce".to_vec();
-                while padded.len() != 12 {
-                    padded.push(b"n"[0]);
-                }
-                let padded_string = String::from_utf8(padded).unwrap();
-                let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
-                let ciphertext = getData(
-                    config().db_path + &"/wallets/wallet".to_owned(),
-                    &"pubkey".to_owned(),
+
+        let mut genesis_block = getGenesisBlock(&chain_key[0]);
+        if let Err(e) = genesis_block {
+            if e == genesisBlockErrors::BlockNotFound {
+                info!(
+                    "No genesis block found for chain: {}, generating",
+                    Wallet::from_private_key(chain_key[1].clone()).address()
                 );
-                let pubkey = String::from_utf8(
-                    hex::decode(
-                        aead.decrypt(nonce, ciphertext.as_ref())
-                            .expect("decryption failure!"),
-                    )
-                    .expect("failed to parse hex"),
-                )
-                .expect("failed to parse hex utf8");
-                // now priv key
-                let key = GenericArray::clone_from_slice(b"wallet-password");
-                let aead = Aes256Gcm::new(key);
-                // TODO: use unique nonce
-                let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
-                let ciphertext = getData(
-                    config().db_path + &"/wallets/wallet".to_owned(),
-                    &"privkey".to_owned(),
-                );
-                let privkey = String::from_utf8(
-                    hex::decode(
-                        aead.decrypt(nonce, ciphertext.as_ref())
-                            .expect("decryption failure!"),
-                    )
-                    .expect("failed to parse hex"),
-                )
-                .expect("failed to parse hex utf8");
-                // now send block
-                send_block(pubkey, 0, privkey);
+                genesis_block = generateGenesisBlock(chain_key[0].clone(), chain_key[1].clone());
+            } else {
+                error!(
+                "Database error occoured when trying to get genesisblock for chain: {}. (Fatal)",
+                Wallet::from_private_key(chain_key[1].clone()).address()
+            );
+                process::exit(1);
             }
-            false => {
-                synced = true;
-                // TODO: !!!URGENT!!!, use custom set passwords
-                let key = GenericArray::clone_from_slice(b"wallet-password");
-                let aead = Aes256Gcm::new(key);
-                // TODO: use unique nonce
-                let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
-                let ciphertext = getData(
-                    config().db_path + &"/wallets/wallet".to_owned(),
-                    &"pubkey".to_owned(),
+        }
+        let genesis_block = genesis_block.unwrap();
+        let genesis_block_clone = genesis_block.clone();
+        match check_block(genesis_block) {
+            Err(error) => {
+                error!(
+                "Failed to validate generated genesis block. Gave error: {:?}, block dump: {:?}. (Fatal)",
+                error, genesis_block_clone
+            );
+                process::exit(1);
+            }
+            Ok(_) => info!(
+                "Successfully generated genesis block with hash {}",
+                genesis_block_clone.hash
+            ),
+        }
+        let e_code = saveBlock(genesis_block_clone.clone());
+        match e_code {
+            Ok(_) => {
+                info!("Sucessfully saved genesis block!");
+                drop(e_code);
+            }
+            Err(e) => {
+                error!(
+                    "Failed to save genesis block gave error code: {:?} (fatal)!",
+                    e
                 );
-                let pubkey = String::from_utf8(
-                    aead.decrypt(nonce, ciphertext.as_ref())
-                        .expect("decryption failure!"),
-                )
-                .expect("failed to parse utf8");
-                // now priv key
-                let key = GenericArray::clone_from_slice(b"wallet-password");
-                let aead = Aes256Gcm::new(key);
-                // TODO: use unique nonce
-                let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
-                let ciphertext = getData(
-                    config().db_path + &"/wallets/wallet".to_owned(),
-                    &"privkey".to_owned(),
-                );
-                let privkey = String::from_utf8(
-                    aead.decrypt(nonce, ciphertext.as_ref())
-                        .expect("decryption failure!"),
-                )
-                .expect("failed to parse utf8");
-                // now send block
-                send_block(pubkey, 0, privkey);
+                process::exit(1);
             }
         };
+        info!("Enacting genesis block");
+        match enact_block(genesis_block_clone) {
+            Ok(_) => {
+                info!("Sucessfully enacted genesis block!");
+            }
+            Err(e) => {
+                error!(
+                    "Failed to enact genesis block gave error code: {:?} (fatal)!",
+                    e
+                );
+                process::exit(1);
+            }
+        };
+    } else {
+        info!("Using chain: {}", config().chain_key);
+    }
+    info!(
+        " Launching P2p server on 127.0.0.1::{:?}",
+        config().p2p_port
+    );
+    let _p2p_handler = thread::spawn(|| {
+        if rec_server() != 1 {
+            error!(
+                "Error launching P2p server on 127.0.0.1::{:?} (Fatal)",
+                config().p2p_port
+            );
+            process::exit(1);
+        }
+    });
+    let syncneed = avrio_p2p::sync_needed();
+    let mut pl: Vec<SocketAddr> = get_peerlist().unwrap();
+    if pl.len() < 1 {
+        let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(99, 248, 224, 55)),
+            56789,
+        )];
+        for node in seednodes {
+            pl.push(node);
+        }
+    }
+    match syncneed {
+        // do we need to sync
+        true => {
+            info!("Starting sync (this will take some time");
+            for peer in pl {
+                let res = new_connection(peer);
+                if let Ok(mut peer_struct) = res {
+                    let mut peers: Vec<&mut TcpStream> = vec![];
+                    peers.push(&mut peer_struct.stream);
+                    if let Ok(_) = sync(&mut peers) {
+                        info!("Successfully synced with the network!");
+                        synced = true;
+                    } else {
+                        error!("Syncing failed");
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        false => {
+            info!("No sync needed");
+            synced = true;
+        }
+    }
+    if synced == true {
+        info!("Your avrio daemon is now synced and up to date with the network!");
+    } else {
+        return ();
+    }
+    let wall = Wallet::from_private_key(chain_key[1].clone());
+    info!(
+        "txn count for our chain: {}",
+        avrio_database::getData(
+            config().db_path
+                + &"/chains/".to_owned()
+                + &wall.public_key
+                + &"-chainindex".to_owned(),
+            &"txncount".to_owned(),
+        )
+    );
+    let mut txn = Transaction {
+        hash: String::from(""),
+        amount: 500005, // 1234.5 AIO
+        extra: String::from(""),
+        flag: 'c',
+        sender_key: wall.public_key.clone(),
+        receive_key: String::from(""),
+        access_key: String::from(""),
+        unlock_time: 0,
+        gas_price: 10, // 0.001 AIO
+        gas: 0,        // claim uses 0 fee
+        max_gas: u64::max_value(),
+        nonce: 0,
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64,
+        signature: String::from(""),
+    };
+    txn.hash();
+    let _ = txn.sign(&wall.private_key);
+    txn.validate_transaction();
+    let mut blk = Block {
+        header: Header {
+            version_major: 0,
+            version_breaking: 0,
+            version_minor: 0,
+            chain_key: wall.public_key.clone(),
+            prev_hash: getBlock(&wall.public_key, 0).hash,
+            height: 1,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis() as u64,
+            network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101],
+        },
+        txns: vec![txn],
+        hash: "".to_owned(),
+        signature: "".to_owned(),
+        confimed: false,
+        node_signatures: vec![],
+    };
+    blk.hash();
+    let _ = blk.sign(&wall.private_key);
+    let _ = check_block(blk.clone()).unwrap();
+    let _ = saveBlock(blk.clone()).unwrap();
+    let _ = enact_block(blk).unwrap();
+    let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+    info!("Our balance: {}", ouracc.balance_ui().unwrap());
+    loop {
+        // Now we loop until shutdown
+        let _ = io::stdout().flush();
+        let read: String = read!("{}\n");
+        if read == "send_txn".to_owned() {
+            info!("Please enter the amount");
+            let amount: f64 = read!("{}\n");
+            let mut txn = Transaction {
+                hash: String::from(""),
+                amount: to_atomc(amount),
+                extra: String::from(""),
+                flag: 'n',
+                sender_key: wall.public_key.clone(),
+                receive_key: String::from(""),
+                access_key: String::from(""),
+                unlock_time: 0,
+                gas_price: 10, // 0.001 AIO
+                gas: 20,
+                max_gas: u64::max_value(),
+                nonce: 0,
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_millis() as u64,
+                signature: String::from(""),
+            };
+            info!("Please enter the reciever address or username:");
+            let addr: String = read!();
+            let rec_wall;
+            if avrio_crypto::valid_address(&addr) {
+                rec_wall = Wallet::from_address(addr);
+            } else {
+                rec_wall = Wallet::new(
+                    avrio_core::account::getByUsername(&addr)
+                        .unwrap()
+                        .public_key,
+                    "".to_owned(),
+                );
+            }
+            txn.receive_key = rec_wall.public_key;
+            txn.nonce = avrio_database::getData(
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &txn.sender_key
+                    + &"-chainindex".to_owned(),
+                &"txncount".to_owned(),
+            )
+            .parse()
+            .unwrap_or(0);
+            txn.hash();
+            let _ = txn.sign(&wall.private_key);
+            let inv_db = openDb(
+                config().db_path
+                    + &"/chains/".to_string()
+                    + &wall.public_key
+                    + &"-invs".to_string(),
+            )
+            .unwrap();
+            let mut invIter = getIter(&inv_db);
+            let mut highest_so_far: u64 = 0;
+            invIter.seek_to_first();
+            while invIter.valid() {
+                let height: u64 = String::from_utf8(invIter.key().unwrap().into())
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                if height > highest_so_far {
+                    highest_so_far = height
+                }
+                invIter.next();
+            }
+            drop(invIter);
+            drop(inv_db);
+            let height: u64 = highest_so_far;
+            let mut blk = Block {
+                header: Header {
+                    version_major: 0,
+                    version_breaking: 0,
+                    version_minor: 0,
+                    chain_key: wall.public_key.clone(),
+                    prev_hash: getBlock(&wall.public_key, height).hash,
+                    height: height + 1,
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards")
+                        .as_millis() as u64,
+                    network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101],
+                },
+                txns: vec![txn],
+                hash: "".to_owned(),
+                signature: "".to_owned(),
+                confimed: false,
+                node_signatures: vec![],
+            };
+            blk.hash();
+            let _ = blk.sign(&wall.private_key);
+            let _ = check_block(blk.clone()).unwrap();
+            let _ = saveBlock(blk.clone()).unwrap();
+            let _ = enact_block(blk.clone()).unwrap();
+            let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+            info!(
+                "Transaction sent! Txn hash: {}, Block hash: {}. Our new balance: {} AIO",
+                blk.txns[0].hash,
+                blk.hash,
+                ouracc.balance_ui().unwrap()
+            );
+        } else if read == "get_balance" {
+            info!(
+                "Your balance: {} AIO",
+                avrio_core::account::getAccount(&wall.public_key)
+                    .unwrap()
+                    .balance_ui()
+                    .unwrap_or_default()
+            );
+        } else if read == "get_address" {
+            info!("Your wallet's addres is: {}", wall.address());
+        } else if read == "exit" {
+            // TODO: save mempool to disk, close p2p conns, send kill to all threads.
+            info!("Goodbye!");
+            process::exit(0);
+        } else if read == "address_details" {
+            info!("Enter the address of the account.");
+            let addr: String = read!("{}\n");
+            let acc =
+                avrio_core::account::getAccount(&Wallet::from_address(addr.clone()).public_key)
+                    .unwrap_or_default();
+            info!("Account details for {}", addr);
+            info!("____________________________");
+            info!(
+                "Balance: {} AIO, Locked: {} AIO",
+                acc.balance_ui().unwrap_or_default(),
+                acc.locked
+            );
+            info!(
+                "Account level: {}, access_keys: {:?}",
+                acc.level, acc.access_keys
+            );
+            info!("Username: {}, Publickey: {}", acc.username, acc.public_key);
+            info!("____________________________");
+        } else if read == "help" {
+            info!("Commands:");
+            info!("get_balance : Gets the balance of the currently loaded wallet");
+            info!("address_details: Gets details about the account assosiated with an address");
+            info!("get_address : Gets the address assosciated with this wallet");
+            info!("send_txn : Sends a transaction");
+            info!("get_account : Gets an account via their publickey");
+            info!("send_txn_advanced : allows you to send a transaction with advanced options");
+            info!("get_block : Gets a block for given hash");
+            info!("get_transaction : Gets a transaction for a given hash");
+            info!("exit : Safely shutsdown thr program. PLEASE use instead of ctrl + c");
+            info!("help : shows this help");
+        } else if read == "send_txn_advanced" {
+            error!("This doesnt work get, try again soon!");
+        } else if read == "get_block" {
+            info!("Enter block hash:");
+            let hash: String = read!("{}\n");
+            let blk: Block = getBlockFromRaw(hash);
+            if blk == Block::default() {
+                error!("Couldnt find a block with that hash");
+            } else {
+                info!("{:#?}", blk);
+            }
+        } else if read == "get_transaction" {
+            info!("Enter the transaction hash:");
+            let hash: String = read!("{}\n");
+            let block_txn_is_in = getData(config().db_path + &"/transactions".to_owned(), &hash);
+            if block_txn_is_in == "-1".to_owned() {
+                error!("Can not find that txn in db");
+            } else {
+                let blk: Block = getBlockFromRaw(block_txn_is_in);
+                if blk == Block::default() {
+                    error!("Couldnt find a block with that transaction in");
+                } else {
+                    for txn in blk.txns {
+                        if txn.hash == hash {
+                            info!("Transaction with hash: {}", txn.hash);
+                            info!("____________________________");
+                            info!(
+                                "To: {}, From: {}",
+                                Wallet::new(txn.receive_key.clone(), "".to_owned()).address(),
+                                Wallet::new(txn.sender_key.clone(), "".to_owned()).address()
+                            );
+                            info!("Amount: {} AIO", avrio_core::account::to_dec(txn.amount));
+                            info!("Timestamp: {}, Nonce: {}", txn.timestamp, txn.nonce);
+                            info!(
+                                "Block height: {}, Block Hash: {}",
+                                blk.header.height, blk.hash
+                            );
+                            info!("From chain: {}", blk.header.chain_key);
+                            info!("Txn type: {}", txn.typeTransaction());
+                            info!(
+                                "Used gas: {}, Gas price: {}, Fee: {}",
+                                txn.gas,
+                                txn.gas_price,
+                                txn.gas * txn.gas_price
+                            );
+                            info!("Extra (appened data): {}", txn.extra);
+                            info!("____________________________");
+                        }
+                    }
+                }
+            }
+        } else if read == "get_account" {
+            info!("Enter the public key of the account:");
+            let addr: String = read!("{}\n");
+            let wall = Wallet::new(addr.clone(), "".to_owned());
+            let acc = avrio_core::account::getAccount(&wall.public_key).unwrap_or_default();
+            info!("Account details for {}", wall.address());
+            info!("____________________________");
+            info!(
+                "Balance: {} AIO, Locked: {} AIO",
+                acc.balance_ui().unwrap_or_default(),
+                acc.locked
+            );
+            info!(
+                "Account level: {}, access_keys: {:?}",
+                acc.level, acc.access_keys
+            );
+            info!("Username: {}, Publickey: {}", acc.username, acc.public_key);
+            info!("____________________________");
+        } else if read == "generate" {
+            info!("Enter the number of blocks you would like to generate (max 15):");
+            let amount: u64 = read!("{}\n");
+            if amount == 0 {
+                error!("amount must be greater than 0.");
+            } else if amount > 15 {
+                error!("You can't send more than 15 blocks per go.");
+            } else if amount > 5 {
+                warn!("this will be very slow, especialy on HDD. Continue? (Y/N)");
+                let cont: String = read!();
+                if cont.to_uppercase() != "Y".to_owned() {
+                } else {
+                    info!("Enter the number of transactions per block (max 100):");
+                    let txnamount: u64 = read!("{}\n");
+                    if txnamount > 100 || txnamount == 1 {
+                        error!("Tx amount must be beetween (or equal to) 1 and 100");
+                    } else {
+                        info!(
+                            "Generating {} blocks with {} txns in each",
+                            amount, txnamount
+                        );
+                        let mut i_block: u64 = 0;
+                        while i_block < amount {
+                            let mut i: u64 = 0;
+                            let mut txns: Vec<Transaction> = vec![];
+                            while i < txnamount {
+                                let mut txn = Transaction {
+                                    hash: String::from(""),
+                                    amount: 100,
+                                    extra: String::from(""),
+                                    flag: 'n',
+                                    sender_key: wall.public_key.clone(),
+                                    receive_key: wall.public_key.clone(),
+                                    access_key: String::from(""),
+                                    gas_price: 100,
+                                    max_gas: 100,
+                                    gas: 20,
+                                    nonce: avrio_database::getData(
+                                        config().db_path
+                                            + &"/chains/".to_owned()
+                                            + &wall.public_key.clone()
+                                            + &"-chainindex".to_owned(),
+                                        &"txncount".to_owned(),
+                                    )
+                                    .parse()
+                                    .unwrap(),
+                                    unlock_time: 0,
+                                    timestamp: SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .expect("Time went backwards")
+                                        .as_millis()
+                                        as u64,
+                                    signature: String::from(""),
+                                };
+                                txn.hash();
+                                txn.sign(&wall.private_key).unwrap();
+                                txns.push(txn);
+                                i += 1;
+                                info!("txn {}/{}", i, txnamount);
+                            }
+                            // TODO: FIX!!
+                            let inv_db = openDb(
+                                config().db_path
+                                    + &"/chains/".to_string()
+                                    + &wall.public_key
+                                    + &"-invs".to_string(),
+                            )
+                            .unwrap();
+                            let mut invIter = getIter(&inv_db);
+                            let mut highest_so_far: u64 = 0;
+                            invIter.seek_to_first();
+                            while invIter.valid() {
+                                let height: u64 = String::from_utf8(invIter.key().unwrap().into())
+                                    .unwrap()
+                                    .parse()
+                                    .unwrap();
+                                if height > highest_so_far {
+                                    highest_so_far = height
+                                }
+                                invIter.next();
+                            }
+                            let height: u64 = highest_so_far;
+                            drop(invIter);
+                            drop(inv_db);
+                            let mut blk = Block {
+                                header: Header {
+                                    version_major: 0,
+                                    version_breaking: 0,
+                                    version_minor: 0,
+                                    chain_key: wall.public_key.clone(),
+                                    prev_hash: getBlock(&wall.public_key, height).hash,
+                                    height: height + 1,
+                                    timestamp: SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .expect("Time went backwards")
+                                        .as_millis()
+                                        as u64,
+                                    network: vec![
+                                        97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101,
+                                    ],
+                                },
+                                txns,
+                                hash: "".to_owned(),
+                                signature: "".to_owned(),
+                                confimed: false,
+                                node_signatures: vec![],
+                            };
+                            info!("hashing block");
+                            blk.hash();
+                            let _ = blk.sign(&wall.private_key);
+                            let _ = check_block(blk.clone()).unwrap();
+                            info!("checked block");
+                            let _ = saveBlock(blk.clone()).unwrap();
+                            info!("saved block");
+                            let _ = enact_block(blk.clone()).unwrap();
+                            info!("enacted block :{}", i_block);
+                            i_block += 1;
+                        }
+                        let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+                        info!(
+                            "Blocks sent! Our new balance: {} AIO",
+                            ouracc.balance_ui().unwrap()
+                        );
+                    }
+                }
+            }
+            continue;
+        } else if read == "claim".to_owned() {
+            info!("Please enter the amount");
+            let amount: f64 = read!("{}\n");
+            let mut txn = Transaction {
+                hash: String::from(""),
+                amount: to_atomc(amount),
+                extra: String::from(""),
+                flag: 'c',
+                sender_key: wall.public_key.clone(),
+                receive_key: String::from(""),
+                access_key: String::from(""),
+                unlock_time: 0,
+                gas_price: 10, // 0.001 AIO
+                gas: 20,
+                max_gas: u64::max_value(),
+                nonce: 0,
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_millis() as u64,
+                signature: String::from(""),
+            };
+            txn.receive_key = wall.public_key.clone();
+            txn.nonce = avrio_database::getData(
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &txn.sender_key
+                    + &"-chainindex".to_owned(),
+                &"txncount".to_owned(),
+            )
+            .parse()
+            .unwrap_or(0);
+            txn.hash();
+            let _ = txn.sign(&wall.private_key);
+            let inv_db = openDb(
+                config().db_path
+                    + &"/chains/".to_string()
+                    + &wall.public_key
+                    + &"-invs".to_string(),
+            )
+            .unwrap();
+            let mut invIter = getIter(&inv_db);
+            let mut highest_so_far: u64 = 0;
+            invIter.seek_to_first();
+            while invIter.valid() {
+                let height: u64 = String::from_utf8(invIter.key().unwrap().into())
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                if height > highest_so_far {
+                    highest_so_far = height
+                }
+                invIter.next();
+            }
+            drop(invIter);
+            drop(inv_db);
+            let height: u64 = highest_so_far;
+            let mut blk = Block {
+                header: Header {
+                    version_major: 0,
+                    version_breaking: 0,
+                    version_minor: 0,
+                    chain_key: wall.public_key.clone(),
+                    prev_hash: getBlock(&wall.public_key, height).hash,
+                    height: height + 1,
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards")
+                        .as_millis() as u64,
+                    network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101],
+                },
+                txns: vec![txn],
+                hash: "".to_owned(),
+                signature: "".to_owned(),
+                confimed: false,
+                node_signatures: vec![],
+            };
+            blk.hash();
+            let _ = blk.sign(&wall.private_key);
+            let _ = check_block(blk.clone()).unwrap();
+            let _ = saveBlock(blk.clone()).unwrap();
+            let _ = enact_block(blk.clone()).unwrap();
+            let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+            info!(
+                "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
+                blk.txns[0].hash,
+                ouracc.balance_ui().unwrap()
+            );
+        } else if read == "register_username".to_owned() {
+            info!("Please enter the username you would like to register:");
+            let username: String = read!("{}\n");
+            if let Ok(_) = avrio_core::account::getByUsername(&username) {
+                error!("That username is already registered, please try another");
+            } else {
+                let acc = avrio_core::account::getAccount(&wall.public_key).unwrap_or_default();
+                if acc == Default::default() {
+                    error!("Failed to get your account");
+                } else {
+                    if acc.username != "".to_owned() {
+                        error!("You already have a username");
+                    } else if acc.balance_ui().unwrap_or_default() < 0.50 {
+                        error!("You need at least 0.50 AIO to register a username (tip, use the claim command)");
+                    } else {
+                        let mut txn = Transaction {
+                            hash: String::from(""),
+                            amount: to_atomc(0.50),
+                            extra: username,
+                            flag: 'u',
+                            sender_key: wall.public_key.clone(),
+                            receive_key: String::from(""),
+                            access_key: String::from(""),
+                            unlock_time: 0,
+                            gas_price: 10, // 0.001 AIO
+                            gas: 20,
+                            max_gas: u64::max_value(),
+                            nonce: 0,
+                            timestamp: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .expect("Time went backwards")
+                                .as_millis() as u64,
+                            signature: String::from(""),
+                        };
+                        txn.receive_key = wall.public_key.clone();
+                        txn.nonce = avrio_database::getData(
+                            config().db_path
+                                + &"/chains/".to_owned()
+                                + &txn.sender_key
+                                + &"-chainindex".to_owned(),
+                            &"txncount".to_owned(),
+                        )
+                        .parse()
+                        .unwrap_or(0);
+                        txn.hash();
+                        let _ = txn.sign(&wall.private_key);
+                        let inv_db = openDb(
+                            config().db_path
+                                + &"/chains/".to_string()
+                                + &wall.public_key
+                                + &"-invs".to_string(),
+                        )
+                        .unwrap();
+                        let mut invIter = getIter(&inv_db);
+                        let mut highest_so_far: u64 = 0;
+                        invIter.seek_to_first();
+                        while invIter.valid() {
+                            let height: u64 = String::from_utf8(invIter.key().unwrap().into())
+                                .unwrap()
+                                .parse()
+                                .unwrap();
+                            if height > highest_so_far {
+                                highest_so_far = height
+                            }
+                            invIter.next();
+                        }
+                        drop(invIter);
+                        drop(inv_db);
+                        let height: u64 = highest_so_far;
+                        let mut blk = Block {
+                            header: Header {
+                                version_major: 0,
+                                version_breaking: 0,
+                                version_minor: 0,
+                                chain_key: wall.public_key.clone(),
+                                prev_hash: getBlock(&wall.public_key, height).hash,
+                                height: height + 1,
+                                timestamp: SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .expect("Time went backwards")
+                                    .as_millis() as u64,
+                                network: vec![
+                                    97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101,
+                                ],
+                            },
+                            txns: vec![txn],
+                            hash: "".to_owned(),
+                            signature: "".to_owned(),
+                            confimed: false,
+                            node_signatures: vec![],
+                        };
+                        blk.hash();
+                        let _ = blk.sign(&wall.private_key);
+                        let _ = check_block(blk.clone()).unwrap();
+                        let _ = saveBlock(blk.clone()).unwrap();
+                        let _ = enact_block(blk.clone()).unwrap();
+                        let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+                        info!(
+                            "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
+                            blk.txns[0].hash,
+                            ouracc.balance_ui().unwrap()
+                        );
+                    }
+                }
+            }
+        } else {
+            info!("Unknown command: {}", read);
+        }
     }
 }

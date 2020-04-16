@@ -881,11 +881,20 @@ pub fn rec_server() -> u8 {
                     "New incoming connection to peer: {}",
                     stream.peer_addr().unwrap()
                 );
-
-                thread::spawn(move || {
-                    // connection succeeded
-                    let _ = handle_client(stream);
-                });
+                if let Err(e) = avrio_database::add_peer(stream.peer_addr().unwrap()) {
+                    error!(
+                        "Failed to add peer: {} to peer list, gave error: {}",
+                        stream.peer_addr().unwrap(),
+                        e
+                    );
+                    drop(listener);
+                    return 0;
+                } else {
+                    thread::spawn(move || {
+                        // connection succeeded
+                        let _ = handle_client(stream);
+                    });
+                }
             }
             Err(e) => {
                 warn!("handling peer connection to peer resulted in  error: {}", e);
@@ -957,6 +966,7 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         sent_bytes: 200,
         recieved_bytes: 200,
     };
+    avrio_database::add_peer(socket)?;
     return Ok(Peer {
         id: pid,
         socket,
@@ -1119,7 +1129,6 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         0x45 => {
             // send block count
             return None;
-
         }
         _ => {
             warn!("Bad Messge type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
