@@ -100,7 +100,8 @@ pub fn setAccount(acc: &Account) -> u8 {
     let getAccOld = getAccount(&acc.public_key);
     if let Ok(deserialized) = getAccOld {
         if acc.username != deserialized.username && deserialized != Account::default() {
-            let upath = config().db_path + &"/usernames/".to_owned() + &avrio_crypto::raw_hash(&deserialized.username) + ".uname";
+            let upath = config().db_path + &"/usernames/".to_owned() + &avrio_crypto::raw_hash(&acc.username) + ".uname";
+            info!("saving uname: {}.", deserialized.username);
             let filetry = File::create(upath);
             if let Ok(mut file) = filetry {
                 if let Err(_) = file.write_all(&acc.public_key.as_bytes()) {
