@@ -38,6 +38,10 @@ pub fn generate_keypair() -> Keypair {
     }
 }
 
+pub fn raw_lyra(s: &String) -> String {
+    return bs58::encode(sum(s.as_bytes().to_vec())).into_string();
+}
+
 pub fn raw_hash(s: &String) -> String {
     // First we calculate the bytes of the string being passed to us
     let bytes = s.as_bytes().to_vec();
@@ -180,8 +184,8 @@ impl Hashable for Publickey {
 }
 
 pub fn valid_address(address: &String) -> bool {
-    let decoded: Vec<u8> = bs58::decode(address).into_vec().unwrap_or(vec![0,6,9,0]);
-    if decoded == vec![0,6,9,0] {
+    let decoded: Vec<u8> = bs58::decode(address).into_vec().unwrap_or(vec![0, 6, 9, 0]);
+    if decoded == vec![0, 6, 9, 0] {
         return false;
     }
     let length = decoded.len();

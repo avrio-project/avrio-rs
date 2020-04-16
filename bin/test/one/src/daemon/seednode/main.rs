@@ -367,6 +367,7 @@ fn main() {
     blk.hash();
     let _ = blk.sign(&wall.private_key);
     let _ = check_block(blk.clone()).unwrap();
+    let _ = saveBlock(blk.clone()).unwrap();
     let _ = enact_block(blk).unwrap();
     let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
     info!("Our balance: {}", ouracc.balance_ui().unwrap());
@@ -467,11 +468,13 @@ fn main() {
             blk.hash();
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
+            let _ = saveBlock(blk.clone()).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
-                "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
+                "Transaction sent! Txn hash: {}, Block hash: {}. Our new balance: {} AIO",
                 blk.txns[0].hash,
+                blk.hash,
                 ouracc.balance_ui().unwrap()
             );
         } else if read == "get_balance" {
@@ -526,7 +529,7 @@ fn main() {
             let hash: String = read!("{}\n");
             let blk: Block = getBlockFromRaw(hash);
             if blk == Block::default() {
-                error!("Couldnt find a block with that hash.");
+                error!("Couldnt find a block with that hash");
             } else {
                 info!("{:#?}", blk);
             }
@@ -534,27 +537,39 @@ fn main() {
             info!("Enter the transaction hash:");
             let hash: String = read!("{}\n");
             let block_txn_is_in = getData(config().db_path + &"/transactions".to_owned(), &hash);
-            let blk: Block = getBlockFromRaw(block_txn_is_in);
-            if blk == Block::default() {
-                error!("Couldnt find a block with that hash.");
+            if block_txn_is_in == "-1".to_owned() {
+                error!("Can not find that txn in db");
             } else {
-                for txn in blk.txns {
-                    if txn.hash == hash {
-                        info!("Transaction with hash: {}", txn.hash);
-                        info!("____________________________");
-                        info!(
-                            "To: {}, From: {}",
-                            Wallet::new(txn.receive_key, "".to_owned()).address(),
-                            Wallet::new(txn.sender_key, "".to_owned()).address()
-                        );
-                        info!("Amount: {} AIO", avrio_core::account::to_dec(txn.amount));
-                        info!("Timestamp: {}, Nonce: {}", txn.timestamp, txn.nonce);
-                        info!(
-                            "Block height: {}, Block Hash: {}",
-                            blk.header.height, blk.hash
-                        );
-                        info!("From chain: {}", blk.header.chain_key);
-                        info!("____________________________");
+                let blk: Block = getBlockFromRaw(block_txn_is_in);
+                if blk == Block::default() {
+                    error!("Couldnt find a block with that transaction in");
+                } else {
+                    for txn in blk.txns {
+                        if txn.hash == hash {
+                            info!("Transaction with hash: {}", txn.hash);
+                            info!("____________________________");
+                            info!(
+                                "To: {}, From: {}",
+                                Wallet::new(txn.receive_key.clone(), "".to_owned()).address(),
+                                Wallet::new(txn.sender_key.clone(), "".to_owned()).address()
+                            );
+                            info!("Amount: {} AIO", avrio_core::account::to_dec(txn.amount));
+                            info!("Timestamp: {}, Nonce: {}", txn.timestamp, txn.nonce);
+                            info!(
+                                "Block height: {}, Block Hash: {}",
+                                blk.header.height, blk.hash
+                            );
+                            info!("From chain: {}", blk.header.chain_key);
+                            info!("Txn type: {}", txn.typeTransaction());
+                            info!(
+                                "Used gas: {}, Gas price: {}, Fee: {}",
+                                txn.gas,
+                                txn.gas_price,
+                                txn.gas * txn.gas_price
+                            );
+                            info!("Extra (appened data): {}", txn.extra);
+                            info!("____________________________");
+                        }
                     }
                 }
             }
@@ -688,6 +703,8 @@ fn main() {
                             let _ = blk.sign(&wall.private_key);
                             let _ = check_block(blk.clone()).unwrap();
                             info!("checked block");
+                            let _ = saveBlock(blk.clone()).unwrap();
+                            info!("saved block");
                             let _ = enact_block(blk.clone()).unwrap();
                             info!("enacted block :{}", i_block);
                             i_block += 1;
@@ -781,6 +798,7 @@ fn main() {
             blk.hash();
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
+            let _ = saveBlock(blk.clone()).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
@@ -882,6 +900,7 @@ fn main() {
                         blk.hash();
                         let _ = blk.sign(&wall.private_key);
                         let _ = check_block(blk.clone()).unwrap();
+                        let _ = saveBlock(blk.clone()).unwrap();
                         let _ = enact_block(blk.clone()).unwrap();
                         let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
                         info!(

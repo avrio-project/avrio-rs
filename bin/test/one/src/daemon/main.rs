@@ -225,11 +225,10 @@ fn first_start_up() -> u16 {
     let mut conn_nodes = 0;
     let mut trys: u8 = 0;
     let mut connected_peers: Vec<TcpStream> = vec![];
-    while conn_nodes < 1 {
+    connected_peers.push(new_connection(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(99, 248, 224, 55)), 56789)).unwrap().stream);
+    while connected_peers.len() < 1 {
         let seednodes: Vec<SocketAddr> = vec![
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12345),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(126, 0, 0, 1)), 12345),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(123, 0, 0, 1)), 12345),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(99, 248, 224, 55)), 56789),
         ];
         if trys > 49 {
             process::exit(1);

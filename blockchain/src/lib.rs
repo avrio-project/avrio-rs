@@ -209,58 +209,59 @@ impl BlockSignature {
     }
 }
 
-/// Generates and saves the merkle root of the chain
-pub fn generate_merkle_root(
-    chain: String,
-) -> std::result::Result<String, Box<dyn std::error::Error>> {
-    let mut chain_vec: Vec<String> = vec![];
-    let db =
-        openDb(config().db_path + &"/chains/".to_owned() + &chain + &"-invs".to_owned()).unwrap();
-    let mut iter = db.raw_iterator();
-    iter.seek_to_first();
-    while iter.valid() {
-        chain_vec
-            .push(String::from_utf8(iter.value().unwrap_or(&[0; 1]).to_vec()).unwrap_or_default());
-        iter.next();
-    }
-    let merkle = merkle::MerkleTree::from_vec(&SHA256, chain_vec);
-    let root = String::from_utf8(merkle.root_hash().clone())?;
-    let _ = saveData(
-        root.clone(),
-        config().db_path + &"/chainsdigest".to_owned(),
-        chain,
-    );
-    return Ok(root);
-}
 pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
     let mut roots: Vec<String> = vec![];
     if let Ok(db) = openDb(config().db_path + &"/chainlist".to_owned()) {
         let mut iter = db.raw_iterator();
         iter.seek_to_first();
-        let db = openDb(config().db_path + &"/chainsdigest".to_owned()).unwrap();
         while iter.valid() {
             if let Some(chain) = iter.key() {
                 if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
-                    let root_read = getDataDb(&db, &chain_string);
-                    if root_read == "-1".to_owned() || root_read == "0".to_owned() {
-                        roots.push(generate_merkle_root(chain_string).unwrap_or("a".to_owned()));
-                    } else {
-                        roots.push(root_read);
+                    if let Ok(blkdb) = openDb(
+                        config().db_path
+                            + &"/chains/".to_owned()
+                            + &chain_string
+                            + &"-invs".to_owned(),
+                    ) {
+                        let mut blkiter = blkdb.raw_iterator();
+                        blkiter.seek_to_first();
+                        while blkiter.valid() {
+                            if let Some(blk) = iter.value() {
+                                update_chain_digest(String::from_utf8(blk.to_vec())?);
+                            }
+                            blkiter.next();
+                        }
                     }
                 }
             }
             iter.next();
         }
     }
-    let merkle = merkle::MerkleTree::from_vec(&SHA256, roots);
-    let root = bs58::encode(merkle.root_hash().clone()).into_string();
+    return Ok(getData(
+        config().db_path + &"/chainsdigest".to_owned(),
+        &"master".to_owned(),
+    ));
+}
+
+pub fn update_chain_digest(new_blk_hash: String) -> String {
+    let curr = getData(
+        config().db_path + &"/chainsdigest".to_owned(),
+        &"master".to_owned(),
+    );
+    let root: String;
+    if curr == "-1".to_owned() {
+        root = new_blk_hash;
+    } else {
+        root = avrio_crypto::raw_lyra(&(curr + &new_blk_hash));
+    }
     let _ = saveData(
         root.clone(),
         config().db_path + &"/chainsdigest".to_owned(),
         "master".to_owned(),
     );
-    return Ok(root);
+    return root;
 }
+
 pub fn getBlock(chainkey: &String, height: u64) -> Block {
     // returns the block when you know the chain and the height
     let hash = getData(
@@ -319,8 +320,6 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
     }
     if inv_sender_res != 1 {
         return Err("failed to save sender inv".into());
-    } else {
-        generate_merkle_root_all()?;
     }
     return Ok(());
 }
@@ -446,9 +445,26 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
             );
         }
     }
+
+    let bh = block.hash.clone();
+    std::thread::spawn(move || {
+        update_chain_digest(bh);
+    });
     for txn in block.txns {
         txn.enact()?;
+        if saveData(
+            block.hash.clone(),
+            config().db_path + &"/transactions".to_owned(),
+            txn.hash.clone(),
+        ) != 1
+        {
+            return Err("failed to save txn in transactions db".into());
+        }
+        if getData(config().db_path + &"/transactions".to_owned(), &txn.hash) != block.hash {
+            error!("Cant save txn to db :(");
+        }
     }
+
     return Ok(());
 }
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {

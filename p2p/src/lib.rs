@@ -1112,6 +1112,15 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             sendChainDigest(peer);
             return Some("sendchaindigest".into());
         }
+        0 => {
+            debug!("Unsupported application (zero type code)");
+            return None;
+        }
+        0x45 => {
+            // send block count
+            return None;
+
+        }
         _ => {
             warn!("Bad Messge type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
             return None;
