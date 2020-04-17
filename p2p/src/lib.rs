@@ -111,16 +111,15 @@ pub fn prop_block(_blk: Block) -> Result<u64, Box<dyn std::error::Error>> {
 
 fn sendInventories(
     from: String,
-    to: String,
+    amount: u8,
     _peer: &mut TcpStream,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let firstInventory = getBlockFromRaw(from);
-    let lastInventory = getBlockFromRaw(to);
-    if firstInventory == Block::default() || lastInventory == Block::default() {
-        return Err("err".into());
+    if firstInventory == Block::default() {
+        return Err("cant find first inv block".into());
     } else {
         let from_t = firstInventory.header.timestamp;
-        let to_t = firstInventory.header.timestamp;
+        let mut invs_sent: u64 = 0;
         if let Ok(db) = openDb(config().db_path + &"/chainlist".to_owned()) {
             let mut iter = db.raw_iterator();
             iter.seek_to_first();
@@ -149,9 +148,8 @@ fn sendInventories(
                                                 iter.value()
                                             );
                                             if inv_des.timestamp >= from_t
-                                                && inv_des.timestamp <= to_t
+                                                && invs_sent < amount as u64
                                             {
-                                                use std::borrow::Cow; // Cow = clone on write -  a much more efficent way of having multiple defrenced refrences to strings.
                                                 let inv_string_cow = Cow::from(inv_string);
                                                 if let Err(_) = sendData(
                                                     (&inv_string_cow).to_string(),
@@ -165,7 +163,11 @@ fn sendInventories(
                                                         0x1a,
                                                     )?
                                                 } else {
-                                                    return Ok(());
+                                                    invs_sent += 1;
+                                                }
+                                            } else {
+                                                if invs_sent > amount as u64 {
+                                                    return Ok(())
                                                 }
                                             }
                                         }
@@ -1054,7 +1056,7 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 
 pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
-    //info!("recive: {}", msg);
+    info!("recive (deform) {}", msg);
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
     drop(v);
@@ -1067,7 +1069,6 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     });
     match msg_d.message_type {
         0x22 => {
-            info!("send have syncack");
             let _ = sendData("syncack".to_owned(), peer, 0x01);
             return Some("syncreq".to_owned());
         }
@@ -1077,26 +1078,12 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             if d == GetInventories::default() {
                 return None;
             }
-            let mut to: String = d.to;
             let mut from = d.from;
             if from == "0000000000".to_string() {
                 from = config.first_block_hash;
             }
-            if to == "0000000000" {
-                let path = config.db_path;
-                let height_from: u64 = getBlockFromRaw(from.clone()).header.height;
-                let b = getData(
-                    path + &"/hashbynetworkheight".to_string(),
-                    &(height_from + d.amount as u64).to_string(),
-                );
-                if b == "-1".to_string() || b == "0".to_string() {
-                    return None;
-                } else {
-                    let block: Block = serde_json::from_str(&b).unwrap_or_default();
-                    to = block.hash;
-                }
-            }
-            sendInventories(from, to, peer);
+            let amount: u8 = d.amount;
+            sendInventories(from, amount, peer);
             return Some("inventories".to_owned());
         }
         0x05 => {
@@ -1128,6 +1115,12 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         }
         0x45 => {
             // send block count
+            let bc = getData(config().db_path + &"/chaindigest".to_owned(), &"blockcount".to_owned());
+            if bc == "-1".to_owned() {
+                let _ = sendData("0".into(), peer, 0x46);
+            } else {
+                let _ = sendData(bc, peer, 0x46);
+            }
             return None;
         }
         _ => {
