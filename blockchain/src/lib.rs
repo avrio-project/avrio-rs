@@ -396,6 +396,13 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         setDataDb(&bc.to_string(), &cd_db, &"blockcount");
         trace!("Updated non-zero block count, new count: {}", bc);
     }
+    let chaindex_db = openDb(
+        config().db_path
+            + &"/chains/".to_owned()
+            + &block.header.chain_key
+            + &"-chainindex".to_owned(),
+    )
+    .unwrap();
     if block.header.height == 0 {
         if saveData(
             "".to_owned(),
@@ -410,17 +417,9 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
                 return Err("failed to save new account".into());
             }
         }
-        let chaindex_db = openDb(
-            config().db_path
-                + &"/chains/".to_owned()
-                + &block.header.chain_key
-                + &"-chainindex".to_owned(),
-        )
-        .unwrap();
         if avrio_database::getDataDb(&chaindex_db, &"txncount") == "-1".to_owned() {
             avrio_database::setDataDb(&"0".to_string(), &chaindex_db, &"txncount");
         }
-        drop(cd_db);
     }
 
     let bh = block.hash.clone();
@@ -429,12 +428,23 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     });
     let txn_db = openDb(config().db_path + &"/transactions".to_owned()).unwrap();
     for txn in block.txns {
-        txn.enact()?;
+        txn.enact(&chaindex_db)?;
         if setDataDb(&block.hash, &txn_db, &txn.hash) != 1 {
             return Err("failed to save txn in transactions db".into());
         }
+        if txn.sender_key != txn.receive_key && txn.sender_key != block.header.chain_key {
+            let inv_receiver_res =
+                setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
+            if inv_receiver_res != 1 {
+                return Err("failed to save reciver inv".into());
+            }
+            if setDataDb(&block.hash, &chaindex_db, &txn.hash) != 1 {
+                return Err("failed to add transaction to transaction db".into());
+            }
+        }
     }
     drop(txn_db);
+    drop(chaindex_db);
     return Ok(());
 }
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {

@@ -99,7 +99,10 @@ impl Transaction {
         };
     }
 
-    pub fn enact(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    pub fn enact(
+        &self,
+        chain_idex_db: &rocksdb::DB,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let txn_type: String = self.typeTransaction();
         if txn_type == "normal".to_owned() {
             let mut sendacc = open_or_create(&self.sender_key);
@@ -112,22 +115,9 @@ impl Transaction {
                 reqacc.save().unwrap();
             }
             sendacc.save().unwrap();
-            let txn_count: u64 = avrio_database::getData(
-                config().db_path
-                    + &"/chains/".to_owned()
-                    + &self.sender_key
-                    + &"-chainindex".to_owned(),
-                &"txncount".to_owned(),
-            )
-            .parse()?;
-            if avrio_database::saveData(
-                (txn_count + 1).to_string(),
-                config().db_path
-                    + &"/chains/".to_owned()
-                    + &self.sender_key
-                    + &"-chainindex".to_owned(),
-                "txncount".to_owned(),
-            ) != 1
+            let txn_count: u64 = avrio_database::getDataDb(chain_idex_db, &"txncount").parse()?;
+            if avrio_database::setDataDb(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
+                != 1
             {
                 return Err("failed to update send acc nonce".into());
             } else {
@@ -159,7 +149,7 @@ impl Transaction {
                 }
             }
         } else {
-            return Err("unsuported txn type".into());
+            return Err("unsupported txn type".into());
         }
         return Ok(());
     }
