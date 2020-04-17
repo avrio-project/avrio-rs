@@ -144,18 +144,22 @@ fn main() {
                 .long("log-level")
                 .short("v")
                 .value_name("loglev-val")
-                .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: debug"),
+                .takes_value(true)
+                .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: Debug, 4: Trace"),
         )
         .get_matches();
-    match matches.value_of("loglev-val").unwrap_or(&"2") {
+    match matches.value_of("loglev").unwrap_or(&"2") {
         "0" => simple_logger::init_with_level(log::Level::Error).unwrap(),
         "1" => simple_logger::init_with_level(log::Level::Warn).unwrap(),
         "2" => simple_logger::init_with_level(log::Level::Info).unwrap(),
         "3" => simple_logger::init_with_level(log::Level::Debug).unwrap(),
         "4" => simple_logger::init_with_level(log::Level::Trace).unwrap(),
-        _ => panic!("Unknown log-level: {} ", matches.occurrences_of("loglev")),
+        _ => {
+            println!("Unknown log-level: {} ", matches.occurrences_of("loglev"));
+            println!("Supported levels: 0: Error, 1: Warn, 2: Info, 3: Debug, 4: Trace");
+            std::process::exit(1);
+        },
     }
-    //println!("{}", matches.occurrences_of("loglev"));
     let art = "
    #    #     # ######  ### #######
   # #   #     # #     #  #  #     #

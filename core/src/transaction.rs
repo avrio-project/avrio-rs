@@ -130,6 +130,13 @@ impl Transaction {
             ) != 1
             {
                 return Err("failed to update send acc nonce".into());
+            } else {
+                trace!(
+                    "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
+                    self.sender_key,
+                    txn_count,
+                    txn_count + 1
+                );
             }
         // TODO: Check we are on the testnet
         } else if txn_type == "claim".to_owned() {
