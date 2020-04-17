@@ -290,13 +290,37 @@ pub fn getBlockFromRaw(hash: String) -> Block {
 }
 
 pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    trace!("Saving block with hash: {}", block.hash);
     // formats the block into a .dat file and saves it under block-hash.dat
     let encoded: Vec<u8> = serde_json::to_string(&block)?.as_bytes().to_vec();
     let mut file =
         File::create(config().db_path + &"/blocks/blk-".to_owned() + &block.hash + ".dat")?;
     file.write_all(&encoded)?;
-    trace!("Saved block with hash: {}, to file", block.hash);
+    let inv_sender_res = saveData(
+        block.hash.clone(),
+        config().db_path + &"/chains/".to_owned() + &block.header.chain_key + &"-invs".to_owned(),
+        block.header.height.to_string(),
+    );
+    for txn in block.txns {
+        let inv_receiver_res = saveData(
+            block.hash.clone(),
+            config().db_path + &"/chains/".to_owned() + &txn.receive_key + &"-invs".to_owned(),
+            block.header.height.to_string(),
+        );
+        if inv_receiver_res != 1 {
+            return Err("failed to save reciver inv".into());
+        }
+        if saveData(
+            block.hash.clone(),
+            config().db_path + &"/transactions".to_owned(),
+            txn.hash,
+        ) != 1
+        {
+            return Err("failed to add transaction to transaction db".into());
+        }
+    }
+    if inv_sender_res != 1 {
+        return Err("failed to save sender inv".into());
+    }
     return Ok(());
 }
 
@@ -389,34 +413,14 @@ impl Block {
 }
 // TODO: finish enact block
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let block_count = getData(
-        config().db_path + &"/chaindigest".to_owned(),
-        &"blockcount".to_owned(),
-    );
-    let inv_sender_res = saveData(
-        block.hash.clone(),
-        config().db_path + &"/chains/".to_owned() + &block.header.chain_key + &"-invs".to_owned(),
-        block.header.height.to_string(),
-    );
-    trace!("Saved inv for sender: {}", block.header.chain_key);
-    if inv_sender_res != 1 {
-        return Err("failed to save sender inv".into());
-    }
+    let block_count = getData(config().db_path + &"/chaindigest".to_owned(), &"blockcount".to_owned());
     if block_count == "-1".to_owned() {
-        saveData(
-            "1".to_owned(),
-            config().db_path + &"/chaindigest".to_owned(),
-            "blockcount".to_owned(),
-        );
+        saveData("1".to_owned(), config().db_path + &"/chaindigest".to_owned(), "blockcount".to_owned());
         trace!("set block count, prev: -1 (not set), new: 1");
     } else {
         let mut bc: u64 = block_count.parse().unwrap_or_default();
         bc += 1;
-        saveData(
-            bc.to_string(),
-            config().db_path + &"/chaindigest".to_owned(),
-            "blockcount".to_owned(),
-        );
+        saveData(bc.to_string(), config().db_path + &"/chaindigest".to_owned(), "blockcount".to_owned());
         trace!("Updated non-zero block count, new count: {}", bc);
     }
     if block.header.height == 0 {
@@ -468,24 +472,6 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         }
         if getData(config().db_path + &"/transactions".to_owned(), &txn.hash) != block.hash {
             error!("Cant save txn to db :(");
-        }
-        if txn.sender_key != txn.receive_key && txn.sender_key != block.header.chain_key {
-            let inv_receiver_res = saveData(
-                block.hash.clone(),
-                config().db_path + &"/chains/".to_owned() + &txn.receive_key + &"-invs".to_owned(),
-                block.header.height.to_string(),
-            );
-            if inv_receiver_res != 1 {
-                return Err("failed to save reciver inv".into());
-            }
-            if saveData(
-                block.hash.clone(),
-                config().db_path + &"/transactions".to_owned(),
-                txn.hash,
-            ) != 1
-            {
-                return Err("failed to add transaction to transaction db".into());
-            }
         }
     }
 
