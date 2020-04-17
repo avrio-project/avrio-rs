@@ -29,15 +29,18 @@ pub fn saveData(serialized: String, path: String, key: String) -> u8 {
         );
         process::exit(0);
     });
-    db.put(key, serialized);
-    return 1;
+    if let Err(e) = db.put(key, serialized) {
+        error!("Failed to save data to db: {}, gave error: {}", path, e);
+        return 0;
+    } else {
+        return 1;
+    }
 }
 
 pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
-    let s = getData(
-        config().db_path + &"/peers".to_string(),
-        &"white".to_string(),
-    );
+    let peers_db = openDb(config().db_path + &"/peers".to_string()).unwrap();
+    let s = getDataDb(&peers_db, &"white");
+    drop(peers_db);
     if s == "-1".to_owned() {
         return Err("peerlist not found".into());
     } else {
@@ -91,4 +94,17 @@ pub fn getDataDb(db: &DB, key: &str) -> String {
         Err(_e) => data = "0".to_owned(),
     }
     return data;
+}
+
+pub fn setDataDb(value: &String, db: &DB, key: &str) -> u8 {
+    if let Err(e) = db.put(key, value) {
+        error!(
+            "Failed to save data to db: {}, gave error: {}",
+            db.path().display(),
+            e
+        );
+        return 0;
+    } else {
+        return 1;
+    }
 }
