@@ -117,10 +117,7 @@ impl BlockSignature {
         } else if self.hash != self.hash_return() {
             return false;
         } else if getData(
-            config().db_path
-                + "/chains/"
-                + &self.signer_public_key
-                + "-chainsindex",
+            config().db_path + "/chains/" + &self.signer_public_key + "-chainsindex",
             "sigcount",
         ) != self.nonce.to_string()
         {
@@ -217,12 +214,9 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
         while iter.valid() {
             if let Some(chain) = iter.key() {
                 if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
-                    if let Ok(blkdb) = openDb(
-                        config().db_path
-                            + "/chains/"
-                            + &chain_string
-                            + "-invs"
-                    ) {
+                    if let Ok(blkdb) =
+                        openDb(config().db_path + "/chains/" + &chain_string + "-invs")
+                    {
                         let mut blkiter = blkdb.raw_iterator();
                         blkiter.seek_to_first();
                         while blkiter.valid() {
@@ -237,17 +231,11 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
             iter.next();
         }
     }
-    return Ok(getData(
-        config().db_path + &"/chainsdigest",
-        "master",
-    ));
+    return Ok(getData(config().db_path + &"/chainsdigest", "master"));
 }
 
 pub fn update_chain_digest(new_blk_hash: String) -> String {
-    let curr = getData(
-        config().db_path + &"/chainsdigest",
-        "master",
-    );
+    let curr = getData(config().db_path + &"/chainsdigest", "master");
     let root: String;
     if &curr == "-1" {
         root = new_blk_hash;
@@ -291,36 +279,11 @@ pub fn getBlockFromRaw(hash: String) -> Block {
 
 pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
     // formats the block into a .dat file and saves it under block-hash.dat
+    trace!("Saving block with hash: {}", block.hash);
     let encoded: Vec<u8> = serde_json::to_string(&block)?.as_bytes().to_vec();
-    let mut file =
-        File::create(config().db_path + "/blocks/blk-" + &block.hash + ".dat")?;
+    let mut file = File::create(config().db_path + "/blocks/blk-" + &block.hash + ".dat")?;
     file.write_all(&encoded)?;
-    let inv_sender_res = saveData(
-        block.hash.clone(),
-        config().db_path + "/chains/" + &block.header.chain_key + "-invs",
-        block.header.height.to_string(),
-    );
-    for txn in block.txns {
-        let inv_receiver_res = saveData(
-            block.hash.clone(),
-            config().db_path + "/chains/" + &txn.receive_key + "-invs",
-            block.header.height.to_string(),
-        );
-        if inv_receiver_res != 1 {
-            return Err("failed to save reciver inv".into());
-        }
-        if saveData(
-            block.hash.clone(),
-            config().db_path + "/transactions",
-            txn.hash,
-        ) != 1
-        {
-            return Err("failed to add transaction to transaction db".into());
-        }
-    }
-    if inv_sender_res != 1 {
-        return Err("failed to save sender inv".into());
-    }
+    trace!("Saved Block");
     return Ok(());
 }
 
@@ -413,14 +376,24 @@ impl Block {
 }
 // TODO: finish enact block
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let block_count = getData(config().db_path + "/chaindigest", "blockcount");
+    let inv_sender_res = saveData(
+        block.hash.clone(),
+        config().db_path + &"/chains/".to_owned() + &block.header.chain_key + &"-invs".to_owned(),
+        block.header.height.to_string(),
+    );
+    trace!("Saved inv for sender: {}", block.header.chain_key);
+    if inv_sender_res != 1 {
+        return Err("failed to save sender inv".into());
+    }
+    let cd_db = openDb(config().db_path + &"/chaindigest".to_owned()).unwrap();
+    let block_count = getDataDb(&cd_db, &"blockcount");
     if block_count == "-1".to_owned() {
-        saveData("1".to_owned(), config().db_path + "/chaindigest", "blockcount".to_owned());
+        setDataDb(&"1".to_owned(), &cd_db, &"blockcount");
         trace!("set block count, prev: -1 (not set), new: 1");
     } else {
         let mut bc: u64 = block_count.parse().unwrap_or_default();
         bc += 1;
-        saveData(bc.to_string(), config().db_path + "/chaindigest", "blockcount".to_owned());
+        setDataDb(&bc.to_string(), &cd_db, &"blockcount");
         trace!("Updated non-zero block count, new count: {}", bc);
     }
     if block.header.height == 0 {
@@ -437,44 +410,31 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
                 return Err("failed to save new account".into());
             }
         }
-        if avrio_database::getData(
+        let chaindex_db = openDb(
             config().db_path
                 + &"/chains/".to_owned()
                 + &block.header.chain_key
                 + &"-chainindex".to_owned(),
-            &"txncount".to_owned(),
-        ) == "-1".to_owned()
-        {
-            avrio_database::saveData(
-                "0".to_string(),
-                config().db_path
-                    + &"/chains/".to_owned()
-                    + &block.header.chain_key
-                    + &"-chainindex".to_owned(),
-                "txncount".to_owned(),
-            );
+        )
+        .unwrap();
+        if avrio_database::getDataDb(&chaindex_db, &"txncount") == "-1".to_owned() {
+            avrio_database::setDataDb(&"0".to_string(), &chaindex_db, &"txncount");
         }
+        drop(cd_db);
     }
 
     let bh = block.hash.clone();
     std::thread::spawn(move || {
         update_chain_digest(bh);
     });
+    let txn_db = openDb(config().db_path + &"/transactions".to_owned()).unwrap();
     for txn in block.txns {
         txn.enact()?;
-        if saveData(
-            block.hash.clone(),
-            config().db_path + &"/transactions".to_owned(),
-            txn.hash.clone(),
-        ) != 1
-        {
+        if setDataDb(&block.hash, &txn_db, &txn.hash) != 1 {
             return Err("failed to save txn in transactions db".into());
         }
-        if getData(config().db_path + &"/transactions".to_owned(), &txn.hash) != block.hash {
-            error!("Cant save txn to db :(");
-        }
     }
-
+    drop(txn_db);
     return Ok(());
 }
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {
