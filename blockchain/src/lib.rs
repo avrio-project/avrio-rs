@@ -413,6 +413,16 @@ impl Block {
 }
 // TODO: finish enact block
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let block_count = getData(config().db_path + &"/chaindigest".to_owned(), &"blockcount".to_owned());
+    if block_count == "-1".to_owned() {
+        saveData("1".to_owned(), config().db_path + &"/chaindigest".to_owned(), "blockcount".to_owned());
+        trace!("set block count, prev: -1 (not set), new: 1");
+    } else {
+        let mut bc: u64 = block_count.parse().unwrap_or_default();
+        bc += 1;
+        saveData(bc.to_string(), config().db_path + &"/chaindigest".to_owned(), "blockcount".to_owned());
+        trace!("Updated non-zero block count, new count: {}", bc);
+    }
     if block.header.height == 0 {
         if saveData(
             "".to_owned(),
