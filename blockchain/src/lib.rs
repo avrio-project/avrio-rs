@@ -207,6 +207,7 @@ impl BlockSignature {
 }
 
 pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
+    trace!("Generating merkle root from scratch");
     let mut roots: Vec<String> = vec![];
     if let Ok(db) = openDb(config().db_path + "/chainlist") {
         let mut iter = db.raw_iterator();
@@ -235,23 +236,25 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
 }
 
 pub fn update_chain_digest(new_blk_hash: String) -> String {
-    let curr = getData(config().db_path + &"/chainsdigest", "master");
+    trace!("Updating chain digest with block hash: {}", new_blk_hash);
+    let cd_db = openDb(config().db_path + &"/chainsdigest").unwrap();
+    let curr = getDataDb(&cd_db, "master");
     let root: String;
     if &curr == "-1" {
-        root = new_blk_hash;
+        trace!("chain digest not set");
+        root = avrio_crypto::raw_lyra(&new_blk_hash);
     } else {
-        root = avrio_crypto::raw_lyra(&(curr + &new_blk_hash));
+        trace!("Updating set chain digest");
+        root = avrio_crypto::raw_lyra(&(new_blk_hash + &curr));
     }
-    let _ = saveData(
-        root.clone(),
-        config().db_path + "/chainsdigest",
-        "master".to_owned(),
-    );
+    let _ = setDataDb(&root, &cd_db, &"master");
+    trace!("Set chain digest to: {}, was: {}", root, curr);
+    drop(cd_db);
     return root;
 }
 
+/// returns the block when you know the chain and the height
 pub fn getBlock(chainkey: &String, height: u64) -> Block {
-    // returns the block when you know the chain and the height
     let hash = getData(
         config().db_path + "/chains/" + chainkey + "-invs",
         &height.to_string(),
@@ -265,8 +268,8 @@ pub fn getBlock(chainkey: &String, height: u64) -> Block {
     }
 }
 
+/// returns the block when you only know the hash by opeining the raw blk-HASH.dat file (where hash == the block hash)
 pub fn getBlockFromRaw(hash: String) -> Block {
-    // returns the block when you only know the hash by opeining the raw blk-HASH.dat file (where hash == the block hash)
     if let Ok(mut file) = File::open(config().db_path + &"/blocks/blk-".to_owned() + &hash + ".dat")
     {
         let mut contents = String::new();
@@ -277,8 +280,8 @@ pub fn getBlockFromRaw(hash: String) -> Block {
     }
 }
 
+/// formats the block into a .dat file and saves it under block-hash.dat
 pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    // formats the block into a .dat file and saves it under block-hash.dat
     trace!("Saving block with hash: {}", block.hash);
     let encoded: Vec<u8> = serde_json::to_string(&block)?.as_bytes().to_vec();
     let mut file = File::create(config().db_path + "/blocks/blk-" + &block.hash + ".dat")?;
@@ -302,6 +305,7 @@ impl Hashable for Header {
     }
 }
 impl Header {
+    /// Returns the hash of the header bytes
     pub fn hash(&mut self) -> String {
         return self.hash_item();
     }
@@ -319,12 +323,16 @@ impl Hashable for Block {
     }
 }
 impl Block {
+    /// Sets the hash of a block
     pub fn hash(&mut self) {
         self.hash = self.hash_item();
     }
+    /// Returns the hash of a block
     pub fn hash_return(&self) -> String {
         return self.hash_item();
     }
+    /// Signs a block and sets the signature field on it.
+    /// Returns a Result enum
     pub fn sign(
         &mut self,
         private_key: &String,
@@ -336,6 +344,7 @@ impl Block {
         self.signature = bs58::encode(key_pair.sign(msg)).into_string();
         return Ok(());
     }
+    /// Returns true if signature on block is valid
     pub fn validSignature(&self) -> bool {
         let msg: &[u8] = self.hash.as_bytes();
         let peer_public_key = signature::UnparsedPublicKey::new(
@@ -375,12 +384,16 @@ impl Block {
     }
 }
 // TODO: finish enact block
+/// Enacts a block. Updates all relavant dbs and files
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let inv_sender_res = saveData(
-        block.hash.clone(),
-        config().db_path + &"/chains/".to_owned() + &block.header.chain_key + &"-invs".to_owned(),
-        block.header.height.to_string(),
-    );
+    let chaindex_db = openDb(
+        config().db_path
+            + &"/chains/".to_owned()
+            + &block.header.chain_key
+            + &"-chainindex".to_owned(),
+    )
+    .unwrap();
+    let inv_sender_res = setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
     trace!("Saved inv for sender: {}", block.header.chain_key);
     if inv_sender_res != 1 {
         return Err("failed to save sender inv".into());
@@ -396,13 +409,6 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         setDataDb(&bc.to_string(), &cd_db, &"blockcount");
         trace!("Updated non-zero block count, new count: {}", bc);
     }
-    let chaindex_db = openDb(
-        config().db_path
-            + &"/chains/".to_owned()
-            + &block.header.chain_key
-            + &"-chainindex".to_owned(),
-    )
-    .unwrap();
     if block.header.height == 0 {
         if saveData(
             "".to_owned(),
@@ -428,10 +434,13 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     });
     let txn_db = openDb(config().db_path + &"/transactions".to_owned()).unwrap();
     for txn in block.txns {
+        trace!("enacting txn with hash: {}", txn.hash);
         txn.enact(&chaindex_db)?;
+        trace!("Enacted txn. Saving txn to txindex db (db_name  = transactions)");
         if setDataDb(&block.hash, &txn_db, &txn.hash) != 1 {
             return Err("failed to save txn in transactions db".into());
         }
+        trace!("Saving invs");
         if txn.sender_key != txn.receive_key && txn.sender_key != block.header.chain_key {
             let inv_receiver_res =
                 setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
@@ -447,6 +456,8 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     drop(chaindex_db);
     return Ok(());
 }
+
+/// Checks if a block is valid returns a blockValidationErrors
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {
     if blk.header.network != config().network_id {
         return Err(blockValidationErrors::networkMissmatch);

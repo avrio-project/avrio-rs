@@ -105,17 +105,25 @@ impl Transaction {
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let txn_type: String = self.typeTransaction();
         if txn_type == "normal".to_owned() {
+            trace!("Opening senders account");
             let mut sendacc = open_or_create(&self.sender_key);
+            if &self.sender_key != &self.receive_key {
+                trace!("Opening recievers account");
+                let mut reqacc: Account = open_or_create(&self.receive_key);
 
-            let mut reqacc: Account = open_or_create(&self.receive_key);
-            sendacc.balance -= self.gas * self.gas_price;
-            if self.sender_key != self.receive_key {
-                sendacc.balance -= self.amount;
-                reqacc.balance += self.amount;
-                reqacc.save().unwrap();
+                if self.sender_key != self.receive_key {
+                    sendacc.balance -= self.amount;
+                    reqacc.balance += self.amount;
+                    trace!("saving req acc");
+                    reqacc.save().unwrap();
+                }
             }
+            sendacc.balance -= self.gas * self.gas_price;
+            trace!("Saving sender acc");
             sendacc.save().unwrap();
+            trace!("Get txn count");
             let txn_count: u64 = avrio_database::getDataDb(chain_idex_db, &"txncount").parse()?;
+            trace!("Setting txn count");
             if avrio_database::setDataDb(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
                 != 1
             {
@@ -131,10 +139,13 @@ impl Transaction {
         // TODO: Check we are on the testnet
         } else if txn_type == "claim".to_owned() {
             // »!testnet only!«
+            trace!("Getting sender acc");
             let mut acc: Account = open_or_create(&self.sender_key);
             acc.balance += self.amount;
+            trace!("Saving acc");
             let _ = acc.save();
         } else if txn_type == "username registraion".to_string() {
+            trace!("Getting acc (uname reg)");
             let mut acc = getAccount(&self.sender_key).unwrap_or_default();
             if acc == Account::default() {
                 return Err("failed to get account for username addition".into());
@@ -144,6 +155,7 @@ impl Transaction {
                 acc.username = self.extra.clone();
                 acc.balance -= self.amount;
                 acc.balance -= self.gas * self.gas_price;
+                trace!("Saving acc");
                 if let Err(_) = acc.save() {
                     return Err("failed to save account (after username addition)".into());
                 }
@@ -151,6 +163,7 @@ impl Transaction {
         } else {
             return Err("unsupported txn type".into());
         }
+        trace!("Done");
         return Ok(());
     }
 
