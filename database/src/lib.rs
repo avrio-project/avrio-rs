@@ -72,7 +72,7 @@ pub fn save_peerlist(
     return Ok(());
 }
 
-pub fn getData(path: String, key: &String) -> String {
+pub fn getData(path: String, key: &str) -> String {
     let db = DB::open_default(path).unwrap();
     let data: String;
     match db.get(key) {
@@ -83,7 +83,7 @@ pub fn getData(path: String, key: &String) -> String {
     return data;
 }
 
-pub fn getDataDb(db: &DB, key: &String) -> String {
+pub fn getDataDb(db: &DB, key: &str) -> String {
     let data: String;
     match db.get(key) {
         Ok(Some(value)) => data = String::from_utf8(value).unwrap_or("".to_owned()),

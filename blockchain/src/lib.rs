@@ -85,10 +85,10 @@ pub struct BlockSignature {
 impl Hashable for BlockSignature {
     fn bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
-        bytes.extend(self.timestamp.to_string().as_bytes());
+        write!(bytes, "{}", self.timestamp).unwrap();
         bytes.extend(self.block_hash.as_bytes());
         bytes.extend(self.signer_public_key.as_bytes());
-        bytes.extend(self.nonce.to_string().as_bytes());
+        write!(bytes, "{}", self.nonce).unwrap();
         bytes
     }
 }
@@ -98,7 +98,7 @@ impl BlockSignature {
         // we are presuming the vote is valid - if it is not this is going to mess stuff up!
         if saveData(
             self.nonce.to_string(),
-            config().db_path + &"/fn-certificates".to_owned(),
+            config().db_path + "/fn-certificates",
             self.signer_public_key.clone(),
         ) != 1
         {
@@ -108,20 +108,20 @@ impl BlockSignature {
         }
     }
     pub fn valid(&self) -> bool {
-        if getData(
-            config().db_path + &"/fn-certificates".to_owned(),
+        if &getData(
+            config().db_path + "/fn-certificates",
             &self.signer_public_key,
-        ) == "-1".to_owned()
+        ) == "-1"
         {
             return false;
         } else if self.hash != self.hash_return() {
             return false;
         } else if getData(
             config().db_path
-                + &"/chains/".to_owned()
+                + "/chains/"
                 + &self.signer_public_key
-                + &"-chainsindex".to_owned(),
-            &"sigcount".to_owned(),
+                + "-chainsindex",
+            "sigcount",
         ) != self.nonce.to_string()
         {
             return false;
@@ -177,7 +177,7 @@ impl BlockSignature {
         let msg: &[u8] = self.hash.as_bytes();
         let peer_public_key = signature::UnparsedPublicKey::new(
             &signature::ED25519,
-            bs58::decode(self.signer_public_key.to_owned())
+            bs58::decode(&self.signer_public_key)
                 .into_vec()
                 .unwrap_or_else(|e| {
                     error!(
@@ -191,7 +191,7 @@ impl BlockSignature {
         peer_public_key
             .verify(
                 msg,
-                bs58::decode(self.signature.to_owned())
+                bs58::decode(&self.signature)
                     .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
@@ -211,7 +211,7 @@ impl BlockSignature {
 
 pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
     let mut roots: Vec<String> = vec![];
-    if let Ok(db) = openDb(config().db_path + &"/chainlist".to_owned()) {
+    if let Ok(db) = openDb(config().db_path + "/chainlist") {
         let mut iter = db.raw_iterator();
         iter.seek_to_first();
         while iter.valid() {
@@ -219,9 +219,9 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
                 if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
                     if let Ok(blkdb) = openDb(
                         config().db_path
-                            + &"/chains/".to_owned()
+                            + "/chains/"
                             + &chain_string
-                            + &"-invs".to_owned(),
+                            + "-invs"
                     ) {
                         let mut blkiter = blkdb.raw_iterator();
                         blkiter.seek_to_first();
@@ -238,25 +238,25 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
         }
     }
     return Ok(getData(
-        config().db_path + &"/chainsdigest".to_owned(),
-        &"master".to_owned(),
+        config().db_path + &"/chainsdigest",
+        "master",
     ));
 }
 
 pub fn update_chain_digest(new_blk_hash: String) -> String {
     let curr = getData(
-        config().db_path + &"/chainsdigest".to_owned(),
-        &"master".to_owned(),
+        config().db_path + &"/chainsdigest",
+        "master",
     );
     let root: String;
-    if curr == "-1".to_owned() {
+    if &curr == "-1" {
         root = new_blk_hash;
     } else {
         root = avrio_crypto::raw_lyra(&(curr + &new_blk_hash));
     }
     let _ = saveData(
         root.clone(),
-        config().db_path + &"/chainsdigest".to_owned(),
+        config().db_path + "/chainsdigest",
         "master".to_owned(),
     );
     return root;
@@ -265,7 +265,7 @@ pub fn update_chain_digest(new_blk_hash: String) -> String {
 pub fn getBlock(chainkey: &String, height: u64) -> Block {
     // returns the block when you know the chain and the height
     let hash = getData(
-        config().db_path + &"/chains/".to_owned() + chainkey + &"-invs".to_owned(),
+        config().db_path + "/chains/" + chainkey + "-invs",
         &height.to_string(),
     );
     if hash == "-1".to_owned() {
@@ -293,17 +293,17 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
     // formats the block into a .dat file and saves it under block-hash.dat
     let encoded: Vec<u8> = serde_json::to_string(&block)?.as_bytes().to_vec();
     let mut file =
-        File::create(config().db_path + &"/blocks/blk-".to_owned() + &block.hash + ".dat")?;
+        File::create(config().db_path + "/blocks/blk-" + &block.hash + ".dat")?;
     file.write_all(&encoded)?;
     let inv_sender_res = saveData(
         block.hash.clone(),
-        config().db_path + &"/chains/".to_owned() + &block.header.chain_key + &"-invs".to_owned(),
+        config().db_path + "/chains/" + &block.header.chain_key + "-invs",
         block.header.height.to_string(),
     );
     for txn in block.txns {
         let inv_receiver_res = saveData(
             block.hash.clone(),
-            config().db_path + &"/chains/".to_owned() + &txn.receive_key + &"-invs".to_owned(),
+            config().db_path + "/chains/" + &txn.receive_key + "-invs",
             block.header.height.to_string(),
         );
         if inv_receiver_res != 1 {
@@ -311,7 +311,7 @@ pub fn saveBlock(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
         }
         if saveData(
             block.hash.clone(),
-            config().db_path + &"/transactions".to_owned(),
+            config().db_path + "/transactions",
             txn.hash,
         ) != 1
         {
@@ -377,7 +377,7 @@ impl Block {
         let msg: &[u8] = self.hash.as_bytes();
         let peer_public_key = signature::UnparsedPublicKey::new(
             &signature::ED25519,
-            bs58::decode(self.header.chain_key.to_owned())
+            bs58::decode(&self.header.chain_key)
                 .into_vec()
                 .unwrap_or_else(|e| {
                     error!(
@@ -391,7 +391,7 @@ impl Block {
         peer_public_key
             .verify(
                 msg,
-                bs58::decode(self.signature.to_owned())
+                bs58::decode(&self.signature)
                     .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
@@ -413,20 +413,20 @@ impl Block {
 }
 // TODO: finish enact block
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let block_count = getData(config().db_path + &"/chaindigest".to_owned(), &"blockcount".to_owned());
+    let block_count = getData(config().db_path + "/chaindigest", "blockcount");
     if block_count == "-1".to_owned() {
-        saveData("1".to_owned(), config().db_path + &"/chaindigest".to_owned(), "blockcount".to_owned());
+        saveData("1".to_owned(), config().db_path + "/chaindigest", "blockcount".to_owned());
         trace!("set block count, prev: -1 (not set), new: 1");
     } else {
         let mut bc: u64 = block_count.parse().unwrap_or_default();
         bc += 1;
-        saveData(bc.to_string(), config().db_path + &"/chaindigest".to_owned(), "blockcount".to_owned());
+        saveData(bc.to_string(), config().db_path + "/chaindigest", "blockcount".to_owned());
         trace!("Updated non-zero block count, new count: {}", bc);
     }
     if block.header.height == 0 {
         if saveData(
             "".to_owned(),
-            config().db_path + &"/chainlist".to_owned(),
+            config().db_path + "/chainlist",
             block.header.chain_key.clone(),
         ) == 0
         {
@@ -483,7 +483,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
     } else if blk.hash != blk.hash_return() {
         return Err(blockValidationErrors::invalidBlockhash);
     }
-    if getData(config().db_path + &"/checkpoints".to_owned(), &blk.hash) != "-1".to_owned() {
+    if getData(config().db_path + "/checkpoints", &blk.hash) != "-1".to_owned() {
         // we have this block in our checkpoints db and we know the hash is correct and therefore the block is valid
         return Ok(());
     }
@@ -520,7 +520,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 return Ok(());
             } else {
                 // if it isn't it needs to be validated like any other block
-                if blk.header.prev_hash != "00000000000".to_owned() {
+                if &blk.header.prev_hash != "00000000000" {
                     return Err(blockValidationErrors::invalidPreviousBlockhash);
                 } else if let Ok(_) = getAccount(&blk.header.chain_key) {
                     // this account allready exists, you can't have two genesis blocks
