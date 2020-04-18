@@ -116,6 +116,7 @@ pub struct Config {
 }
 
 pub fn config_read() -> Config {
+    log::trace!("Reading config from disk");
     if let Ok(mut file) = File::open("node.conf") {
         let mut data: String = String::from("");
         if let Err(_) = file.read_to_string(&mut data) {
@@ -125,6 +126,7 @@ pub fn config_read() -> Config {
             return conf.to_config();
         }
     } else {
+        log::trace!("Failed to read from disk");
         return Config::default();
     }
 }
