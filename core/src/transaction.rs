@@ -168,6 +168,7 @@ impl Transaction {
     }
 
     pub fn valid(&self) -> Result<(), TransactionValidationErrors> {
+        trace!("Validating txn with hash: {}", self.hash);
         let acc: Account = open_or_create(&self.sender_key);
         let txn_count = avrio_database::getData(
             config().db_path
@@ -356,6 +357,7 @@ impl Transaction {
                 }
             }
         }
+        trace!("Finished validating txn");
         return Ok(());
     }
 
