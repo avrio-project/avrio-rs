@@ -99,12 +99,15 @@ pub struct ChainDigestPeer {
     pub peer: Option<TcpStream>,
     pub digest: String,
 }
-/// # prop_block
-/// This function sends a block to all peers it has from the comitee that is currently handeling the shard
-/// In testnet 0.0.1 It simply sent to all conected peers
+
+// TODO: Sync needed function
 pub fn sync_needed() -> bool {
     return true;
 }
+
+/// # prop_block
+/// This function sends a block to all peers it has from the comitee that is currently handeling the shard
+/// In testnet 0.0.1 It simply sent to all conected peers
 pub fn prop_block(_blk: Block) -> Result<u64, Box<dyn std::error::Error>> {
     return Ok(0); // TODO: send block to all peers and await a response, return Ok(number of peers who responded)
 }
@@ -244,11 +247,6 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
             error!("Failed to end syncreq message to peer, gave error: {}. Check your internet connection and ensure port is not in use!", e);
             return Err("failed to send syncreq".into());
         }
-        _ => {
-            // i dont think this is possable but cargo wants it :)
-            error!("Failed to end syncreq message to peer, gave a undefined error. Check your internet connection and ensure port is not in use! If you get this error the developers have proabably messed up!");
-            return Err("failed to send syncreq, undefined error".into());
-        }
     };
     let mut buf = [0; 1024];
     let mut no_read = true;
@@ -359,7 +357,48 @@ fn get_mode(v: Vec<String>) -> String {
 /// It returns Ok(()) on succsess and handles the inventory generation, inventory saving, block geting, block validation,
 /// block saving, block enacting and informing the user of the progress.
 /// If you simply want to sync all chains then use the sync function bellow.
-pub fn sync_chain(_chain: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+    syncack_peer(peer)?;
+    let _ = sendData(
+        chain,
+        &mut peer.try_clone().unwrap(),
+        0x45,
+    );
+    let mut buf = [0; 1024];
+    let mut no_read = true;
+    while no_read == true {
+        if let Ok(a) = peer.try_clone().unwrap().peek(&mut buf) {
+            if a == 0 {
+            } else {
+                no_read = false;
+            }
+        }
+    }
+    // There are now bytes waiting in the stream
+    let _ = peer.read(&mut buf);
+    let mut _reselect_needed = false;
+    let amount_to_sync: u64;
+    let deformed: P2pdata =
+        serde_json::from_str(&String::from_utf8(buf.to_vec()).unwrap_or("".to_string()))
+            .unwrap_or(P2pdata::default());
+    if deformed.message_type != 0x46 {
+        amount_to_sync = 0;
+    } else {
+        amount_to_sync = deformed.message.parse().unwrap_or(0);
+    }
+    let print_synced_every: u64;
+    match amount_to_sync {
+        0..=9 => print_synced_every = 1,
+        10..=100 => print_synced_every = 10,
+        101..=500 => print_synced_every = 50,
+        501..=1000 => print_synced_every = 100,
+        1001..=10000 => print_synced_every = 500,
+        10001..=50000 => print_synced_every = 2000,
+        _ => print_synced_every = 5000,
+    }
+    let top_block_hash: String;
+    let chain_db = openDb(config().db_path + "/chains/" + &chain + &"-chainindex".to_owned()).unwrap();
+
     return Ok(());
 }
 
