@@ -6,6 +6,15 @@ use std::io::prelude::*;
 extern crate log;
 use dirs::*;
 
+#[macro_use]
+extern crate lazy_static;
+
+
+lazy_static! {
+    static ref CONFIG_STACK: Config = config_read();
+}
+
+
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
 /// This is the struct that holds the built in , network params that are set by the core devs and the same for everyone
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -106,7 +115,7 @@ pub struct Config {
     pub max_supported_version: Vec<u8>,
 }
 
-pub fn config() -> Config {
+pub fn config_read() -> Config {
     if let Ok(mut file) = File::open("node.conf") {
         let mut data: String = String::from("");
         if let Err(_) = file.read_to_string(&mut data) {
@@ -118,6 +127,10 @@ pub fn config() -> Config {
     } else {
         return Config::default();
     }
+}
+
+pub fn config() -> Config {
+    return CONFIG_STACK.clone();
 }
 
 impl Default for ConfigSave {
