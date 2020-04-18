@@ -1,4 +1,5 @@
-use rocksdb::{DBRawIterator, DB};
+use rocksdb::DBCompactionStyle;
+use rocksdb::{DBRawIterator, Options, DB};
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::process;
@@ -6,12 +7,19 @@ use std::process;
 extern crate log;
 extern crate avrio_config;
 use avrio_config::config;
+extern crate num_cpus;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct PeerlistSave {
     peers: Vec<String>,
 }
+
 pub fn openDb(path: String) -> Result<rocksdb::DB, ()> {
-    if let Ok(database) = DB::open_default(&path.to_owned()) {
+    let mut opts = Options::default();
+    opts.create_if_missing(true);
+    opts.set_skip_stats_update_on_db_open(false);
+    opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
+    if let Ok(database) = DB::open(&opts, path) {
         return Ok(database);
     } else {
         return Err(());
