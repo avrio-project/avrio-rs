@@ -117,7 +117,7 @@ impl BlockSignature {
         } else if self.hash != self.hash_return() {
             return false;
         } else if getData(
-            config().db_path + "/chains/" + &self.signer_public_key + "-chainsindex",
+            config().db_path + "/chains/" + &self.signer_public_key + "-chainindex",
             "sigcount",
         ) != self.nonce.to_string()
         {
@@ -400,6 +400,8 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
             + &"-chainindex".to_owned(),
     )
     .unwrap();
+    setDataDb(&block.hash, &chaindex_db, &"topblockhash");
+    trace!("set top block hash for sender");
     let inv_sender_res = setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
     trace!("Saved inv for sender: {}", block.header.chain_key);
     if inv_sender_res != 1 {
@@ -443,14 +445,24 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         }
         trace!("Saving invs");
         if txn.sender_key != txn.receive_key && txn.sender_key != block.header.chain_key {
-            let inv_receiver_res =
-                setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
+            let rec_db = openDb(
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &txn.receive_key
+                    + &"-chainindex".to_owned(),
+            )
+            .unwrap();
+            let inv_receiver_res = setDataDb(
+                &block.hash,
+                &rec_db,
+                &block.header.height.to_string(),
+            );
             if inv_receiver_res != 1 {
                 return Err("failed to save reciver inv".into());
             }
-            if setDataDb(&block.hash, &chaindex_db, &txn.hash) != 1 {
-                return Err("failed to add transaction to transaction db".into());
-            }
+            setDataDb(&block.hash, &rec_db, &"topblockhash");
+            trace!("set top block hash for reciever");
+            drop(rec_db);
         }
     }
     drop(txn_db);
