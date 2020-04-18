@@ -212,6 +212,7 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
     if let Ok(db) = openDb(config().db_path + "/chainlist") {
         let mut iter = db.raw_iterator();
         iter.seek_to_first();
+        let cd_db = openDb(config().db_path + &"/chaindigest".to_owned()).unwrap();
         while iter.valid() {
             if let Some(chain) = iter.key() {
                 if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
@@ -222,7 +223,7 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
                         blkiter.seek_to_first();
                         while blkiter.valid() {
                             if let Some(blk) = iter.value() {
-                                update_chain_digest(String::from_utf8(blk.to_vec())?);
+                                update_chain_digest(&String::from_utf8(blk.to_vec())?, &cd_db);
                             }
                             blkiter.next();
                         }
@@ -235,20 +236,19 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
     return Ok(getData(config().db_path + &"/chainsdigest", "master"));
 }
 
-pub fn update_chain_digest(new_blk_hash: String) -> String {
+pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String {
     trace!("Updating chain digest with block hash: {}", new_blk_hash);
-    let cd_db = openDb(config().db_path + &"/chainsdigest").unwrap();
-    let curr = getDataDb(&cd_db, "master");
+    let curr = getDataDb(cd_db, "master");
     let root: String;
     if &curr == "-1" {
         trace!("chain digest not set");
-        root = avrio_crypto::raw_lyra(&new_blk_hash);
+        root = avrio_crypto::raw_lyra(new_blk_hash);
     } else {
-        trace!("Updating set chain digest");
-        root = avrio_crypto::raw_lyra(&(new_blk_hash + &curr));
+        trace!("Updating set chain digest. Curr: {}", curr);
+        root = avrio_crypto::raw_lyra(&(curr + new_blk_hash));
     }
     let _ = setDataDb(&root, &cd_db, &"master");
-    trace!("Set chain digest to: {}, was: {}", root, curr);
+    trace!("Set chain digest to: {}.", root);
     drop(cd_db);
     return root;
 }
@@ -386,6 +386,13 @@ impl Block {
 // TODO: finish enact block
 /// Enacts a block. Updates all relavant dbs and files
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let hash = block.hash.clone();
+    use std::sync::Arc;
+    let arc_db = Arc::new(openDb(config().db_path + &"/chaindigest".to_owned()).unwrap());
+    let arc = arc_db.clone();
+    std::thread::spawn(move || {
+        update_chain_digest(&hash, &arc);
+    });
     let chaindex_db = openDb(
         config().db_path
             + &"/chains/".to_owned()
@@ -398,15 +405,14 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     if inv_sender_res != 1 {
         return Err("failed to save sender inv".into());
     }
-    let cd_db = openDb(config().db_path + &"/chaindigest".to_owned()).unwrap();
-    let block_count = getDataDb(&cd_db, &"blockcount");
+    let block_count = getDataDb(&arc_db, &"blockcount");
     if block_count == "-1".to_owned() {
-        setDataDb(&"1".to_owned(), &cd_db, &"blockcount");
+        setDataDb(&"1".to_owned(), &arc_db, &"blockcount");
         trace!("set block count, prev: -1 (not set), new: 1");
     } else {
         let mut bc: u64 = block_count.parse().unwrap_or_default();
         bc += 1;
-        setDataDb(&bc.to_string(), &cd_db, &"blockcount");
+        setDataDb(&bc.to_string(), &arc_db, &"blockcount");
         trace!("Updated non-zero block count, new count: {}", bc);
     }
     if block.header.height == 0 {
@@ -427,11 +433,6 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
             avrio_database::setDataDb(&"0".to_string(), &chaindex_db, &"txncount");
         }
     }
-
-    let bh = block.hash.clone();
-    std::thread::spawn(move || {
-        update_chain_digest(bh);
-    });
     let txn_db = openDb(config().db_path + &"/transactions".to_owned()).unwrap();
     for txn in block.txns {
         trace!("enacting txn with hash: {}", txn.hash);
