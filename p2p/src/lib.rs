@@ -182,7 +182,7 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
     drop(v);
-    debug!(
+    trace!(
         "(SYNC REQ) Recieved: {}",
         String::from_utf8(buf.to_vec()).unwrap_or("utf8 failed".to_string())
     );
@@ -567,7 +567,7 @@ pub fn rec_server() -> u8 {
                 }
             }
             Err(e) => {
-                warn!("handling peer connection to peer resulted in  error: {}", e);
+                warn!("Handling peer connection to peer resulted in  error: {}", e);
                 /* connection failed */
             }
         }
