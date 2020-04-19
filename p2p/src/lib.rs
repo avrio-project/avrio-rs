@@ -674,17 +674,27 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         _ => {}
     }
     trace!("stream read = {:?}", read);
-    debug!(
-        "recived handshake, as string {}",
-        String::from_utf8(buffer_n.to_vec()).unwrap()
-    );
     let pid: String;
-    match process_handshake(String::from_utf8(buffer_n.to_vec())?) {
+    let msg = String::from_utf8(buffer_n.to_vec())?;
+    let v: Vec<&str> = msg.split("}").collect();
+    let msg_c = v[0].to_string() + &"}".to_string();
+    let v: Vec<&str> = msg_c.split("{").collect();
+    let msg_c = "{".to_string() + &v[1].to_string();
+    drop(v);
+    debug!("recived handshake, as string {}", msg_c);
+    let p2p_data: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
+        debug!(
+            "Bad Packets recieved from peer, packets: {}. Parsing this gave error: {}",
+            msg, e
+        );
+        return P2pdata::default();
+    });
+    match process_handshake(p2p_data.message) {
         Ok(x) => {
             pid = x;
         }
         _ => {
-            warn!("Got no id from peer");
+            debug!("Got no id from peer");
             return Err("Got no id".into());
         }
     };
@@ -693,6 +703,7 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         recieved_bytes: 0,
     };
     avrio_database::add_peer(socket)?;
+    let _ = stream.flush();
     return Ok(Peer {
         id: pid,
         socket,
@@ -735,14 +746,13 @@ fn process_handshake(s: String) -> Result<String, String> {
         return Err(String::from("Incorrect network id"));
     } else {
         let val = s[peer_network_id_hex.len() + 1..s.len()].to_string();
-        drop(s);
         let v: Vec<&str> = val.split("*").collect();
         id = v[0].to_string();
     }
     info!("Handshook with peer, gave id {}", id);
     let id_cow = Cow::from(&id);
-
-    add_handsake(id_cow.to_string());
+    add_handsake(s);
+    error!("{:#?}", get_handshakes());
     return Ok((&id_cow).to_string());
 }
 
@@ -758,6 +768,7 @@ pub fn sendData(data: &String, peer: &mut TcpStream, msg_type: u16) -> Result<()
     let data_s: String = formMsg(data.clone(), msg_type);
     info!("data_s: {}", data_s);
     let sent = peer.write_all(data_s.as_bytes());
+    let _ = peer.flush();
     return sent;
 }
 
@@ -818,7 +829,10 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return Some("sendchaindigest".into());
         }
         0 => {
-            debug!("Unsupported application or malformed packets (zero type code) from peer: {}",peer.peer_addr().expect("Could not get addr for peer"));
+            debug!(
+                "Unsupported application or malformed packets (zero type code) from peer: {}",
+                peer.peer_addr().expect("Could not get addr for peer")
+            );
             return None;
         }
         0x45 => {
