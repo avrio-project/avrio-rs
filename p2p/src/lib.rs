@@ -41,11 +41,15 @@ fn get_handshakes() -> Vec<String> {
 }
 
 fn in_handshakes(hs: &String) -> bool {
+    trace!("hs: {}", hs);
     for shake in get_handshakes() {
         if &shake == hs {
+            trace!("Handshake found");
             return true;
         }
+        trace!("shake: {}", shake);
     }
+    trace!("Handshake not found");
     return false;
 }
 
@@ -558,26 +562,20 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
         match stream.read(&mut data) {
             Ok(_) => {
                 match deformMsg(&String::from_utf8(data.to_vec()).unwrap(), &mut peer_clone) {
-                    Some(_a) => {
-                        let _handshake_string = "handshake".to_owned();
-                        match _a {
-                            _handshake_string => {
-                                /* we just recieved a handshake, now we send ours
-                                This is in the following format
-                                network id, our peer id, our node type;
-                                */
-                                let msg = hex::encode(config().network_id)
-                                    + "*"
-                                    + &config().identitiy
-                                    + "*"
-                                    + &config().node_type.to_string();
-                                debug!("Our handshake: {}", msg);
-                                let _ = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes());
-                                // send our handshake
-                            }
-                            _ => {
-                                // we can ignore all other things bcause they don't require our action :), deform message does it.
-                            }
+                    Some(a) => {
+                        if a == "handshake" {
+                            /* we just recieved a handshake, now we send ours
+                            This is in the following format
+                            network id, our peer id, our node type;
+                            */
+                            let msg = hex::encode(config().network_id)
+                                + "*"
+                                + &config().identitiy
+                                + "*"
+                                + &config().node_type.to_string();
+                            debug!("Our handshake: {}", msg);
+                            let _ = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes());
+                            // send our handshake
                         }
                     }
                     _ => {}
