@@ -50,6 +50,7 @@ fn get_usernames() -> String {
 }
 #[post("/submit_block", format = "application/json", data = "<block_dat>")]
 fn submit_block(block_dat: rocket::Data) -> String {
+    /* TODO: Find a way of getting all conections currently active (a function) wich returns a vec of refrences to mutable TcpStreams so we can prop the block
     let block_utf8 = block_dat.peek();
     let block: String = String::from_utf8(block_utf8.to_vec()).unwrap_or_default();
     let blk: Block = serde_json::from_str(&block).unwrap_or_default();
@@ -59,11 +60,13 @@ fn submit_block(block_dat: rocket::Data) -> String {
         return format!(" {{ \":\" {:?} }}", e_);
     } else if let Err(ee) = enact_block(blk.clone()) {
         return format!(" {{ \":\" {:?} }}", ee);
-    } else if let Err(ep) = prop_block(blk) {
+    } else if let Err(ep) = prop_block(getPeer) {
         return format!(" {{ \":\" {:?} }}", ep);
     } else {
         return "{ \"result\" : \"sent block\" }".to_owned();
     }
+    */
+    not_supported()
 }
 pub fn start_server() {
     let config = Config::build(Environment::Staging)
