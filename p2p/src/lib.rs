@@ -575,6 +575,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                                 + &config().node_type.to_string();
                             debug!("Our handshake: {}", msg);
                             let _ = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes());
+                            let _= stream.flush();
                             // send our handshake
                         }
                     }
