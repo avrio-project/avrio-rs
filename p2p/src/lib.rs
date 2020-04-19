@@ -575,7 +575,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                                 + &config().node_type.to_string();
                             debug!("Our handshake: {}", msg);
                             let _ = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes());
-                            let _= stream.flush();
+                            let _ = stream.flush();
                             // send our handshake
                         }
                     }
@@ -751,7 +751,6 @@ fn process_handshake(s: String) -> Result<String, String> {
     info!("Handshook with peer, gave id {}", id);
     let id_cow = Cow::from(&id);
     add_handsake(s);
-    error!("{:#?}", get_handshakes());
     return Ok((&id_cow).to_string());
 }
 
@@ -784,10 +783,12 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
     let v: Vec<&str> = msg.split("}").collect();
+    trace!(target: "avrio_p2p::deformer", "split 0/2: {:#?}", v);
     let msg_c = v[0].to_string() + &"}".to_string();
+    trace!(target: "avrio_p2p::deformer", "split 1/2: {:#?}", msg_c);
     let v: Vec<&str> = msg_c.split("{").collect();
+    trace!(target: "avrio_p2p::deformer", "split 2/2: {:#?}", v);
     let msg_c = "{".to_string() + &v[1].to_string();
-    trace!(target: "avrio_p2p::deformer", "Got: {}", msg_c);
     drop(v);
     let msg_d: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
         debug!(
