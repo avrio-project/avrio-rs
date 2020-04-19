@@ -786,6 +786,9 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
+    let v: Vec<&str> = msg_c.split("{").collect();
+    let msg_c = "{".to_string() + &v[1].to_string();
+    trace!(target: "avrio_p2p::deformer", "Got: {}", msg_c);
     drop(v);
     let msg_d: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
         debug!(
@@ -794,7 +797,6 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         );
         return P2pdata::default();
     });
-    trace!("GOT (deform) {:#?}", msg_d);
     match msg_d.message_type {
         0x22 => {
             let _ = sendData(&"syncack".to_owned(), peer, 0x01);
