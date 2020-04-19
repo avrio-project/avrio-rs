@@ -6,7 +6,7 @@ use std::net::TcpStream;
 extern crate serde_json;
 
 pub fn test_prt(peer: &mut TcpStream) -> u64 {
-    let _ = sendData("ping".to_string(), peer, 0x00);
+    let _ = sendData(&"ping".to_owned(), peer, 0x00);
     let now = std::time::SystemTime::now();
     let mut buf = [0; 1024];
     let mut no_read = true;

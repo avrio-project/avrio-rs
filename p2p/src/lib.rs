@@ -7,11 +7,11 @@ extern crate avrio_blockchain;
 extern crate avrio_config;
 extern crate avrio_database;
 use avrio_blockchain::{
-    check_block, enact_block, generate_merkle_root_all, getBlockFromRaw, saveBlock, Block,
+    check_block, enact_block, generate_merkle_root_all, getBlock, getBlockFromRaw, saveBlock, Block,
 };
 use avrio_config::config;
 use avrio_core::epoch::Epoch;
-use avrio_database::{getData, openDb, saveData};
+use avrio_database::{getData, getDataDb, openDb, saveData, setDataDb, getIter};
 use std::borrow::{Cow, ToOwned};
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -20,8 +20,8 @@ use std::thread;
 extern crate hex;
 use std::collections::HashMap;
 use std::error::Error;
+extern crate rocksdb;
 extern crate simple_logger;
-use std::process;
 
 /// # Inventorys
 /// This is save to the CHAIN_KEY-invs db (where CHAIN_KEY is the public key of the chain)
@@ -112,109 +112,6 @@ pub fn prop_block(_blk: Block) -> Result<u64, Box<dyn std::error::Error>> {
     return Ok(0); // TODO: send block to all peers and await a response, return Ok(number of peers who responded)
 }
 
-fn sendInventories(
-    from: String,
-    amount: u8,
-    _peer: &mut TcpStream,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let firstInventory = getBlockFromRaw(from);
-    if firstInventory == Block::default() {
-        return Err("cant find first inv block".into());
-    } else {
-        let from_t = firstInventory.header.timestamp;
-        let mut invs_sent: u64 = 0;
-        if let Ok(db) = openDb(config().db_path + &"/chainlist".to_owned()) {
-            let mut iter = db.raw_iterator();
-            iter.seek_to_first();
-            while iter.valid() {
-                if let Some(chain) = iter.value() {
-                    if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
-                        if let Ok(inv_db) = openDb(
-                            config().db_path
-                                + &"/chains".to_owned()
-                                + &chain_string
-                                + &"-inv".to_owned(),
-                        ) {
-                            let mut inviter = inv_db.raw_iterator();
-                            inviter.seek_to_first();
-                            while inviter.valid() {
-                                if let Some(inv) = iter.value() {
-                                    if let Ok(inv_string) = String::from_utf8(inv.to_vec()) {
-                                        let inv_des: Inventory =
-                                            serde_json::from_str(&inv_string).unwrap_or_default();
-                                        if inv_des == Inventory::default() {
-                                            warn!("Failed to parse inventory from: {}, likley corrupted DB", inv_string);
-                                        } else {
-                                            trace!(
-                                                "Saw inv: index: {:?}, value: {:?}",
-                                                iter.key(),
-                                                iter.value()
-                                            );
-                                            if inv_des.timestamp >= from_t
-                                                && invs_sent < amount as u64
-                                            {
-                                                let inv_string_cow = Cow::from(inv_string);
-                                                if let Err(_) = sendData(
-                                                    (&inv_string_cow).to_string(),
-                                                    _peer,
-                                                    0x1a,
-                                                ) {
-                                                    // try again
-                                                    sendData(
-                                                        (&inv_string_cow).to_string(),
-                                                        _peer,
-                                                        0x1a,
-                                                    )?
-                                                } else {
-                                                    invs_sent += 1;
-                                                }
-                                            } else {
-                                                if invs_sent > amount as u64 {
-                                                    return Ok(())
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        warn!(
-                                            "Found corrupted inventory at key: {}",
-                                            String::from_utf8(
-                                                iter.key()
-                                                    .unwrap_or(b"error getting index, (key err)")
-                                                    .to_vec()
-                                            )
-                                            .unwrap_or("error getting index (utf8 err)".to_owned())
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        warn!(
-                            "Found corrupted chain at key: {}",
-                            String::from_utf8(
-                                iter.key().unwrap_or(b"error getting index").to_vec()
-                            )
-                            .unwrap_or("error getting index".to_owned())
-                        );
-                    }
-                } else {
-                    warn!(
-                        "Found corrupted chain at key: {}",
-                        String::from_utf8(iter.key().unwrap_or(b"error getting index").to_vec())
-                            .unwrap_or("error getting index".to_owned())
-                    );
-                }
-                trace!(
-                    "Saw chain: number: {:?}, hash: {:?}",
-                    iter.key(),
-                    iter.value()
-                );
-                iter.next();
-            }
-        }
-        return Ok(());
-    }
-}
 /// Sends block with hash to _peer
 pub fn sendBlock(hash: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
     let block: Block = getBlockFromRaw(hash);
@@ -225,7 +122,24 @@ pub fn sendBlock(hash: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std:
         if block_ser == " ".to_owned() {
             return Err("Could not ser block".into());
         } else {
-            if let Err(e) = sendData(block_ser, _peer, 0x0a) {
+            if let Err(e) = sendData(&block_ser, _peer, 0x0a) {
+                return Err(e.into());
+            } else {
+                return Ok(());
+            }
+        }
+    }
+}
+
+pub fn sendBlockStruct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+    if block.hash == Block::default().hash {
+        return Err("tryied to send default block".into());
+    } else {
+        let block_ser = serde_json::to_string(block).unwrap_or(" ".to_owned());
+        if block_ser == " " {
+            return Err("Could not ser block".into());
+        } else {
+            if let Err(e) = sendData(&block_ser, peer, 0x0a) {
                 return Err(e.into());
             } else {
                 return Ok(());
@@ -237,7 +151,7 @@ pub fn sendBlock(hash: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std:
 pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     let mut peer_to_use_unwraped = peer.try_clone().unwrap();
     let syncreqres = sendData(
-        "syncreq".to_string(),
+        &"syncreq".to_owned(),
         &mut peer_to_use_unwraped.try_clone().unwrap(),
         0x22,
     );
@@ -293,17 +207,17 @@ fn sendChainDigest(peer: &mut TcpStream) {
     );
     if chains_digest == "-1".to_owned() || chains_digest == "0".to_owned() {
         let _ = sendData(
-            generate_merkle_root_all().unwrap_or("".to_owned()),
+            &generate_merkle_root_all().unwrap_or("".to_owned()),
             peer,
             0x01,
         );
     } else {
-        let _ = sendData(chains_digest, peer, 0x01);
+        let _ = sendData(&chains_digest, peer, 0x01);
     }
 }
 /// this asks the peer for thier chain digest
 fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
-    let _ = sendData("".to_string(), peer, 0x1c);
+    let _ = sendData(&"".to_owned(), peer, 0x1c);
     let mut i: i32 = 0;
     loop {
         let mut buffer = [0; 128];
@@ -357,13 +271,9 @@ fn get_mode(v: Vec<String>) -> String {
 /// It returns Ok(()) on succsess and handles the inventory generation, inventory saving, block geting, block validation,
 /// block saving, block enacting and informing the user of the progress.
 /// If you simply want to sync all chains then use the sync function bellow.
-pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn std::error::Error>> {
     syncack_peer(peer)?;
-    let _ = sendData(
-        chain,
-        &mut peer.try_clone().unwrap(),
-        0x45,
-    );
+    let _ = sendData(&chain, &mut peer.try_clone().unwrap(), 0x45);
     let mut buf = [0; 1024];
     let mut no_read = true;
     while no_read == true {
@@ -397,9 +307,114 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<(), Box<dyn std
         _ => print_synced_every = 5000,
     }
     let top_block_hash: String;
-    let chain_db = openDb(config().db_path + "/chains/" + &chain + &"-chainindex".to_owned()).unwrap();
-
-    return Ok(());
+    let opened_db: rocksdb::DB;
+    if let Ok(chain_db) = openDb(config().db_path + "/chains/" + &chain + &"-chainindex".to_owned())
+    {
+        opened_db = chain_db;
+        top_block_hash = getDataDb(&opened_db, &"topblockhash");
+    } else {
+        return Err("failed to get topblockhash for chain".into());
+    }
+    if top_block_hash == "-1" {
+        if let Err(e) = sendData(&serde_json::to_string(&(&"0".to_owned(), &chain))?, peer, 0x6f) {
+            error!(
+                "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
+                top_block_hash, chain, e
+            );
+            return Err(e.into());
+        }
+    } else if let Err(e) = sendData(&serde_json::to_string(&(&top_block_hash, &chain))?, peer, 0x6f) {
+        error!(
+            "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
+            top_block_hash, chain, e
+        );
+        return Err(e.into());
+    } else {
+        let mut synced_blocks: u64 = 0;
+        let mut invalid_blocks: u64 = 0;
+        info!(
+            "Getting {} blocks from peer: {}, from block hash: {}",
+            amount_to_sync,
+            peer.peer_addr().unwrap(),
+            top_block_hash
+        );
+        loop {
+            let mut buf = [0; 1024];
+            let mut no_read = true;
+            while no_read == true {
+                if let Ok(a) = peer.peek(&mut buf) {
+                    if a == 0 {
+                    } else {
+                        no_read = false;
+                    }
+                }
+            }
+            // There are now bytes waiting in the stream
+            let _ = peer.read(&mut buf);
+            let deformed: P2pdata =
+                serde_json::from_str(&String::from_utf8(buf.to_vec()).unwrap_or("".to_string()))
+                    .unwrap_or(P2pdata::default());
+            if deformed.message_type != 0x0a {
+                // TODO: Ask for block(s) again rather than returning err
+                return Err("failed to get block".into());
+            } else {
+                let blocks: Vec<Block> =
+                    serde_json::from_str(&deformed.message).unwrap_or_default();
+                if blocks.len() == 0 {
+                    error!("Got 0 blocks from peer when expecting at least 1");
+                    return Err("Got 0 blocks from peer when expecting at least 1".into());
+                }
+                trace!(
+                    "Got: {} blocks from peer. Hash: {} up to: {}",
+                    blocks.len(),
+                    blocks[0].hash,
+                    blocks[blocks.len() - 1].hash
+                );
+                for block in blocks {
+                    if let Err(e) = check_block(block.clone()) {
+                        error!("Recieved invalid block with hash: {} from peer, validation gave error: {:#?}. Invalid blocks from peer: {}", block.hash, e, invalid_blocks);
+                        invalid_blocks += 1;
+                    } else {
+                        saveBlock(block.clone())?;
+                        enact_block(block)?;
+                        synced_blocks += 1;
+                    }
+                }
+            }
+            let top_block_hash: String;
+            top_block_hash = getDataDb(&opened_db, &"topblockhash");
+            trace!("Asking peer for blocks above hash: {}", top_block_hash);
+            if top_block_hash == "-1" {
+                if let Err(e) = sendData(&"0".to_owned(), peer, 0x6f) {
+                    error!(
+                        "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
+                        top_block_hash, chain, e
+                    );
+                    return Err(e.into());
+                }
+            } else if let Err(e) = sendData(&top_block_hash, peer, 0x6f) {
+                error!(
+                    "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
+                    top_block_hash, chain, e
+                );
+                return Err(e.into());
+            }
+            if synced_blocks == amount_to_sync {
+                info!("Synced all {} blocks for chain: {}", synced_blocks, chain);
+                break;
+            }
+            if synced_blocks % print_synced_every == 0 {
+                info!(
+                    "Synced {} / {} blocks (chain: {}). {} more to go",
+                    synced_blocks,
+                    amount_to_sync,
+                    chain,
+                    amount_to_sync - synced_blocks
+                );
+            }
+        }
+    }
+    return Ok(amount_to_sync);
 }
 
 // TODO: Finish syncing code
@@ -461,395 +476,6 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let try_ack = syncack_peer(&mut peer_to_use_unwraped.try_clone().unwrap());
     if let Ok(stream) = try_ack {
         peer_to_use_unwraped = stream;
-    } else {
-        let mut lastpeer: &TcpStream = &(peer_to_use_unwraped.try_clone().unwrap());
-        loop {
-            let mut peer_to_use: Option<TcpStream> = None;
-            let mut i: u64 = 0;
-            for mut i in 0..chainDigestsLen {
-                if chainDigests[i].digest == mode_hash {
-                    if let Some(peer_) = &chainDigests[i].peer {
-                        if peer_.peer_addr().unwrap() == lastpeer.peer_addr().unwrap() {
-                            i += 1;
-                            lastpeer = peer_;
-                            continue;
-                        }
-                        peer_to_use = Some(peer_.try_clone().unwrap());
-                    }
-                }
-            }
-            let peer_to_use_unwraped: TcpStream;
-            let try_ack = syncack_peer(&mut peer_to_use.unwrap().try_clone().unwrap());
-            if let Ok(stream) = try_ack {
-                peer_to_use_unwraped = stream;
-                break;
-            } else {
-                i += 1;
-                if i >= chainDigestsLen as u64 {
-                    break;
-                }
-                continue;
-            }
-        }
-    }
-    let mut inventorys_to_ignore: Vec<String> = vec![];
-    // now we need to get the last time we were fully synced - if ever - so we know where to sync from
-    let _last_hash_fully_synced = "0000000000".to_string();
-    let _chainsindex = "0000000000".to_string();
-    let mut amount_synced: u64 = 0;
-    let mut amount_to_sync: u64 = 0;
-    let get_ci_res = getData(
-        config().db_path + &"/masterchainindex".to_owned(),
-        &"lastsyncedepoch".to_owned(),
-    );
-    if get_ci_res == "-1".to_owned() {
-        // the db is likley corupted, we will resync
-        warn!("Failed to get last synced epoch from chains state db, probably corupted. Syncing from zero...");
-    } else if get_ci_res == "0" {
-        info!("First time sync detected.");
-    } else {
-        let res = getData(config().db_path + &"/epochs".to_owned(), &get_ci_res);
-        if res == "-1".to_owned() || res == "0".to_owned() {
-            warn!("Failed to epoch number for hash: {} from epoches db, probably corupted. Syncing from zero...", get_ci_res);
-            info!("If this is your first launch you can ignore this, if not then check your wallets as they may be corrupted too!");
-        } else if res == "0".to_owned() {
-            warn!("Cant find epoch with hash: {} in epoches db. Probably a result of a terminated sync", get_ci_res);
-        } else {
-            let _epoch: Epoch = Epoch::default();
-        }
-        let from_hash: String = "".to_owned();
-
-        info!(
-            "Last synced epoch: {}. Syncing from block hash: {}",
-            get_ci_res, from_hash
-        );
-    }
-    let _ = sendData(
-        "".to_string(),
-        &mut peer_to_use_unwraped.try_clone().unwrap(),
-        0x45,
-    );
-    let mut buf = [0; 1024];
-    let mut no_read = true;
-    while no_read == true {
-        if let Ok(a) = peer_to_use_unwraped.try_clone().unwrap().peek(&mut buf) {
-            if a == 0 {
-            } else {
-                no_read = false;
-            }
-        }
-    }
-    // There are now bytes waiting in the stream
-    let _ = peer_to_use_unwraped.try_clone().unwrap().read(&mut buf);
-    let mut _reselect_needed = false;
-    let deformed: P2pdata =
-        serde_json::from_str(&String::from_utf8(buf.to_vec()).unwrap_or("".to_string()))
-            .unwrap_or(P2pdata::default());
-    if deformed.message_type != 0x46 {
-        amount_to_sync = 0;
-    } else {
-        amount_to_sync = deformed.message.parse().unwrap_or(0);
-    }
-    let print_synced_every: u64;
-    match amount_to_sync {
-        0..=9 => print_synced_every = 1,
-        10..=100 => print_synced_every = 10,
-        101..=500 => print_synced_every = 50,
-        501..=1000 => print_synced_every = 100,
-        1001..=10000 => print_synced_every = 500,
-        10001..=50000 => print_synced_every = 2000,
-        _ => print_synced_every = 5000,
-    }
-    let mut inventories_downloaded = false;
-    loop {
-        // until we break out of the loop we are syncing inventories
-        let peer_to_use_clone = Some((peer_to_use_unwraped.try_clone()).unwrap());
-        if let Some(mut peer_to_poll) = peer_to_use_clone {
-            let mut peer = peer_to_poll.try_clone().unwrap();
-            let mut chainsindex = getData(
-                config().db_path + &"/masterchainindex".to_string(),
-                &"topblockhash".to_string(),
-            );
-            if chainsindex == "-1".to_string() || chainsindex == "0".to_string() {
-                // we are probably a new startup and so have no blocks
-                chainsindex = "0".to_string();
-            }
-            let getInventoriesMsg: GetInventories = GetInventories {
-                amount: 128,
-                from: chainsindex,
-                to: "0000000000".to_string(),
-            };
-            let gims: String = // gims stands for getInventoriesMsgSerilized
-                serde_json::to_string(&getInventoriesMsg).unwrap_or("err".to_string());
-            if gims == "err".to_string() {
-                // retry
-                let gims = serde_json::to_string(&getInventoriesMsg).unwrap_or("err".to_string());
-                if gims == "err".to_string() {
-                    break; // syncing failed :(
-                }
-            }
-            let result = sendData(gims, &mut peer, 0x04);
-            if let Err(_) = result {
-                //try again
-                let result_again = sendData("0".to_string(), &mut peer, 0x04);
-                if let Err(e_again) = result_again {
-                    debug!(
-                        "Failed to send message: {}, to peer. Gave error:{}",
-                        "0", e_again
-                    );
-                    error!("Syncing Failed. Try restarting your node and ensure you are connected to internet!");
-                    break;
-                }
-            }
-            let mut buf = [0; 1024];
-            let mut no_read = true;
-            while no_read == true {
-                if let Ok(a) = peer_to_poll.peek(&mut buf) {
-                    if a == 0 {
-                        no_read = true;
-                    } else {
-                        no_read = false;
-                    }
-                }
-            }
-            // There are now bytes waiting in the stream
-            let _ = peer_to_poll.read(&mut buf);
-            let deformed: P2pdata =
-                serde_json::from_str(&String::from_utf8(buf.to_vec()).unwrap_or("".to_string()))
-                    .unwrap_or(P2pdata::default());
-            if deformed.message_type != 0x49 {
-                continue;
-            }
-            //else
-            let inventory: Inventory =
-                serde_json::from_str(&deformed.message).unwrap_or(Inventory::default());
-            if inventory == Inventory::default() {
-                break;
-            } else {
-                //else
-                // check if we allready have that inventory
-                let try_get = getData(
-                    config().db_path
-                        + &"/chains".to_string()
-                        + &inventory.chain
-                        + &"-invs".to_string(),
-                    &inventory.height.to_string(),
-                );
-                if try_get == "-1".to_string() {
-                    debug!(
-                      "Inventory with hash: {}, chain: {}, height: {}, not found in db, saving...",
-                      inventory.hash, inventory.chain, inventory.height,
-                    );
-                } else if try_get == "0".to_string() {
-                    debug!(
-                    "Failed to get (from db) inventory: hash: {}, chain: {}, height: {}. Presuming we do not have it...",
-                    inventory.hash,
-                    inventory.chain,
-                    inventory.height,
-                );
-                } else {
-                    debug!(
-                        "Found matching inventory with hash: {}, chain: {}, height: {}, skipping",
-                        inventory.hash, inventory.chain, inventory.height,
-                    );
-                    inventorys_to_ignore.push(inventory.hash.clone());
-                    continue;
-                }
-                let save_res = saveData(
-                    inventory.hash.clone(),
-                    config().db_path
-                        + &"/chains".to_string()
-                        + &inventory.chain
-                        + &"-invs".to_string(),
-                    inventory.height.to_string(),
-                );
-                match save_res {
-                    1 => {
-                        debug!(
-                            "Saved inventory: hash: {}, chain: {}, height: {}",
-                            inventory.hash, inventory.chain, inventory.height,
-                        );
-                    }
-                    _ => {
-                        error!(
-                            "Failed to save inventory: hash: {}, chain: {}, height: {}. Gave unknown error code: {}", 
-                            inventory.hash,
-                            inventory.chain,
-                            inventory.height,
-                            save_res,
-                        );
-                        break;
-                    }
-                };
-                if amount_synced == amount_to_sync {
-                    info!(
-                        "Downloaded {} out of {} inventories, moving onto block data",
-                        amount_synced, amount_to_sync
-                    );
-                    inventories_downloaded = true;
-                    break;
-                }
-                if amount_synced % print_synced_every == 0 {
-                    info!(
-                        "Synced {} / {} inventories. Only {} to go!",
-                        amount_synced,
-                        amount_to_sync,
-                        amount_to_sync - amount_synced
-                    );
-                }
-                amount_synced += 1;
-            }
-        } else {
-            debug!(
-                "Failed to gather a node to use from digests: {:?}.",
-                chainDigests
-            );
-            error!("Syncing Failed. Try waiting some time restarting your node and ensure you are connected to internet!");
-            break;
-        }
-    }
-    if inventories_downloaded == false {
-        //syncing failed
-        return Err("syncing failed".into());
-    } else {
-        // now we check that we have got all the inventories
-        // we ask the peer we just synced from for a merkle root hash of their inventories db and do the same on ours
-        if let Ok(mut a) = peer_to_use_unwraped.try_clone() {
-            sendData("*".to_owned(), &mut a, 0x1b).unwrap();
-            let mut buf = [0; 128];
-            // TODO: if the peer does not respond with a hash within say 20 secconds choose a new peer, get sync ack and start asking them for blocks (not invs though)
-            loop {
-                let peek_res = a.peek(&mut buf);
-                if let Ok(amount) = peek_res {
-                    if amount != 0 {
-                        break;
-                    }
-                }
-            }
-            // we can now read the hash
-            if let Err(_) = a.read(&mut buf) {
-                if let Err(_) = a.read(&mut buf) {
-                    // TODO: choose a new peer, get sync ack and start asking them for blocks (not invs though)
-                }
-            }
-            let hash = String::from_utf8(buf.to_vec()).unwrap_or("error".to_owned());
-            if hash != "".to_owned() {
-                let local_merkle = generate_merkle_root_all().unwrap_or_default();
-                if local_merkle != hash {
-                    // Go back to the begining and sync again
-                    // TODO: Improve the efficency of this, rather than reruning everything (eg having to get chain digest bla bla bla) just go back to getting invs
-                    return sync(&mut vec![&mut a]);
-                }
-            }
-        }
-        // time to download blocks
-        // first we make a iter of all the invs we have saved
-        if let Ok(db) = openDb(config().db_path + &"/chainslist".to_owned()) {
-            let mut chainiter = db.raw_iterator();
-            chainiter.seek_to_first();
-            while chainiter.valid() {
-                if let Some(chain) = chainiter.value() {
-                    if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
-                        if let Ok(inv_db) = openDb(
-                            config().db_path
-                                + &"/chains".to_owned()
-                                + &chain_string
-                                + &"-invs".to_owned(),
-                        ) {
-                            let mut iter = inv_db.raw_iterator();
-                            iter.seek_to_first();
-                            if let Some(inv) = iter.value() {
-                                if let Ok(inv_string) = String::from_utf8(inv.to_vec()) {
-                                    let inv_des: Inventory =
-                                        serde_json::from_str(&inv_string).unwrap_or_default();
-                                    if inv_des == Inventory::default() {
-                                        warn!(
-                                            "Failed to parse inventory from: {}, likley corrupted DB",
-                                            inv_string
-                                        );
-                                    } else {
-                                        trace!(
-                                            "Saw inv: index: {:?}, value: {:?}",
-                                            iter.key(),
-                                            iter.value()
-                                        );
-                                        let block: String = String::from_utf8(
-                                            iter.value().unwrap_or(b"get value failed").to_vec(),
-                                        )
-                                        .unwrap_or("get value failed".to_string());
-                                        if getBlockFromRaw((&block).to_string()) != Block::default()
-                                        {
-                                            // we have this block already
-                                            iter.next();
-                                        } else {
-                                            if let Ok(mut a) = peer_to_use_unwraped.try_clone() {
-                                                sendData(block, &mut a, 0x1a).unwrap();
-                                                let mut buf = [0; 2048];
-                                                // TODO: if the peer does not respond with a block within say 20 secconds choose a new peer, get sync ack and start asking them for blocks (not invs though)
-                                                loop {
-                                                    let peek_res = a.peek(&mut buf);
-                                                    if let Ok(amount) = peek_res {
-                                                        if amount != 0 {
-                                                            break;
-                                                        }
-                                                    }
-                                                }
-                                                // we can now read the block
-                                                if let Err(_) = a.read(&mut buf) {
-                                                    if let Err(_) = a.read(&mut buf) {
-                                                        // TODO: choose a new peer, get sync ack and start asking them for blocks (not invs though)
-                                                    }
-                                                }
-                                                let block: Block = serde_json::from_str(
-                                                    &(String::from_utf8(buf.to_vec())
-                                                        .unwrap_or_default()),
-                                                )
-                                                .unwrap_or_default();
-                                                if block == Block::default() {
-                                                    // TODO: reget the block, if this fails 3 or more times then choose a new peer and try again with them
-                                                } else {
-                                                    // TODO: validate the block, if valid save it then enact the block and its transacions
-                                                    if let Err(e) = check_block(block.clone()) {
-                                                        warn!("Got bad block from peer. Validation gave error: {:?}", e);
-                                                    } else {
-                                                        if let Err(e) = saveBlock(block.clone()) {
-                                                            warn!("Failed to save block, gave error: {}. Retrying...", e);
-                                                            if let Err(e) = saveBlock(block.clone())
-                                                            {
-                                                                warn!("Failed to save block, gave error: {}. Exiting", e);
-                                                                process::exit(1);
-                                                            }
-                                                        }
-                                                        if let Err(e) = enact_block(block.clone()) {
-                                                            warn!("Failed to enact block, gave error: {:?}. Retrying", e);
-                                                            if let Err(e) =
-                                                                enact_block(block.clone())
-                                                            {
-                                                                warn!("Failed to enact block, gave error: {}. Retrying", e);
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    warn!(
-                                        "Found corrupted inventory at key: {}",
-                                        String::from_utf8(
-                                            iter.key()
-                                                .unwrap_or(b"error getting index, (key err)")
-                                                .to_vec()
-                                        )
-                                        .unwrap_or("error getting index (utf8 err)".to_owned())
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
     return Ok(1);
 }
@@ -1019,7 +645,7 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
 fn process_message(s: String, p: &mut TcpStream) {
     if s == "getChainDigest".to_string() {
         let merkle_root = "sorry nothing".to_owned();
-        let _ = sendData(merkle_root, p, 0x01);
+        let _ = sendData(&merkle_root, p, 0x01);
     }
 }
 
@@ -1064,9 +690,6 @@ fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> 
         return Err("Failed to get peer addr".into());
     }
 }
-pub fn sendInventoriesDigest(_peer: &mut TcpStream, _amount: String) {
-    ()
-}
 
 pub enum p2p_errors {
     None,
@@ -1075,9 +698,9 @@ pub enum p2p_errors {
     Other,
 }
 
-pub fn sendData(data: String, peer: &mut TcpStream, msg_type: u16) -> Result<(), std::io::Error> {
+pub fn sendData(data: &String, peer: &mut TcpStream, msg_type: u16) -> Result<(), std::io::Error> {
     // This function takes some data as a string and places it into a struct before sending to the peer
-    let data_s: String = formMsg(data, msg_type);
+    let data_s: String = formMsg(data.clone(), msg_type);
     info!("data_s: {}", data_s);
     let sent = peer.write_all(data_s.as_bytes());
     return sent;
@@ -1108,22 +731,8 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     });
     match msg_d.message_type {
         0x22 => {
-            let _ = sendData("syncack".to_owned(), peer, 0x01);
+            let _ = sendData(&"syncack".to_owned(), peer, 0x01);
             return Some("syncreq".to_owned());
-        }
-        0x04 => {
-            let config = config();
-            let d: GetInventories = serde_json::from_str(&msg_d.message).unwrap_or_default();
-            if d == GetInventories::default() {
-                return None;
-            }
-            let mut from = d.from;
-            if from == "0000000000".to_string() {
-                from = config.first_block_hash;
-            }
-            let amount: u8 = d.amount;
-            sendInventories(from, amount, peer);
-            return Some("inventories".to_owned());
         }
         0x05 => {
             sendBlock(msg_d.message, peer);
@@ -1149,18 +758,47 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return Some("sendchaindigest".into());
         }
         0 => {
-            debug!("Unsupported application (zero type code)");
+            debug!("Unsupported application or malformed packets (zero type code)");
             return None;
         }
         0x45 => {
             // send block count
-            let bc = getData(config().db_path + &"/chaindigest".to_owned(), &"blockcount".to_owned());
+            let bc = getData(
+                config().db_path + &"/chaindigest".to_owned(),
+                &"blockcount".to_owned(),
+            );
             if bc == "-1".to_owned() {
-                let _ = sendData("0".into(), peer, 0x46);
+                let _ = sendData(&"0".into(), peer, 0x46);
             } else {
-                let _ = sendData(bc, peer, 0x46);
+                let _ = sendData(&bc, peer, 0x46);
             }
             return None;
+        }
+        0x6f => {
+            let (chain, hash): (String, String) = serde_json::from_str(&msg_d.message).unwrap_or_default();
+            if chain == String::default() || hash == String::default() {
+                debug!("Got malformed getblocksabovehash hash request (invalid body: {})", msg_d.message);
+                return None;
+            } else {
+                let block_from: Block = getBlockFromRaw(hash);
+                if block_from == Default::default() {
+                    debug!("Cant find block (context getblocksabovehash)");
+                    return None;
+                } else {
+                    let mut got: u64 = 0;
+                    let mut prev: Block = block_from;
+                    while prev != Default::default() {
+                        if let Err(e) = sendBlockStruct(&prev, peer) {
+                            debug!("Failed to send block with hash: {} to peer: {}. Gave error {:#?}", prev.hash, peer.peer_addr().unwrap(), e);
+                        }
+                        got += 1;
+                        trace!("Sent block at height: {}", got);
+                        prev = getBlock(&chain, got);
+                    }
+                    trace!("Sent all blocks (amount: {}) for chain: {} to peer", got-1, chain);
+                }
+            }
+            return Some("getblocksabovehash".into());
         }
         _ => {
             warn!("Bad Messge type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
