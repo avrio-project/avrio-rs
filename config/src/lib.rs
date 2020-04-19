@@ -5,15 +5,15 @@ use std::io;
 use std::io::prelude::*;
 extern crate log;
 use dirs::*;
-
+use rand::prelude::*;
+use sha2::{Digest, Sha256, Sha512};
 #[macro_use]
 extern crate lazy_static;
-
+extern crate hex;
 
 lazy_static! {
     static ref CONFIG_STACK: Config = config_read();
 }
-
 
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
 /// This is the struct that holds the built in , network params that are set by the core devs and the same for everyone
@@ -135,6 +135,12 @@ pub fn config() -> Config {
     return CONFIG_STACK.clone();
 }
 
+fn hash_id(id: u64) -> String {
+    let mut hasher = Sha256::new();
+    hasher.input(format!("{}", id).as_bytes());
+    return hex::encode(hasher.result());
+}
+
 impl Default for ConfigSave {
     fn default() -> ConfigSave {
         if let Some(dir) = home_dir() {
@@ -155,7 +161,7 @@ impl Default for ConfigSave {
                     rpc_port: 54321,
                     allow_cors: 'n',
                     node_type: 'n',
-                    identitiy: String::from(""),
+                    identitiy: hash_id(rand::random::<u64>()),
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
@@ -178,7 +184,7 @@ impl Default for ConfigSave {
                     rpc_port: 54321,
                     allow_cors: 'n',
                     node_type: 'n',
-                    identitiy: String::from(""),
+                    identitiy: hash_id(rand::random::<u64>()),
                     key_file_path: "wallet.keys".to_string(),
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
@@ -202,7 +208,7 @@ impl Default for ConfigSave {
                 rpc_port: 54321,
                 allow_cors: 'n',
                 node_type: 'n',
-                identitiy: String::from(""),
+                identitiy: hash_id(rand::random::<u64>()),
                 key_file_path: "wallet.keys".to_string(),
                 log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                 wallet_password: "wallet_password_123".to_string(),
