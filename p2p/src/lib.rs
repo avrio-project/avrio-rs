@@ -655,7 +655,6 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         + &self_config.node_type.to_string();
     let _ = stream.write(formMsg(msg, 0x1a).as_bytes()); // send our handshake
     let mut buffer_n = [0; 200];
-    //error!("{:?}", buffer_n.len());
     let read = stream.read(&mut buffer_n);
     match read {
         Ok(0) => {
@@ -680,24 +679,18 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         String::from_utf8(buffer_n.to_vec()).unwrap()
     );
     let pid: String;
-    let mut peer_clone: TcpStream;
-    if let Ok(peer) = stream.try_clone() {
-        peer_clone = peer;
-    } else {
-        return Err("failed to clone stream".into());
-    }
-    match deformMsg(&String::from_utf8(buffer_n.to_vec())?, &mut peer_clone) {
-        Some(x) => {
+    match process_handshake(String::from_utf8(buffer_n.to_vec())?) {
+        Ok(x) => {
             pid = x;
         }
-        None => {
-            warn!("Got no Id from peer");
+        _ => {
+            warn!("Got no id from peer");
             return Err("Got no id".into());
         }
     };
     let info = PeerTracker {
-        sent_bytes: 200,
-        recieved_bytes: 200,
+        sent_bytes: 0,
+        recieved_bytes: 0,
     };
     avrio_database::add_peer(socket)?;
     return Ok(Peer {
@@ -719,7 +712,7 @@ fn process_block(s: String) {
     info!("Block {}", s);
 }
 
-fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> {
+fn process_handshake(s: String) -> Result<String, String> {
     trace!("Handshake: {}", s);
     if in_handshakes(&s) {
         return Err("already handshook".into());
@@ -748,12 +741,9 @@ fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> 
     }
     info!("Handshook with peer, gave id {}", id);
     let id_cow = Cow::from(&id);
-    if let Ok(addr) = peer.peer_addr() {
-        add_handsake(id_cow.to_string());
-        return Ok((&id_cow).to_string());
-    } else {
-        return Err("Failed to get peer addr".into());
-    }
+
+    add_handsake(id_cow.to_string());
+    return Ok((&id_cow).to_string());
 }
 
 pub enum p2p_errors {
@@ -812,9 +802,14 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return Some("getblock".into());
         }
         0x1a => {
-            if let Ok(_) = process_handshake(msg_d.message, peer) {
-                return Some("handshake".to_string());
+            if !in_handshakes(&msg_d.message) {
+                if let Ok(_) = process_handshake(msg_d.message) {
+                    return Some("handshake".to_string());
+                } else {
+                    return None;
+                }
             } else {
+                debug!("Peer already in handshake list");
                 return None;
             }
         }
