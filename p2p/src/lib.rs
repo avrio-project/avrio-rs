@@ -108,8 +108,11 @@ pub fn sync_needed() -> bool {
 /// # prop_block
 /// This function sends a block to all peers it has from the comitee that is currently handeling the shard
 /// In testnet 0.0.1 It simply sent to all conected peers
-pub fn prop_block(_blk: Block) -> Result<u64, Box<dyn std::error::Error>> {
-    return Ok(0); // TODO: send block to all peers and await a response, return Ok(number of peers who responded)
+pub fn prop_block(blk: &Block, peers: Vec<&mut TcpStream>) -> Result<(), Box<dyn std::error::Error>> {
+    for peer in peers {
+        sendBlockStruct(blk, peer)?;
+    }
+    return Ok(()); 
 }
 
 /// Sends block with hash to _peer
