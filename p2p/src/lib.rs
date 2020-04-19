@@ -818,7 +818,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return Some("sendchaindigest".into());
         }
         0 => {
-            debug!("Unsupported application or malformed packets (zero type code)");
+            debug!("Unsupported application or malformed packets (zero type code) from peer: {}",peer.peer_addr().expect("Could not get addr for peer"));
             return None;
         }
         0x45 => {
