@@ -23,24 +23,30 @@ use std::error::Error;
 extern crate rocksdb;
 extern crate simple_logger;
 
-/// # Inventorys
-/// This is save to the CHAIN_KEY-invs db (where CHAIN_KEY is the public key of the chain)
-/// They key is the height of the block and the value is the following struct serialized
-/// Serializing this should produce a string like this:
-/// { "hash" : "...", "timestamp" : "124353632"}
-/// To then get the struct set chain to the name of the db (remove the -invs bit) and the height should be the key
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Ord, PartialOrd)]
-pub struct Inventory {
-    #[serde(skip)]
-    /// this is got via the name of the db
-    chain: String,
-    /// the hash of the block
-    hash: String,
-    #[serde(skip)]
-    /// this is the key of the entry
-    height: u64,
-    /// the timestamp of the block
-    timestamp: u64,
+#[macro_use]
+extern crate lazy_static;
+
+use std::sync::Mutex;
+
+lazy_static! {
+    static ref HANDSHAKES: Mutex<Vec<String>> = Mutex::new(vec![]);
+}
+
+fn add_handsake(hs: String) {
+    HANDSHAKES.lock().unwrap().push(hs);
+}
+
+fn get_handshakes() -> Vec<String> {
+    return HANDSHAKES.lock().unwrap().clone();
+}
+
+fn in_handshakes(hs: &String) -> bool {
+    for shake in get_handshakes() {
+        if &shake == hs {
+            return true;
+        }
+    }
+    return false;
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -511,11 +517,14 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             }
             // There are now bytes waiting in the stream
             let _ = peer_to_use_unwraped.read(&mut buf);
-            let deformed: P2pdata =
-                serde_json::from_str(&String::from_utf8(buf.to_vec()).unwrap_or("".to_string()))
-                    .unwrap_or(P2pdata::default());
+            let as_string = String::from_utf8(buf.to_vec()).unwrap_or("".to_string());
+            trace!("Chain list got: {}", as_string);
+            let deformed: P2pdata = serde_json::from_str(&as_string).unwrap_or(P2pdata::default());
             if deformed.message_type != 0x61 {
-                error!("Failed to get chain list from peer (got wrong message type back)");
+                error!(
+                    "Failed to get chain list from peer (got wrong message type back: {})",
+                    deformed.message_type
+                );
                 //TODO: *1
                 return Err("got wrong message response (context get chain list)".into());
             } else {
@@ -712,6 +721,9 @@ fn process_block(s: String) {
 
 fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> {
     trace!("Handshake: {}", s);
+    if in_handshakes(&s) {
+        return Err("already handshook".into());
+    }
     let id: String;
     let network_id_hex = hex::encode(config().network_id);
     let network_id_hex_len = network_id_hex.len();
@@ -737,11 +749,7 @@ fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> 
     info!("Handshook with peer, gave id {}", id);
     let id_cow = Cow::from(&id);
     if let Ok(addr) = peer.peer_addr() {
-        let _ = saveData(
-            addr.ip().to_string() + &":".to_string() + &addr.port().to_string(),
-            config().db_path + &"/peers".to_owned(),
-            (&id_cow).to_string(),
-        );
+        add_handsake(id_cow.to_string());
         return Ok((&id_cow).to_string());
     } else {
         return Err("Failed to get peer addr".into());
@@ -775,7 +783,6 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 
 pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
-    info!("recive (deform) {}", msg);
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
     drop(v);
@@ -786,6 +793,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         );
         return P2pdata::default();
     });
+    trace!("GOT (deform) {:#?}", msg_d);
     match msg_d.message_type {
         0x22 => {
             let _ = sendData(&"syncack".to_owned(), peer, 0x01);
