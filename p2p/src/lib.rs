@@ -11,7 +11,7 @@ use avrio_blockchain::{
 };
 use avrio_config::config;
 use avrio_core::epoch::Epoch;
-use avrio_database::{getData, getDataDb, openDb, saveData, setDataDb, getIter};
+use avrio_database::{getData, getDataDb, getIter, openDb, saveData, setDataDb};
 use std::borrow::{Cow, ToOwned};
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -108,11 +108,14 @@ pub fn sync_needed() -> bool {
 /// # prop_block
 /// This function sends a block to all peers it has from the comitee that is currently handeling the shard
 /// In testnet 0.0.1 It simply sent to all conected peers
-pub fn prop_block(blk: &Block, peers: Vec<&mut TcpStream>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn prop_block(
+    blk: &Block,
+    peers: Vec<&mut TcpStream>,
+) -> Result<(), Box<dyn std::error::Error>> {
     for peer in peers {
         sendBlockStruct(blk, peer)?;
     }
-    return Ok(()); 
+    return Ok(());
 }
 
 /// Sends block with hash to _peer
@@ -134,7 +137,10 @@ pub fn sendBlock(hash: String, _peer: &mut TcpStream) -> Result<(), Box<dyn std:
     }
 }
 
-pub fn sendBlockStruct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+pub fn sendBlockStruct(
+    block: &Block,
+    peer: &mut TcpStream,
+) -> Result<(), Box<dyn std::error::Error>> {
     if block.hash == Block::default().hash {
         return Err("tryied to send default block".into());
     } else {
@@ -274,9 +280,9 @@ fn get_mode(v: Vec<String>) -> String {
 /// It returns Ok(()) on succsess and handles the inventory generation, inventory saving, block geting, block validation,
 /// block saving, block enacting and informing the user of the progress.
 /// If you simply want to sync all chains then use the sync function bellow.
-pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn std::error::Error>> {
+pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn std::error::Error>> {
     syncack_peer(peer)?;
-    let _ = sendData(&chain, &mut peer.try_clone().unwrap(), 0x45);
+    let _ = sendData(chain, &mut peer.try_clone().unwrap(), 0x45);
     let mut buf = [0; 1024];
     let mut no_read = true;
     while no_read == true {
@@ -319,14 +325,22 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
         return Err("failed to get topblockhash for chain".into());
     }
     if top_block_hash == "-1" {
-        if let Err(e) = sendData(&serde_json::to_string(&(&"0".to_owned(), &chain))?, peer, 0x6f) {
+        if let Err(e) = sendData(
+            &serde_json::to_string(&(&"0".to_owned(), &chain))?,
+            peer,
+            0x6f,
+        ) {
             error!(
                 "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
                 top_block_hash, chain, e
             );
             return Err(e.into());
         }
-    } else if let Err(e) = sendData(&serde_json::to_string(&(&top_block_hash, &chain))?, peer, 0x6f) {
+    } else if let Err(e) = sendData(
+        &serde_json::to_string(&(&top_block_hash, &chain))?,
+        peer,
+        0x6f,
+    ) {
         error!(
             "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
             top_block_hash, chain, e
@@ -433,52 +447,92 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let _peers: Vec<TcpStream> = vec![];
     let _pc: u32 = 0;
     let _i: usize = 0;
-    let mut chainDigests: Vec<ChainDigestPeer> = vec![];
-    let _empty_string = "".to_string();
+    let mut chain_digests: Vec<ChainDigestPeer> = vec![];
     for peer in pl.iter_mut() {
         if let Ok(mut peer_new) = peer.try_clone() {
             let handle = thread::Builder::new()
                 .name("getChainDigest".to_string())
                 .spawn(move || {
-                    let chainDigest = getChainDigest(&mut peer_new);
-                    match chainDigest.digest {
-                        _empty_string => {
-                            return ChainDigestPeer {
-                                peer: Some(peer_new),
-                                digest: "".to_string(),
-                            };
-                        }
-                        _ => {
-                            return chainDigest;
-                        }
-                    };
+                    let chain_digest = getChainDigest(&mut peer_new);
+                    if chain_digest.digest == " " {
+                        return ChainDigestPeer {
+                            peer: Some(peer_new),
+                            digest: " ".to_string(),
+                        };
+                    } else {
+                        return chain_digest;
+                    }
                 });
             if let Ok(handle_) = handle {
                 if let Ok(result) = handle_.join() {
-                    chainDigests.push(result);
+                    chain_digests.push(result);
                 }
             }
         }
     }
     let mut hashes: Vec<String> = vec![];
-    let chainDigestsLen = chainDigests.len();
-    for hash in chainDigests.iter() {
+    let chainDigestsLen = chain_digests.len();
+    for hash in chain_digests.iter() {
         hashes.push(hash.digest.clone());
     }
     let mode_hash = get_mode(hashes);
     let mut peer_to_use: Option<TcpStream> = None;
     let _i: u64 = 0;
-    for i in 0..chainDigests.len() {
-        if chainDigests[i].digest == mode_hash {
-            if let Some(peer_) = &chainDigests[i].peer {
+    for i in 0..chain_digests.len() {
+        if chain_digests[i].digest == mode_hash {
+            if let Some(peer_) = &chain_digests[i].peer {
                 peer_to_use = Some(peer_.try_clone().unwrap());
             }
         }
     }
     let mut peer_to_use_unwraped: TcpStream = peer_to_use.unwrap().try_clone().unwrap();
-    let try_ack = syncack_peer(&mut peer_to_use_unwraped.try_clone().unwrap());
-    if let Ok(stream) = try_ack {
-        peer_to_use_unwraped = stream;
+    let try_ack = syncack_peer(&mut peer_to_use_unwraped);
+    if let Err(e) = try_ack {
+        error!("Got error: {} when sync acking peer", e);
+        // TODO sync ack the next fastest peer until we have peer (1)
+        return Err("rejected sync ack".into());
+    } else {
+        // We have a peer now we ask them for their list of chains
+        // They send their list of chains as a vec of strings
+        if let Err(e) = sendData(&"".to_owned(), &mut peer_to_use_unwraped, 0x60) {
+            error!("Failed to request chains list from peer gave error: {}", e);
+            // TODO: *1
+            return Err("failed to send get chain list message".into());
+        } else {
+            let mut buf = [0; 1024];
+            let mut no_read = true;
+            while no_read == true {
+                if let Ok(a) = peer_to_use_unwraped.peek(&mut buf) {
+                    if a == 0 {
+                    } else {
+                        no_read = false;
+                    }
+                }
+            }
+            // There are now bytes waiting in the stream
+            let _ = peer_to_use_unwraped.read(&mut buf);
+            let deformed: P2pdata =
+                serde_json::from_str(&String::from_utf8(buf.to_vec()).unwrap_or("".to_string()))
+                    .unwrap_or(P2pdata::default());
+            if deformed.message_type != 0x61 {
+                error!("Failed to get chain list from peer (got wrong message type back)");
+                //TODO: *1
+                return Err("got wrong message response (context get chain list)".into());
+            } else {
+                let chain_list: Vec<String> =
+                    serde_json::from_str(&deformed.message).unwrap_or_default();
+                if chain_list.len() == 0 {
+                    return Err("empty chain list".into());
+                } else {
+                    for chain in chain_list.iter() {
+                        if let Err(e) = sync_chain(chain, &mut peer_to_use_unwraped) {
+                            error!("Failed to sync chain: {}, gave error: {}", chain, e);
+                            return Err(format!("failed to sync chain {}", chain));
+                        }
+                    }
+                }
+            }
+        }
     }
     return Ok(1);
 }
@@ -778,9 +832,13 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return None;
         }
         0x6f => {
-            let (chain, hash): (String, String) = serde_json::from_str(&msg_d.message).unwrap_or_default();
+            let (chain, hash): (String, String) =
+                serde_json::from_str(&msg_d.message).unwrap_or_default();
             if chain == String::default() || hash == String::default() {
-                debug!("Got malformed getblocksabovehash hash request (invalid body: {})", msg_d.message);
+                debug!(
+                    "Got malformed getblocksabovehash hash request (invalid body: {})",
+                    msg_d.message
+                );
                 return None;
             } else {
                 let block_from: Block = getBlockFromRaw(hash);
@@ -792,19 +850,56 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     let mut prev: Block = block_from;
                     while prev != Default::default() {
                         if let Err(e) = sendBlockStruct(&prev, peer) {
-                            debug!("Failed to send block with hash: {} to peer: {}. Gave error {:#?}", prev.hash, peer.peer_addr().unwrap(), e);
+                            debug!(
+                                "Failed to send block with hash: {} to peer: {}. Gave error {:#?}",
+                                prev.hash,
+                                peer.peer_addr().unwrap(),
+                                e
+                            );
                         }
                         got += 1;
                         trace!("Sent block at height: {}", got);
                         prev = getBlock(&chain, got);
                     }
-                    trace!("Sent all blocks (amount: {}) for chain: {} to peer", got-1, chain);
+                    trace!(
+                        "Sent all blocks (amount: {}) for chain: {} to peer",
+                        got - 1,
+                        chain
+                    );
                 }
             }
             return Some("getblocksabovehash".into());
         }
+        0x60 => {
+            trace!(
+                "Peer: {} has requested our chains list",
+                peer.peer_addr().expect("Could not get addr for peer")
+            );
+            if let Ok(db) = openDb(config().db_path + &"/chainslist".to_owned()) {
+                let mut iter = db.raw_iterator();
+                iter.seek_to_first();
+                let mut chains: Vec<String> = vec![];
+                while iter.valid() {
+                    if let Some(key_utf8) = iter.key() {
+                        if let Ok(key) = String::from_utf8(key_utf8.to_vec()) {
+                            chains.push(key);
+                        }
+                    }
+                }
+                trace!("Our chain list: {:#?}", chains);
+                let s = serde_json::to_string(&chains).unwrap_or_default();
+                if s == String::default() {
+                    trace!("Failed to ser list");
+                    return None;
+                } else if let Err(e) = sendData(&s, peer, 0x61) {
+                    debug!("Failed to send chain list to peer, gave error: {}", e);
+                    return None;
+                }
+            }
+            return Some("getchainslist".into());
+        }
         _ => {
-            warn!("Bad Messge type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
+            warn!("Bad Message type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
             return None;
         }
     }
