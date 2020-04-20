@@ -523,7 +523,10 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             let _ = peer_to_use_unwraped.read(&mut buf);
             let as_string = String::from_utf8(buf.to_vec()).unwrap_or("".to_string());
             trace!("Chain list got: {}", as_string);
-            let deformed: P2pdata = serde_json::from_str(&as_string).unwrap_or(P2pdata::default());
+            let deformed: P2pdata = serde_json::from_str(&strip_msg(&as_string)).unwrap_or_else(|e| {
+                error!("Failed to decode returned message, gave error: {:?}", e);
+                return P2pdata::default();
+            });
             if deformed.message_type != 0x61 {
                 error!(
                     "Failed to get chain list from peer (got wrong message type back: {})",
@@ -778,6 +781,16 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
         message: data_s,
     };
     return serde_json::to_string(&msg).unwrap();
+}
+
+fn strip_msg(msg: &String) -> String {
+    let v: Vec<&str> = msg.split("}").collect();
+    trace!(target: "avrio_p2p::deformer", "split 0/2: {:#?}", v);
+    let msg_c = v[0].to_string() + &"}".to_string();
+    trace!(target: "avrio_p2p::deformer", "split 1/2: {:#?}", msg_c);
+    let v: Vec<&str> = msg_c.split("{").collect();
+    trace!(target: "avrio_p2p::deformer", "split 2/2: {:#?}", v);
+    return "{".to_string() + &v[1].to_string();
 }
 
 pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
