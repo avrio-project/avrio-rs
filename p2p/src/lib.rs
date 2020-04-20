@@ -523,10 +523,11 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             let _ = peer_to_use_unwraped.read(&mut buf);
             let as_string = String::from_utf8(buf.to_vec()).unwrap_or("".to_string());
             trace!("Chain list got: {}", as_string);
-            let deformed: P2pdata = serde_json::from_str(&strip_msg(&as_string)).unwrap_or_else(|e| {
-                error!("Failed to decode returned message, gave error: {:?}", e);
-                return P2pdata::default();
-            });
+            let deformed: P2pdata =
+                serde_json::from_str(&strip_msg(&as_string)).unwrap_or_else(|e| {
+                    error!("Failed to decode returned message, gave error: {:?}", e);
+                    return P2pdata::default();
+                });
             if deformed.message_type != 0x61 {
                 error!(
                     "Failed to get chain list from peer (got wrong message type back: {})",
@@ -864,7 +865,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return None;
         }
         0x6f => {
-            let (chain, hash): (String, String) =
+            let (hash, chain): (String, String) =
                 serde_json::from_str(&msg_d.message).unwrap_or_default();
             if chain == String::default() || hash == String::default() {
                 debug!(
@@ -873,8 +874,12 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                 );
                 return None;
             } else {
-                trace!("Getting block with hash: .{}.", hash);
-                let block_from: Block = getBlockFromRaw(hash);
+                let block_from: Block;
+                if hash == "0" {
+                    block_from = getBlock(&chain, 0);
+                } else {
+                    block_from = getBlockFromRaw(hash);
+                }
                 if block_from == Default::default() {
                     debug!("Cant find block (context getblocksabovehash)");
                     return None;
