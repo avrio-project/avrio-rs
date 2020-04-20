@@ -904,6 +904,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                             chains.push(key);
                         }
                     }
+                    iter.next();
                 }
                 trace!("Our chain list: {:#?}", chains);
                 let s = serde_json::to_string(&chains).unwrap_or_default();
