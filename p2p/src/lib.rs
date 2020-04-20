@@ -873,6 +873,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                 );
                 return None;
             } else {
+                trace!("Getting block with hash: .{}.", hash);
                 let block_from: Block = getBlockFromRaw(hash);
                 if block_from == Default::default() {
                     debug!("Cant find block (context getblocksabovehash)");
