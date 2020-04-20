@@ -876,7 +876,9 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             } else {
                 let block_from: Block;
                 if hash == "0" {
+                    trace!("Getting genesis block for chain: {}", chain);
                     block_from = getBlock(&chain, 0);
+                    trace!("Block from: {:#?}", block_from);
                 } else {
                     block_from = getBlockFromRaw(hash);
                 }
