@@ -894,7 +894,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                 "Peer: {} has requested our chains list",
                 peer.peer_addr().expect("Could not get addr for peer")
             );
-            if let Ok(db) = openDb(config().db_path + &"/chainslist".to_owned()) {
+            if let Ok(db) = openDb(config().db_path + &"/chainlist".to_owned()) {
                 let mut iter = db.raw_iterator();
                 iter.seek_to_first();
                 let mut chains: Vec<String> = vec![];
