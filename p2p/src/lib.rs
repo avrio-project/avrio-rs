@@ -794,7 +794,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     let msg_c = strip_msg(&msg);
     let msg_d: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
         debug!(
-            "Bad Packets recieved from peer, packets: {}. Parsing this gave error: {}",
+            "Bad Packets recieved from peer, packets: {:#?}. Parsing this gave error: {}",
             msg_c, e
         );
         return P2pdata::default();
