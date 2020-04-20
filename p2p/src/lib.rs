@@ -786,25 +786,12 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 }
 
 fn strip_msg(msg: &String) -> String {
-    let v: Vec<&str> = msg.split("}").collect();
-    trace!(target: "avrio_p2p::deformer", "split 0/2: {:#?}", v);
-    let msg_c = v[0].to_string() + &"}".to_string();
-    trace!(target: "avrio_p2p::deformer", "split 1/2: {:#?}", msg_c);
-    let v: Vec<&str> = msg_c.split("{").collect();
-    trace!(target: "avrio_p2p::deformer", "split 2/2: {:#?}", v);
-    return "{".to_string() + &v[1].to_string();
+    return msg.trim().to_owned();
 }
 
 pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
-    let v: Vec<&str> = msg.split("}").collect();
-    trace!(target: "avrio_p2p::deformer", "split 0/2: {:#?}", v);
-    let msg_c = v[0].to_string() + &"}".to_string();
-    trace!(target: "avrio_p2p::deformer", "split 1/2: {:#?}", msg_c);
-    let v: Vec<&str> = msg_c.split("{").collect();
-    trace!(target: "avrio_p2p::deformer", "split 2/2: {:#?}", v);
-    let msg_c = "{".to_string() + &v[1].to_string();
-    drop(v);
+    let msg_c = strip_msg(&msg);
     let msg_d: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
         debug!(
             "Bad Packets recieved from peer, packets: {}. Parsing this gave error: {}",
