@@ -365,7 +365,7 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             top_block_hash
         );
         loop {
-            let mut buf = [0; 1024];
+            let mut buf = [0; 1000000];
             let mut no_read = true;
             while no_read == true {
                 if let Ok(a) = peer.peek(&mut buf) {
@@ -383,7 +383,10 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             .unwrap_or(P2pdata::default());
             if deformed.message_type != 0x0a {
                 // TODO: Ask for block(s) again rather than returning err
-                error!("Failed to get block, wrong message type: {}", deformed.message_type);
+                error!(
+                    "Failed to get block, wrong message type: {}",
+                    deformed.message_type
+                );
                 return Err("failed to get block".into());
             } else {
                 let blocks: Vec<Block> =
@@ -510,7 +513,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             // TODO: *1
             return Err("failed to send get chain list message".into());
         } else {
-            let mut buf = [0; 1024];
+            let mut buf = [0; 10024];
             let mut no_read = true;
             while no_read == true {
                 if let Ok(a) = peer_to_use_unwraped.peek(&mut buf) {
@@ -557,7 +560,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
 
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     loop {
-        let mut data = [0 as u8; 200];
+        let mut data = [0 as u8; 2000];
         let mut peer_clone: TcpStream;
         if let Ok(peer) = stream.try_clone() {
             peer_clone = peer;
@@ -786,7 +789,7 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 }
 
 fn strip_msg(msg: &String) -> String {
-    return msg.trim().to_owned();
+    return msg.trim_matches(char::from(0)).to_owned();
 }
 
 pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
@@ -876,24 +879,22 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                 } else {
                     let mut got: u64 = 0;
                     let mut prev: Block = block_from;
+                    let mut blks: Vec<Block> = vec![];
                     while prev != Default::default() {
-                        if let Err(e) = sendBlockStruct(&prev, peer) {
-                            debug!(
-                                "Failed to send block with hash: {} to peer: {}. Gave error {:#?}",
-                                prev.hash,
-                                peer.peer_addr().unwrap(),
-                                e
-                            );
-                        }
+                        blks.push(prev);
                         got += 1;
                         trace!("Sent block at height: {}", got);
                         prev = getBlock(&chain, got);
                     }
-                    trace!(
-                        "Sent all blocks (amount: {}) for chain: {} to peer",
-                        got - 1,
-                        chain
-                    );
+                    if let Ok(_) =
+                        sendData(&serde_json::to_string(&blks).unwrap_or_default(), peer, 0x0a)
+                    {
+                        trace!(
+                            "Sent all blocks (amount: {}) for chain: {} to peer",
+                            got - 1,
+                            chain
+                        );
+                    }
                 }
             }
             return Some("getblocksabovehash".into());
