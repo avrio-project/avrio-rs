@@ -217,13 +217,19 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
             if let Some(chain) = iter.key() {
                 if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
                     if let Ok(blkdb) =
-                        openDb(config().db_path + "/chains/" + &chain_string + "-invs")
+                        openDb(config().db_path + "/chains/" + &chain_string + "-chainindex")
                     {
                         let mut blkiter = blkdb.raw_iterator();
                         blkiter.seek_to_first();
                         while blkiter.valid() {
                             if let Some(blk) = iter.value() {
-                                update_chain_digest(&String::from_utf8(blk.to_vec())?, &cd_db);
+                                let s: String = String::from_utf8(blk.to_vec())?;
+                                if let Ok(_) =
+                                    String::from_utf8(iter.key().unwrap_or_default().to_vec())?
+                                        .parse::<u64>()
+                                {
+                                    update_chain_digest(&s, &cd_db);
+                                }
                             }
                             blkiter.next();
                         }
@@ -256,7 +262,7 @@ pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String
 /// returns the block when you know the chain and the height
 pub fn getBlock(chainkey: &String, height: u64) -> Block {
     let hash = getData(
-        config().db_path + "/chains/" + chainkey + "-invs",
+        config().db_path + "/chains/" + chainkey + "-chainindex",
         &height.to_string(),
     );
     if hash == "-1".to_owned() {
@@ -452,11 +458,8 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
                     + &"-chainindex".to_owned(),
             )
             .unwrap();
-            let inv_receiver_res = setDataDb(
-                &block.hash,
-                &rec_db,
-                &block.header.height.to_string(),
-            );
+            let inv_receiver_res =
+                setDataDb(&block.hash, &rec_db, &block.header.height.to_string());
             if inv_receiver_res != 1 {
                 return Err("failed to save reciver inv".into());
             }

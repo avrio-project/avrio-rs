@@ -437,7 +437,7 @@ fn main() {
                 config().db_path
                     + &"/chains/".to_string()
                     + &wall.public_key
-                    + &"-invs".to_string(),
+                    + &"-chainindex".to_string(),
             )
             .unwrap();
             let mut invIter = getIter(&inv_db);
@@ -667,7 +667,7 @@ fn main() {
                                 config().db_path
                                     + &"/chains/".to_string()
                                     + &wall.public_key
-                                    + &"-invs".to_string(),
+                                    + &"-chainindex".to_string(),
                             )
                             .unwrap();
                             let mut invIter = getIter(&inv_db);
@@ -767,7 +767,7 @@ fn main() {
                 config().db_path
                     + &"/chains/".to_string()
                     + &wall.public_key
-                    + &"-invs".to_string(),
+                    + &"-chainindex".to_string(),
             )
             .unwrap();
             let mut invIter = getIter(&inv_db);
@@ -867,7 +867,7 @@ fn main() {
                             config().db_path
                                 + &"/chains/".to_string()
                                 + &wall.public_key
-                                + &"-invs".to_string(),
+                                + &"-chainindex".to_string(),
                         )
                         .unwrap();
                         let mut invIter = getIter(&inv_db);
