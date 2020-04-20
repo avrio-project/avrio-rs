@@ -291,7 +291,6 @@ fn get_mode(v: Vec<String>) -> String {
 /// block saving, block enacting and informing the user of the progress.
 /// If you simply want to sync all chains then use the sync function bellow.
 pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn std::error::Error>> {
-    syncack_peer(peer)?;
     let _ = sendData(chain, &mut peer.try_clone().unwrap(), 0x45);
     let mut buf = [0; 1024];
     let mut no_read = true;
@@ -378,11 +377,13 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             }
             // There are now bytes waiting in the stream
             let _ = peer.read(&mut buf);
-            let deformed: P2pdata =
-                serde_json::from_str(&String::from_utf8(buf.to_vec()).unwrap_or("".to_string()))
-                    .unwrap_or(P2pdata::default());
+            let deformed: P2pdata = serde_json::from_str(&strip_msg(
+                &String::from_utf8(buf.to_vec()).unwrap_or("".to_string()),
+            ))
+            .unwrap_or(P2pdata::default());
             if deformed.message_type != 0x0a {
                 // TODO: Ask for block(s) again rather than returning err
+                error!("Failed to get block, wrong message type: {}", deformed.message_type);
                 return Err("failed to get block".into());
             } else {
                 let blocks: Vec<Block> =
