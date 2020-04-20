@@ -811,6 +811,7 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 }
 
 fn strip_msg(msg: &String) -> String {
+    info!("striping: {}", msg);
     let v: Vec<&str> = msg.split("}").collect();
     return v[0].to_string() + &"}".to_string();
 }
@@ -863,6 +864,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                 "Unsupported application or malformed packets (zero type code) from peer: {}",
                 peer.peer_addr().expect("Could not get addr for peer")
             );
+            debug!("raw recieved: {}", msg_c);
             return None;
         }
         0x45 => {
