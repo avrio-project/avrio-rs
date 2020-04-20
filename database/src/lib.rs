@@ -30,15 +30,12 @@ pub fn getIter<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
 }
 pub fn saveData(serialized: String, path: String, key: String) -> u8 {
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
-    let db = DB::open_default(&path.to_owned()).unwrap_or_else(|e| {
-        error!(
-            "Failed to open database at path {}, gave error {:?}",
-            path, e
-        );
+    let db = openDb(path).unwrap_or_else(|e| {
+        error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
     });
     if let Err(e) = db.put(key, serialized) {
-        error!("Failed to save data to db: {}, gave error: {}", path, e);
+        error!("Failed to save data to db, gave error: {}", e);
         return 0;
     } else {
         return 1;
@@ -84,12 +81,15 @@ pub fn save_peerlist(
 }
 
 pub fn getData(path: String, key: &str) -> String {
-    let db = DB::open_default(path).unwrap();
-    let data: String;
+    let db = openDb(path).unwrap_or_else(|e| {
+        error!("Failed to open database, gave error {:?}", e);
+        process::exit(0);
+    });
+        let data: String;
     match db.get(key) {
         Ok(Some(value)) => data = String::from_utf8(value).unwrap_or("".to_owned()),
         Ok(None) => data = "-1".to_owned(),
-        Err(_e) => data = "0".to_owned(),
+        Err(_) => data = "0".to_owned(),
     }
     return data;
 }
