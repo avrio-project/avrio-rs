@@ -145,7 +145,9 @@ fn main() {
                 .short("v")
                 .value_name("loglev-val")
                 .takes_value(true)
-                .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: Debug, 4: Trace"),
+                .help(
+                    "Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: Debug, 4: Trace",
+                ),
         )
         .get_matches();
     match matches.value_of("loglev").unwrap_or(&"2") {
@@ -158,7 +160,7 @@ fn main() {
             println!("Unknown log-level: {} ", matches.occurrences_of("loglev"));
             println!("Supported levels: 0: Error, 1: Warn, 2: Info, 3: Debug, 4: Trace");
             std::process::exit(1);
-        },
+        }
     }
     let art = "
    #    #     # ######  ### #######
@@ -665,12 +667,13 @@ fn main() {
                             let mut highest_so_far: u64 = 0;
                             invIter.seek_to_first();
                             while invIter.valid() {
-                                let height: u64 = String::from_utf8(invIter.key().unwrap().into())
+                                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
                                     .unwrap()
-                                    .parse()
-                                    .unwrap();
-                                if height > highest_so_far {
-                                    highest_so_far = height
+                                    .parse::<u64>()
+                                {
+                                    if height > highest_so_far {
+                                        highest_so_far = height
+                                    }
                                 }
                                 invIter.next();
                             }
