@@ -567,16 +567,16 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
 
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     loop {
-        let mut data = [0 as u8; 2000];
         let mut peer_clone: TcpStream;
         if let Ok(peer) = stream.try_clone() {
             peer_clone = peer;
         } else {
             return Err("failed to clone stream".into());
         }
-        match stream.read(&mut data) {
-            Ok(_) => {
-                match deformMsg(&String::from_utf8(data.to_vec()).unwrap(), &mut peer_clone) {
+        let read_msg = read(&mut stream);
+        match read_msg {
+            Ok(read) => {
+                match deformMsg(&serde_json::to_string(&read).unwrap(), &mut peer_clone) {
                     Some(a) => {
                         if a == "handshake" {
                             /* we just recieved a handshake, now we send ours
