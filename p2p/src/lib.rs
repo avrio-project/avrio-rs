@@ -268,9 +268,19 @@ fn get_mode(v: Vec<String>) -> String {
 }
 
 pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
+    let time = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .expect("Time went backwards")
+    .as_millis() as u64;
     let mut as_string: String = "".into();
     let mut p2p: P2pdata = Default::default();
     loop {
+        if (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as u64 - time) >= 2500 {
+            return Err("timed out".into());
+        }
         let mut buf = [0; 1000000]; // clear the 1mb buff each time
         if let Ok(a) = peer.read(&mut buf) {
             trace!(target: "avrio_p2p::read", "Read {} bytes", a);
