@@ -278,7 +278,7 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
         if (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("Time went backwards")
-        .as_millis() as u64 - time) >= 2500 {
+        .as_millis() as u64 - time) >= 10000 && as_string.len() == 0 {
             return Err("timed out".into());
         }
         let mut buf = [0; 1000000]; // clear the 1mb buff each time
