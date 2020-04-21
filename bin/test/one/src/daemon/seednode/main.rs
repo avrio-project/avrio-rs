@@ -84,6 +84,29 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
     return Ok(());
 }
 
+fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
+    let mut i: usize = 0;
+    let mut conn_count: u8 = 0;
+    while i < seednodes.iter().count() - 1 {
+        let error = new_connection(seednodes[i]);
+        match error {
+            Ok(_) => {
+                info!("Connected to {:?}::{:?}", seednodes[i], 11523);
+                conn_count += 1;
+                let peer = error.unwrap();
+                let peer_cloned = peer.stream.try_clone().unwrap();
+                connected_peers.push(peer_cloned);
+            }
+            _ => warn!(
+                "Failed to connect to {:?}:: {:?}, returned error {:?}",
+                seednodes[i], 11523, error
+            ),
+        };
+        i += 1;
+    }
+    return conn_count;
+}
+
 fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let conf = config();
     let path = conf.db_path + &"/wallets/".to_owned() + &keypair[0];
@@ -194,19 +217,26 @@ fn main() {
     match pl {
         // do we need to sync
         Ok(_) => {
-            let pl: Vec<SocketAddr> = get_peerlist().unwrap();
-            for peer in pl {
-                let res = new_connection(peer);
-                if let Ok(mut peer_struct) = res {
-                    let mut peers: Vec<&mut TcpStream> = vec![];
-                    peers.push(&mut peer_struct.stream);
-                    if let Ok(_) = sync(&mut peers) {
+            let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
+            let mut connections: Vec<TcpStream> = vec![];
+            connect(pl, &mut connections);
+            let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
+            let syncneed = sync_needed();
+            match syncneed {
+                // do we need to sync
+                true => {
+                    info!("Starting sync (this will take some time)");
+                    if let Ok(_) = sync(&mut connections_mut) {
                         info!("Successfully synced with the network!");
                         synced = true;
                     } else {
                         error!("Syncing failed");
                         process::exit(1);
                     }
+                }
+                false => {
+                    info!("No sync needed");
+                    synced = true;
                 }
             }
         }
@@ -315,6 +345,7 @@ fn main() {
             process::exit(1);
         }
     });
+
     let wall = Wallet::from_private_key(chain_key[1].clone());
     info!(
         "txn count for our chain: {}",
@@ -372,6 +403,7 @@ fn main() {
     let _ = blk.sign(&wall.private_key);
     let _ = check_block(blk.clone()).unwrap();
     let _ = saveBlock(blk.clone()).unwrap();
+    let _ = prop_block(&blk, peers).unwrap();
     let _ = enact_block(blk).unwrap();
     let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
     info!("Our balance: {}", ouracc.balance_ui().unwrap());
