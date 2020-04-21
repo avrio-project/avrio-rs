@@ -407,6 +407,7 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     )
     .unwrap();
     setDataDb(&block.hash, &chaindex_db, &"topblockhash");
+    setDataDb(&(block.header.height+1).to_string(), &chaindex_db, &"blockcount");
     trace!("set top block hash for sender");
     let inv_sender_res = setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
     trace!("Saved inv for sender: {}", block.header.chain_key);
@@ -463,6 +464,14 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
             if inv_receiver_res != 1 {
                 return Err("failed to save reciver inv".into());
             }
+            let curr_block_count: String = getDataDb(&rec_db, &"blockcount");
+            if curr_block_count == "-1" {
+              setDataDb(&"0".to_owned(), &rec_db, &"blockcount");
+            } else {
+                let curr_block_count_val: u64 = curr_block_count.parse().unwrap_or_default();
+                setDataDb(&(curr_block_count_val+1).to_string(), &rec_db, &"blockcount");
+            }
+
             setDataDb(&block.hash, &rec_db, &"topblockhash");
             trace!("set top block hash for reciever");
             drop(rec_db);
