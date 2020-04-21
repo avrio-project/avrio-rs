@@ -293,10 +293,11 @@ fn main() {
             pl.push(node);
         }
     }
+
     match syncneed {
         // do we need to sync
         true => {
-            info!("Starting sync (this will take some time");
+            info!("Starting sync (this will take some time)");
             for peer in pl {
                 let res = new_connection(peer);
                 if let Ok(mut peer_struct) = res {
