@@ -756,7 +756,7 @@ pub fn sendData(data: &String, peer: &mut TcpStream, msg_type: u16) -> Result<()
 
 pub fn formMsg(data_s: String, data_type: u16) -> String {
     let data_len = data_s.len();
-    let msg: P2pdata = P2pdata {!!
+    let msg: P2pdata = P2pdata {
         message_bytes: data_len,
         message_type: data_type,
         message: data_s,
