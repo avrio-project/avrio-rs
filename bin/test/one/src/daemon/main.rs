@@ -48,24 +48,22 @@ use avrio_crypto::Wallet;
 use text_io::read;
 
 fn connect_seednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
-    let mut i: usize = 0;
     let mut conn_count: u8 = 0;
-    while i < seednodes.iter().count() - 1 {
-        let error = new_connection(seednodes[i]);
+    for peer in seednodes {
+        let error = new_connection(peer);
         match error {
             Ok(_) => {
-                info!("Connected to {:?}::{:?}", seednodes[i], 11523);
+                info!("Connected to {:?}::{:?}", peer, 11523);
                 conn_count += 1;
-                let peer = error.unwrap();
-                let peer_cloned = peer.stream.try_clone().unwrap();
+                let peer_struct = error.unwrap();
+                let peer_cloned = peer_struct.stream.try_clone().unwrap();
                 connected_peers.push(peer_cloned);
             }
             _ => warn!(
                 "Failed to connect to {:?}:: {:?}, returned error {:?}",
-                seednodes[i], 11523, error
+                peer, 11523, error
             ),
         };
-        i += 1;
     }
     return conn_count;
 }
