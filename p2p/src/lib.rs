@@ -268,15 +268,17 @@ fn get_mode(v: Vec<String>) -> String {
 }
 
 pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
-    let mut buf = [0; 1000000]; // 1mb
     let mut as_string: String = "".into();
     let mut p2p: P2pdata = Default::default();
     loop {
+        let mut buf = [0; 1000000]; // clear the 1mb buff each time
         if let Ok(a) = peer.read(&mut buf) {
-            if let Ok(s) = String::from_utf8(buf.to_vec()) {
-                as_string += &s;
-            }
             trace!(target: "avrio_p2p::read", "Read {} bytes", a);
+
+            if let Ok(s) = String::from_utf8(buf.to_vec()) {
+                as_string += &s.trim_matches(char::from(0));
+                trace!(target: "avrio_p2p::read", "As string {}, appended: {}", as_string, s);
+            }
         }
         if as_string.contains("EOT") {
             let split: Vec<&str> = as_string.split("EOT").collect();
