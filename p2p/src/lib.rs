@@ -362,94 +362,92 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             top_block_hash, chain, e
         );
         return Err(e.into());
-    } else {
-        let mut synced_blocks: u64 = 0;
-        let mut invalid_blocks: u64 = 0;
-        info!(
-            "Getting {} blocks from peer: {}, from block hash: {}",
-            amount_to_sync,
-            peer.peer_addr().unwrap(),
-            top_block_hash
-        );
-        loop {
-            let mut no_read: bool = true;
-            while no_read == true {
-                if let Ok(a) = peer.peek(&mut buf) {
-                    if a == 0 {
-                    } else {
-                        no_read = false;
-                    }
+    }
+    let mut synced_blocks: u64 = 0;
+    let mut invalid_blocks: u64 = 0;
+    info!(
+        "Getting {} blocks from peer: {}, from block hash: {}",
+        amount_to_sync,
+        peer.peer_addr().unwrap(),
+        top_block_hash
+    );
+    loop {
+        let mut no_read: bool = true;
+        while no_read == true {
+            if let Ok(a) = peer.peek(&mut buf) {
+                if a == 0 {
+                } else {
+                    no_read = false;
                 }
             }
-            // There are now bytes waiting in the stream
+        }
+        // There are now bytes waiting in the stream
 
-            let deformed: P2pdata = read(peer).unwrap_or_else(|e| {
-                error!("Failed to read p2pdata: {}", e);
-                P2pdata::default()
-            });
-            trace!(target: "avrio_p2p::sync", "got blocks: {:#?}", deformed);
-            if deformed.message_type != 0x0a {
-                // TODO: Ask for block(s) again rather than returning err
-                error!(
-                    "Failed to get block, wrong message type: {}",
-                    deformed.message_type
-                );
-                return Err("failed to get block".into());
-            } else {
-                let blocks: Vec<Block> =
-                    serde_json::from_str(&deformed.message).unwrap_or_default();
-                if blocks.len() == 0 {
-                    error!("Got 0 blocks from peer when expecting at least 1");
-                    return Err("Got 0 blocks from peer when expecting at least 1".into());
-                }
-                trace!(
-                    "Got: {} blocks from peer. Hash: {} up to: {}",
-                    blocks.len(),
-                    blocks[0].hash,
-                    blocks[blocks.len() - 1].hash
-                );
-                for block in blocks {
-                    if let Err(e) = check_block(block.clone()) {
-                        error!("Recieved invalid block with hash: {} from peer, validation gave error: {:#?}. Invalid blocks from peer: {}", block.hash, e, invalid_blocks);
-                        invalid_blocks += 1;
-                    } else {
-                        saveBlock(block.clone())?;
-                        enact_block(block)?;
-                        synced_blocks += 1;
-                    }
+        let deformed: P2pdata = read(peer).unwrap_or_else(|e| {
+            error!("Failed to read p2pdata: {}", e);
+            P2pdata::default()
+        });
+        trace!(target: "avrio_p2p::sync", "got blocks: {:#?}", deformed);
+        if deformed.message_type != 0x0a {
+            // TODO: Ask for block(s) again rather than returning err
+            error!(
+                "Failed to get block, wrong message type: {}",
+                deformed.message_type
+            );
+            return Err("failed to get block".into());
+        } else {
+            let blocks: Vec<Block> = serde_json::from_str(&deformed.message).unwrap_or_default();
+            if blocks.len() == 0 {
+                error!("Got 0 blocks from peer when expecting at least 1");
+                return Err("Got 0 blocks from peer when expecting at least 1".into());
+            }
+            trace!(
+                "Got: {} blocks from peer. Hash: {} up to: {}",
+                blocks.len(),
+                blocks[0].hash,
+                blocks[blocks.len() - 1].hash
+            );
+            for block in blocks {
+                if let Err(e) = check_block(block.clone()) {
+                    error!("Recieved invalid block with hash: {} from peer, validation gave error: {:#?}. Invalid blocks from peer: {}", block.hash, e, invalid_blocks);
+                    invalid_blocks += 1;
+                } else {
+                    saveBlock(block.clone())?;
+                    enact_block(block)?;
+                    synced_blocks += 1;
                 }
             }
-            let top_block_hash: String;
-            top_block_hash = getDataDb(&opened_db, &"topblockhash");
-            trace!("Asking peer for blocks above hash: {}", top_block_hash);
-            if top_block_hash == "-1" {
-                if let Err(e) = sendData(&"0".to_owned(), peer, 0x6f) {
-                    error!(
-                        "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
-                        top_block_hash, chain, e
-                    );
-                    return Err(e.into());
-                }
-            } else if let Err(e) = sendData(&top_block_hash, peer, 0x6f) {
+        }
+        let top_block_hash: String;
+        top_block_hash = getDataDb(&opened_db, &"topblockhash");
+        trace!("Asking peer for blocks above hash: {}", top_block_hash);
+        if top_block_hash == "-1" {
+            if let Err(e) = sendData(&"0".to_owned(), peer, 0x6f) {
                 error!(
                     "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
                     top_block_hash, chain, e
                 );
                 return Err(e.into());
             }
-            if synced_blocks <= amount_to_sync {
-                info!("Synced all {} blocks for chain: {}", synced_blocks, chain);
-                break;
-            }
-            if synced_blocks % print_synced_every == 0 {
-                info!(
-                    "Synced {} / {} blocks (chain: {}). {} more to go",
-                    synced_blocks,
-                    amount_to_sync,
-                    chain,
-                    amount_to_sync - synced_blocks
-                );
-            }
+        } else if let Err(e) = sendData(&top_block_hash, peer, 0x6f) {
+            error!(
+                "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
+                top_block_hash, chain, e
+            );
+            return Err(e.into());
+        }
+        if synced_blocks <= amount_to_sync {
+            info!("Synced all {} blocks for chain: {}", synced_blocks, chain);
+            break;
+        }
+        if synced_blocks % print_synced_every == 0 {
+            info!(
+                "Synced {} / {} blocks (chain: {}). {} more to go",
+                synced_blocks,
+                amount_to_sync,
+                chain,
+                amount_to_sync - synced_blocks
+            );
         }
     }
     return Ok(amount_to_sync);
@@ -553,9 +551,12 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                     return Err("empty chain list".into());
                 } else {
                     for chain in chain_list.iter() {
+                        info!("Starting to sync chain: {}", chain);
                         if let Err(e) = sync_chain(chain, &mut peer_to_use_unwraped) {
                             error!("Failed to sync chain: {}, gave error: {}", chain, e);
                             return Err(format!("failed to sync chain {}", chain));
+                        } else {
+                            info!("Synced chain {}, moving onto next chain", chain);
                         }
                     }
                 }
