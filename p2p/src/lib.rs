@@ -334,14 +334,7 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
     }
     let top_block_hash: String;
     let opened_db: rocksdb::DB;
-    if let Ok(chain_db) = openDb(config().db_path + "/chains/" + &chain + &"-chainindex".to_owned())
-    {
-        opened_db = chain_db;
-        top_block_hash = getDataDb(&opened_db, &"topblockhash");
-    } else {
-        error!("Failed to get get top block hash for chain. Could not open db");
-        return Err("failed to get topblockhash for chain, failed to open db".into());
-    }
+    top_block_hash = getData(config().db_path + "/chains/" + &chain + &"-chainindex", "topblockhash");
     if top_block_hash == "-1" {
         if let Err(e) = sendData(
             &serde_json::to_string(&(&"0".to_owned(), &chain))?,
@@ -421,7 +414,7 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             }
         }
         let top_block_hash: String;
-        top_block_hash = getDataDb(&opened_db, &"topblockhash");
+        top_block_hash = getData(config().db_path + "/chains/" + &chain + &"-chainindex", "topblockhash");
         trace!("Asking peer for blocks above hash: {}", top_block_hash);
         if top_block_hash == "-1" {
             if let Err(e) = sendData(&"0".to_owned(), peer, 0x6f) {
