@@ -558,6 +558,9 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
 /// the peer is malicously withholding them. For this reason only do this if you trust the peer or will be checking the blockchain
 /// with a diferent peer afterwards.
 pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
+    if pl.len() < 1 {
+        return Err("Must have at least one peer to sync from".into());
+    }
     let _peers: Vec<TcpStream> = vec![];
     let _pc: u32 = 0;
     let _i: usize = 0;
