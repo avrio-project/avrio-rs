@@ -272,16 +272,18 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
     let mut as_string: String = "".into();
     let mut p2p: P2pdata = Default::default();
     loop {
-        if let Ok(_) = peer.read(&mut buf) {
+        if let Ok(a) = peer.read(&mut buf) {
             if let Ok(s) = String::from_utf8(buf.to_vec()) {
                 as_string += &s;
             }
+            trace!(target: "avrio_p2p::read", "Read {} bytes", a);
         }
         if as_string.contains("EOT") {
             let split: Vec<&str> = as_string.split("EOT").collect();
             if split.len() > 1 {
                 let p2p: P2pdata = serde_json::from_str(split[0]).unwrap_or_default();
                 if p2p != P2pdata::default() {
+                    trace!("Found EOF, returning");
                     return Ok(p2p);
                 }
             }
