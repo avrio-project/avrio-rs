@@ -53,6 +53,82 @@ fn in_handshakes(hs: &String) -> bool {
     return false;
 }
 
+lazy_static! {
+    static ref PEERS: Mutex<Vec<(String, String)>> = Mutex::new(vec![]);
+}
+
+fn add_peer(peer: String) {
+    PEERS.lock().unwrap().push((peer, "nl".to_owned()));
+}
+
+fn get_peers() -> Vec<(String, String)> {
+    return PEERS.lock().unwrap().clone();
+}
+
+fn update(n: Vec<(String, String)>) -> Result<(), Box<dyn std::error::Error>> {
+    *PEERS.lock()? = n;
+    return Ok(());
+}
+
+fn in_peers(peer: &String) -> bool {
+    trace!("peer: {}", peer);
+    for (peer_str, _) in get_peers() {
+        if &peer_str == peer {
+            trace!("Peer found");
+            return true;
+        }
+        trace!("peer: {}", peer_str);
+    }
+    trace!("Peer not found");
+    return false;
+}
+
+fn lock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
+    let mut peers = get_peers();
+    let mut i: usize = 0;
+    for (peer_str, _) in get_peers() {
+        if &peer_str == peer {
+            trace!("Peer found");
+            peers[i].1 = "l".to_owned();
+        }
+        trace!("peer: {}", peer_str);
+        i += 1;
+    }
+    update(peers)?;
+    return Ok(());
+}
+
+fn unlock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
+    let mut peers = get_peers();
+    let mut i: usize = 0;
+    for (peer_str, _) in get_peers() {
+        if &peer_str == peer {
+            trace!("Peer found");
+            peers[i].1 = "nl".to_owned();
+        }
+        trace!("peer: {}", peer_str);
+        i += 1;
+    }
+    update(peers)?;
+    return Ok(());
+}
+
+fn locked(peer: &String) -> bool {
+    trace!("peer: {}", peer);
+    for (peer_str, lock_or_not) in get_peers() {
+        if &peer_str == peer {
+            if lock_or_not == "l" {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        trace!("peer: {}", peer_str);
+    }
+    trace!("Peer not found");
+    return false;
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct P2pdata {
     /// The length in bytes of message
@@ -268,17 +344,21 @@ fn get_mode(v: Vec<String>) -> String {
 }
 
 pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
-    let time = std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .expect("Time went backwards")
-    .as_millis() as u64;
-    let mut as_string: String = "".into();
-    let mut p2p: P2pdata = Default::default();
-    loop {
-        if (std::time::SystemTime::now()
+    let mut time_since_last_read = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("Time went backwards")
-        .as_millis() as u64 - time) >= 10000 && as_string.len() == 0 {
+        .as_millis() as u64;
+    let mut as_string: String = "".into();
+    let mut p2p: P2pdata = Default::default();
+    let mut since_last_read: u64 = 0;
+    loop {
+        if (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64
+            - time_since_last_read)
+            >= 10000
+        {
             return Err("timed out".into());
         }
         let mut buf = [0; 1000000]; // clear the 1mb buff each time
@@ -288,6 +368,10 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
             if let Ok(s) = String::from_utf8(buf.to_vec()) {
                 as_string += &s.trim_matches(char::from(0));
                 trace!(target: "avrio_p2p::read", "As string {}, appended: {}", as_string, s);
+                time_since_last_read = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_millis() as u64;
             }
         }
         if as_string.contains("EOT") {
@@ -344,7 +428,10 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
     }
     let top_block_hash: String;
     let opened_db: rocksdb::DB;
-    top_block_hash = getData(config().db_path + "/chains/" + &chain + &"-chainindex", "topblockhash");
+    top_block_hash = getData(
+        config().db_path + "/chains/" + &chain + &"-chainindex",
+        "topblockhash",
+    );
     if top_block_hash == "-1" {
         if let Err(e) = sendData(
             &serde_json::to_string(&(&"0".to_owned(), &chain))?,
@@ -424,7 +511,10 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             }
         }
         let top_block_hash: String;
-        top_block_hash = getData(config().db_path + "/chains/" + &chain + &"-chainindex", "topblockhash");
+        top_block_hash = getData(
+            config().db_path + "/chains/" + &chain + &"-chainindex",
+            "topblockhash",
+        );
         trace!("Asking peer for blocks above hash: {}", top_block_hash);
         if top_block_hash == "-1" {
             if let Err(e) = sendData(&"0".to_owned(), peer, 0x6f) {
@@ -516,7 +606,9 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         // TODO sync ack the next fastest peer until we have peer (1)
         return Err("rejected sync ack".into());
     } else {
-        // We have a peer now we ask them for their list of chains
+        // We now have a peer to use and so lock their stream to prevent handle_cleint from stealing our msges
+        lock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
+        // We have locked the peer now we ask them for their list of chains
         // They send their list of chains as a vec of strings
         if let Err(e) = sendData(&"".to_owned(), &mut peer_to_use_unwraped, 0x60) {
             error!("Failed to request chains list from peer gave error: {}", e);
@@ -572,47 +664,55 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
 }
 
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
+    let mut buf = [0; 100000];
     loop {
-        let mut peer_clone: TcpStream;
-        if let Ok(peer) = stream.try_clone() {
-            peer_clone = peer;
-        } else {
-            return Err("failed to clone stream".into());
-        }
-        let read_msg = read(&mut stream);
-        match read_msg {
-            Ok(read) => {
-                match deformMsg(&serde_json::to_string(&read).unwrap(), &mut peer_clone) {
-                    Some(a) => {
-                        if a == "handshake" {
-                            /* we just recieved a handshake, now we send ours
-                            This is in the following format
-                            network id, our peer id, our node type;
-                            */
-                            let msg = hex::encode(config().network_id)
-                                + "*"
-                                + &config().identitiy
-                                + "*"
-                                + &config().node_type.to_string();
-                            debug!("Our handshake: {}", msg);
-                            // send our handshake
-                            let _ = sendData(&msg, &mut stream, 0x1a);
+        if !locked(&stream.peer_addr()?.to_string()) {
+            if let Ok(a) = stream.peek(&mut buf) {
+                if a > 0 {
+                    let read_msg = read(&mut stream);
+                    match read_msg {
+                        Ok(read) => {
+                            match deformMsg(&serde_json::to_string(&read).unwrap(), &mut stream) {
+                                Some(a) => {
+                                    if a == "handshake" {
+                                        /* we just recieved a handshake, now we send ours
+                                        This is in the following format
+                                        network id, our peer id, our node type;
+                                        */
+                                        add_peer(stream.peer_addr().unwrap().to_string());
+                                        let msg = hex::encode(config().network_id)
+                                            + "*"
+                                            + &config().identitiy
+                                            + "*"
+                                            + &config().node_type.to_string();
+                                        debug!("Our handshake: {}", msg);
+                                        // send our handshake
+                                        let _ = sendData(&msg, &mut stream, 0x1a);
+                                    } else if !in_peers(&stream.peer_addr().unwrap().to_string()) {
+                                        debug!(
+                                        "Terminating connection with {}, first message not handshake",
+                                        stream.peer_addr().unwrap()
+                                    );
+                                        stream.shutdown(Shutdown::Both).unwrap();
+                                        return Err("Nonhandshake first msg".into());
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(e) => {
+                            debug!(
+                                "Terminating connection with {}, gave error {}",
+                                stream.peer_addr().unwrap(),
+                                e
+                            );
+                            stream.shutdown(Shutdown::Both).unwrap();
+                            return Err(e.into());
                         }
                     }
-                    _ => {}
                 }
             }
-            Err(e) => {
-                debug!(
-                    "Terminating connection with {}, gave error {}",
-                    stream.peer_addr().unwrap(),
-                    e
-                );
-                stream.shutdown(Shutdown::Both).unwrap();
-                return Err(e.into());
-            }
         }
-        {}
     }
 }
 pub fn rec_server() -> u8 {
@@ -693,6 +793,11 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
     };
     avrio_database::add_peer(socket)?;
     let _ = stream.flush();
+    add_peer(stream.peer_addr()?.to_string());
+    let cloned = stream.try_clone()?;
+    thread::spawn(move || {
+        let _ = handle_client(cloned);
+    });
     return Ok(Peer {
         id: pid,
         socket,
