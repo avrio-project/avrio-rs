@@ -1,5 +1,5 @@
 use rocksdb::DBCompactionStyle;
-use rocksdb::{DBRawIterator, Options, DB};
+use rocksdb::{DBRawIterator, Options, DB, Error};
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::process;
@@ -14,20 +14,17 @@ struct PeerlistSave {
     peers: Vec<String>,
 }
 
-pub fn openDb(path: String) -> Result<rocksdb::DB, ()> {
+pub fn openDb(path: String) -> Result<rocksdb::DB, Error> {
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_skip_stats_update_on_db_open(false);
     opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
-    if let Ok(database) = DB::open(&opts, path) {
-        return Ok(database);
-    } else {
-        return Err(());
-    }
+    return DB::open(&opts, path);
 }
 pub fn getIter<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
     return db.raw_iterator();
 }
+
 pub fn saveData(serialized: String, path: String, key: String) -> u8 {
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
     let db = openDb(path).unwrap_or_else(|e| {
