@@ -407,7 +407,11 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     )
     .unwrap();
     setDataDb(&block.hash, &chaindex_db, &"topblockhash");
-    setDataDb(&(block.header.height+1).to_string(), &chaindex_db, &"blockcount");
+    setDataDb(
+        &(block.header.height + 1).to_string(),
+        &chaindex_db,
+        &"blockcount",
+    );
     trace!("set top block hash for sender");
     let inv_sender_res = setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
     trace!("Saved inv for sender: {}", block.header.chain_key);
@@ -466,10 +470,14 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
             }
             let curr_block_count: String = getDataDb(&rec_db, &"blockcount");
             if curr_block_count == "-1" {
-              setDataDb(&"0".to_owned(), &rec_db, &"blockcount");
+                setDataDb(&"0".to_owned(), &rec_db, &"blockcount");
             } else {
                 let curr_block_count_val: u64 = curr_block_count.parse().unwrap_or_default();
-                setDataDb(&(curr_block_count_val+1).to_string(), &rec_db, &"blockcount");
+                setDataDb(
+                    &(curr_block_count_val + 1).to_string(),
+                    &rec_db,
+                    &"blockcount",
+                );
             }
 
             setDataDb(&block.hash, &rec_db, &"topblockhash");
@@ -546,6 +554,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 } else if blk.header.height != 0
                     && getBlockFromRaw(blk.header.prev_hash).header.timestamp > blk.header.timestamp
                 {
+                    debug!("Block: {} timestamp under previous timestamp", blk.hash);
                     return Err(blockValidationErrors::timestampInvalid);
                 }
                 return Ok(());
@@ -564,7 +573,12 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 }
             }
         }
-        if blk.header.prev_hash != getBlock(&blk.header.chain_key, &blk.header.height - 1).hash {
+        let prev_blk_hash = getBlock(&blk.header.chain_key, &blk.header.height - 1).hash;
+        if blk.header.prev_hash != prev_blk_hash {
+            debug!(
+                "Expected prev hash to be: {}, got: {}. For block at height: {}",
+                prev_blk_hash, blk.header.prev_hash, blk.header.height
+            );
             return Err(blockValidationErrors::invalidPreviousBlockhash);
         } else if let Err(_) = getAccount(&blk.header.chain_key) {
             // this account doesn't exist, the first block must be a genesis block
@@ -579,6 +593,10 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 .expect("Time went backwards")
                 .as_millis() as u64)
         {
+            debug!("Block: {} too far in futre. Our time: {}, block time: {}, block justifyed time: {}", blk.hash, (SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64), blk.header.timestamp, blk.header.timestamp - (config().transactionTimestampMaxOffset as u64));
             return Err(blockValidationErrors::timestampInvalid);
         } else if blk.header.height != 0
             && getBlockFromRaw(blk.header.prev_hash).header.timestamp > blk.header.timestamp
