@@ -53,7 +53,7 @@ fn in_handshakes(hs: &String) -> bool {
     return false;
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct P2pdata {
     /// The length in bytes of message
     pub message_bytes: usize,
@@ -239,39 +239,21 @@ fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
     let _ = sendData(&"".to_owned(), peer, 0x1c);
     let mut i: i32 = 0;
     loop {
-        let mut buffer = [0; 128];
-        let e_r = peer.read(&mut buffer);
-        if let Err(_e) = e_r {
-            if i >= 5 {
-                let peer_n = peer.try_clone();
-                if let Ok(peerNew) = peer_n {
-                    break ChainDigestPeer {
-                        digest: "".to_string(),
-                        peer: Some(peerNew),
-                    };
-                } else {
-                    break ChainDigestPeer {
-                        digest: "".to_string(),
-                        peer: None,
-                    };
-                }
-            }
-            i += 1;
-            continue;
+        let read = read(peer).unwrap_or_else(|e| {
+            error!("Failed to read p2pdata: {}", e);
+            P2pdata::default()
+        });
+        let peer_n = peer.try_clone();
+        if let Ok(peerNew) = peer_n {
+            break ChainDigestPeer {
+                peer: Some(peerNew),
+                digest: read.message,
+            };
         } else {
-            let peer_n = peer.try_clone();
-            if let Ok(peerNew) = peer_n {
-                break ChainDigestPeer {
-                    peer: Some(peerNew),
-                    digest: String::from_utf8(buffer.to_vec())
-                        .unwrap_or_else(|_e| return "".to_string()),
-                };
-            } else {
-                break ChainDigestPeer {
-                    digest: "".to_string(),
-                    peer: None,
-                };
-            }
+            break ChainDigestPeer {
+                digest: "".to_string(),
+                peer: None,
+            };
         }
     }
 }
@@ -283,6 +265,28 @@ fn get_mode(v: Vec<String>) -> String {
         *count += 1;
     }
     return (**map.iter().max_by_key(|(_, v)| *v).unwrap().0).to_string();
+}
+
+pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
+    let mut buf = [0; 1000000]; // 1mb
+    let mut as_string: String = "".into();
+    let mut p2p: P2pdata = Default::default();
+    loop {
+        if let Ok(_) = peer.read(&mut buf) {
+            if let Ok(s) = String::from_utf8(buf.to_vec()) {
+                as_string += &s;
+            }
+        }
+        if as_string.contains("EOT") {
+            let split: Vec<&str> = as_string.split("EOT").collect();
+            if split.len() > 1 {
+                let p2p: P2pdata = serde_json::from_str(split[0]).unwrap_or_default();
+                if p2p != P2pdata::default() {
+                    return Ok(p2p);
+                }
+            }
+        }
+    }
 }
 
 // TODO sync specific chain func
@@ -303,23 +307,11 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
         }
     }
     // There are now bytes waiting in the stream
-    let _ = peer.read(&mut buf);
-    let _ = peer.flush()?;
-    let amount_to_sync: u64;
-    let as_s = String::from_utf8(buf.to_vec()).unwrap_or_else(|e| {
-        error!(
-            "Failed to parse to_sync_count message from utf8, error: {}",
-            e
-        );
-        "".to_string()
-    });
-    let deformed: P2pdata = serde_json::from_str(&strip_msg(&as_s)).unwrap_or_else(|e| {
-        error!(
-            "Failed to parse p2pdata struct from message: {}, error: {}",
-            as_s, e
-        );
+    let deformed: P2pdata = read(peer).unwrap_or_else(|e| {
+        error!("Failed to read p2pdata: {}", e);
         P2pdata::default()
     });
+    let amount_to_sync: u64;
     if deformed.message_type != 0x46 {
         amount_to_sync = 0;
     } else {
@@ -378,9 +370,7 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             top_block_hash
         );
         loop {
-            let mut buf = [0; 1000000];
-            let mut no_read = true;
-            let _ = peer.flush();
+            let mut no_read: bool = true;
             while no_read == true {
                 if let Ok(a) = peer.peek(&mut buf) {
                     if a == 0 {
@@ -390,16 +380,9 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
                 }
             }
             // There are now bytes waiting in the stream
-            let _ = peer.read(&mut buf);
-            let as_s = String::from_utf8(buf.to_vec()).unwrap_or_else(|e| {
-                error!("Failed to parse blocks message from utf8, error: {}", e);
-                "".to_string()
-            });
-            let deformed: P2pdata = serde_json::from_str(&strip_msg(&as_s)).unwrap_or_else(|e| {
-                error!(
-                    "Failed to parse p2pdata struct from message: {}, error: {}",
-                    as_s, e
-                );
+
+            let deformed: P2pdata = read(peer).unwrap_or_else(|e| {
+                error!("Failed to read p2pdata: {}", e);
                 P2pdata::default()
             });
             trace!(target: "avrio_p2p::sync", "got blocks: {:#?}", deformed);
@@ -604,9 +587,8 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                                 + "*"
                                 + &config().node_type.to_string();
                             debug!("Our handshake: {}", msg);
-                            let _ = stream.write_all(formMsg(msg.to_owned(), 0x1a).as_bytes());
-                            let _ = stream.flush();
                             // send our handshake
+                            let _ = sendData(&msg, &mut stream, 0x1a);
                         }
                     }
                     _ => {}
@@ -682,42 +664,12 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         + &self_config.identitiy
         + "*"
         + &self_config.node_type.to_string();
-    let _ = stream.write(formMsg(msg, 0x1a).as_bytes()); // send our handshake
-    let mut buffer_n = [0; 200];
-    let read = stream.read(&mut buffer_n);
-    match read {
-        Ok(0) => {
-            debug!("Got No Data, retrying");
-            let read_retry = stream.read(&mut buffer_n);
-            match read_retry {
-                Ok(0) => {
-                    debug!("Got No Data on retry.");
-                    return Err("no data read".into());
-                }
-                Ok(_) => {
-                    debug!("Retry worked");
-                }
-                _ => debug!("New Connection failed"),
-            }
-        }
-        _ => {}
-    }
-    trace!("stream read = {:?}", read);
-    let pid: String;
-    let msg = String::from_utf8(buffer_n.to_vec())?;
-    let v: Vec<&str> = msg.split("}").collect();
-    let msg_c = v[0].to_string() + &"}".to_string();
-    let v: Vec<&str> = msg_c.split("{").collect();
-    let msg_c = "{".to_string() + &v[1].to_string();
-    drop(v);
-    debug!("recived handshake, as string {}", msg_c);
-    let p2p_data: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
-        debug!(
-            "Bad Packets recieved from peer, packets: {}. Parsing this gave error: {}",
-            msg, e
-        );
-        return P2pdata::default();
+    let _ = sendData(&msg, &mut stream, 0x1a);
+    let p2p_data = read(&mut stream).unwrap_or_else(|e| {
+        error!("Failed peers handshake response,gave error: {}", e);
+        P2pdata::default()
     });
+    let pid: String;
     match process_handshake(p2p_data.message) {
         Ok(x) => {
             pid = x;
@@ -807,7 +759,7 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
         message_type: data_type,
         message: data_s,
     };
-    return serde_json::to_string(&msg).unwrap();
+    return serde_json::to_string(&msg).unwrap() + &"EOF";
 }
 
 fn strip_msg(msg: &String) -> String {
@@ -870,7 +822,10 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         0x45 => {
             // send block count
             let bc = getData(
-                config().db_path + &"/chaindigest".to_owned(),
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &msg_d.message
+                    + &"-chainindex".to_owned(),
                 &"blockcount".to_owned(),
             );
             if bc == "-1".to_owned() {
