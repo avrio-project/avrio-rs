@@ -214,14 +214,13 @@ fn main() {
         info!("Chain digest: {}", chainsdigest);
     }
     let pl = get_peerlist();
+    let mut connections: Vec<TcpStream> = vec![];
+    connect(get_peerlist().unwrap_or_default(), &mut connections);
+    let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
+    let syncneed = sync_needed();
     match pl {
         // do we need to sync
         Ok(_) => {
-            let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
-            let mut connections: Vec<TcpStream> = vec![];
-            connect(pl, &mut connections);
-            let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
-            let syncneed = sync_needed();
             match syncneed {
                 // do we need to sync
                 true => {
@@ -403,7 +402,7 @@ fn main() {
     let _ = blk.sign(&wall.private_key);
     let _ = check_block(blk.clone()).unwrap();
     let _ = saveBlock(blk.clone()).unwrap();
-    let _ = prop_block(&blk, peers).unwrap();
+    let _ = prop_block(&blk, connections_mut).unwrap();
     let _ = enact_block(blk).unwrap();
     let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
     info!("Our balance: {}", ouracc.balance_ui().unwrap());
