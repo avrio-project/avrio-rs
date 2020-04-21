@@ -1,5 +1,5 @@
 use rocksdb::DBCompactionStyle;
-use rocksdb::{DBRawIterator, Options, DB, Error};
+use rocksdb::{DBRawIterator, Error, Options, DB};
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::process;
@@ -82,7 +82,7 @@ pub fn getData(path: String, key: &str) -> String {
         error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
     });
-        let data: String;
+    let data: String;
     match db.get(key) {
         Ok(Some(value)) => data = String::from_utf8(value).unwrap_or("".to_owned()),
         Ok(None) => data = "-1".to_owned(),
