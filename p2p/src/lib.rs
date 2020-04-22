@@ -71,27 +71,26 @@ fn update(n: Vec<(String, String)>) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn in_peers(peer: &String) -> bool {
-    trace!("peer: {}", peer);
+    trace!("checking if peer: {} in peerlist", peer);
     for (peer_str, _) in get_peers() {
         if &peer_str == peer {
             trace!("Peer found");
             return true;
         }
-        trace!("peer: {}", peer_str);
     }
     trace!("Peer not found");
     return false;
 }
 
 fn lock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
+    trace!("LOCKING PEER");
     let mut peers = get_peers();
     let mut i: usize = 0;
     for (peer_str, _) in get_peers() {
         if &peer_str == peer {
-            trace!("Peer found");
+            trace!("Peer found, locking");
             peers[i].1 = "l".to_owned();
         }
-        trace!("peer: {}", peer_str);
         i += 1;
     }
     update(peers)?;
@@ -99,6 +98,7 @@ fn lock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn unlock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
+    trace!("UNLOCKING PEER");
     let mut peers = get_peers();
     let mut i: usize = 0;
     for (peer_str, _) in get_peers() {
@@ -106,7 +106,6 @@ fn unlock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
             trace!("Peer found");
             peers[i].1 = "nl".to_owned();
         }
-        trace!("peer: {}", peer_str);
         i += 1;
     }
     update(peers)?;
@@ -114,7 +113,7 @@ fn unlock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn locked(peer: &String) -> bool {
-    trace!("peer: {}", peer);
+   // trace!("checking locked status for peer: {}", peer);
     for (peer_str, lock_or_not) in get_peers() {
         if &peer_str == peer {
             if lock_or_not == "l" {
@@ -123,7 +122,6 @@ fn locked(peer: &String) -> bool {
                 return false;
             }
         }
-        trace!("peer: {}", peer_str);
     }
     trace!("Peer not found");
     return false;
@@ -357,6 +355,16 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
             return Err("timed out".into());
         }
         let mut buf = [0; 1000000]; // clear the 1mb buff each time
+        loop {
+            if let Ok(a) = peer.peek(&mut buf) {
+                if a > 0 {
+                    trace!("DATA!!");
+                    break
+                } else {
+                    trace!("no data yet");
+                }
+            }
+        }
         if let Ok(a) = peer.read(&mut buf) {
             trace!(target: "avrio_p2p::read", "Read {} bytes", a);
 
@@ -628,14 +636,8 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                 }
             }
             // There are now bytes waiting in the stream
-            let _ = peer_to_use_unwraped.read(&mut buf);
-            let as_string = String::from_utf8(buf.to_vec()).unwrap_or("".to_string());
-            trace!("Chain list got: {}", as_string);
-            let deformed: P2pdata =
-                serde_json::from_str(&strip_msg(&as_string)).unwrap_or_else(|e| {
-                    error!("Failed to decode returned message, gave error: {:?}", e);
-                    return P2pdata::default();
-                });
+            let deformed = read(&mut peer_to_use_unwraped).unwrap_or_default();
+            debug!("Chain list got: {:#?}", deformed);
             if deformed.message_type != 0x61 {
                 error!(
                     "Failed to get chain list from peer (got wrong message type back: {})",
@@ -687,6 +689,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                     let read_msg = read(&mut stream);
                     match read_msg {
                         Ok(read) => {
+                            debug!("DEFORMING");
                             match deformMsg(&serde_json::to_string(&read).unwrap(), &mut stream) {
                                 Some(a) => {
                                     if a == "handshake" {
