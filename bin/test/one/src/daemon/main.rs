@@ -225,7 +225,7 @@ fn main() {
     let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
     if pl.len() < 1 {
         let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(99, 248, 224, 55)),
+            IpAddr::V4(Ipv4Addr::new(35,230,157,42)),
             56789,
         )];
         for node in seednodes {
