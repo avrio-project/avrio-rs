@@ -670,7 +670,11 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     info!("Synced all chains, checking chain digest with peers");
     if getData(config().db_path + &"/chainsdigest", "master") != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data ir and resync");
-        error!("Our CD: {}, expected: {}", getData(config().db_path + &"/chainsdigest", "master"), mode_hash);
+        error!(
+            "Our CD: {}, expected: {}",
+            getData(config().db_path + &"/chainsdigest", "master"),
+            mode_hash
+        );
         return Err("invalid resultant chain digest".into());
     } else {
         info!("Finalised syncing, releasing lock on peer");
