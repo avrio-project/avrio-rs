@@ -208,6 +208,55 @@ fn main() {
         let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
     }
+    info!(
+        " Launching P2p server on 127.0.0.1::{:?}",
+        config().p2p_port
+    );
+    let _p2p_handler = thread::spawn(|| {
+        if rec_server() != 1 {
+            error!(
+                "Error launching P2p server on 127.0.0.1::{:?} (Fatal)",
+                config().p2p_port
+            );
+            process::exit(1);
+        }
+    });
+    let syncneed = avrio_p2p::sync_needed();
+    let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
+    if pl.len() < 1 {
+        let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(99, 248, 224, 55)),
+            56789,
+        )];
+        for node in seednodes {
+            pl.push(node);
+        }
+    }
+    let mut connections: Vec<TcpStream> = vec![];
+    connect_seednodes(pl, &mut connections);
+    let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
+    match syncneed {
+        // do we need to sync
+        true => {
+            info!("Starting sync (this will take some time)");
+            if let Ok(_) = sync(&mut connections_mut) {
+                info!("Successfully synced with the network!");
+                synced = true;
+            } else {
+                error!("Syncing failed");
+                process::exit(1);
+            }
+        }
+        false => {
+            info!("No sync needed");
+            synced = true;
+        }
+    }
+    if synced == true {
+        info!("Your avrio daemon is now synced and up to date with the network!");
+    } else {
+        return ();
+    }
     if config().chain_key == "".to_owned() {
         info!("Generating a chain for self");
         generate_keypair(&mut chain_key);
@@ -275,6 +324,8 @@ fn main() {
             }
         };
         info!("Enacting genesis block");
+        prop_block(&genesis_block_clone, &connections_mut).unwrap();
+
         match enact_block(genesis_block_clone) {
             Ok(_) => {
                 info!("Sucessfully enacted genesis block!");
@@ -289,55 +340,6 @@ fn main() {
         };
     } else {
         info!("Using chain: {}", config().chain_key);
-    }
-    info!(
-        " Launching P2p server on 127.0.0.1::{:?}",
-        config().p2p_port
-    );
-    let _p2p_handler = thread::spawn(|| {
-        if rec_server() != 1 {
-            error!(
-                "Error launching P2p server on 127.0.0.1::{:?} (Fatal)",
-                config().p2p_port
-            );
-            process::exit(1);
-        }
-    });
-    let syncneed = avrio_p2p::sync_needed();
-    let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
-    if pl.len() < 1 {
-        let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(99, 248, 224, 55)),
-            56789,
-        )];
-        for node in seednodes {
-            pl.push(node);
-        }
-    }
-    let mut connections: Vec<TcpStream> = vec![];
-    connect_seednodes(pl, &mut connections);
-    let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
-    match syncneed {
-        // do we need to sync
-        true => {
-            info!("Starting sync (this will take some time)");
-            if let Ok(_) = sync(&mut connections_mut) {
-                info!("Successfully synced with the network!");
-                synced = true;
-            } else {
-                error!("Syncing failed");
-                process::exit(1);
-            }
-        }
-        false => {
-            info!("No sync needed");
-            synced = true;
-        }
-    }
-    if synced == true {
-        info!("Your avrio daemon is now synced and up to date with the network!");
-    } else {
-        return ();
     }
     let wall = Wallet::from_private_key(chain_key[1].clone());
     info!(
@@ -396,7 +398,7 @@ fn main() {
     let _ = blk.sign(&wall.private_key);
     let _ = check_block(blk.clone()).unwrap();
     let _ = saveBlock(blk.clone()).unwrap();
-    prop_block(&blk, connections_mut).unwrap();
+    prop_block(&blk, &connections_mut).unwrap();
     let _ = enact_block(blk).unwrap();
     let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
     info!("Our balance: {}", ouracc.balance_ui().unwrap());
@@ -500,6 +502,7 @@ fn main() {
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
+            prop_block(&blk, &connections_mut).unwrap();
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
                 "Transaction sent! Txn hash: {}, Block hash: {}. Our new balance: {} AIO",
@@ -737,6 +740,8 @@ fn main() {
                             info!("saved block");
                             let _ = enact_block(blk.clone()).unwrap();
                             info!("enacted block :{}", i_block);
+                            prop_block(&blk, &connections_mut).unwrap();
+                            info!("Propigated block");
                             i_block += 1;
                         }
                         let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
@@ -830,6 +835,8 @@ fn main() {
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
+            prop_block(&blk, &connections_mut).unwrap();
+
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
                 "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
@@ -932,6 +939,7 @@ fn main() {
                         let _ = check_block(blk.clone()).unwrap();
                         let _ = saveBlock(blk.clone()).unwrap();
                         let _ = enact_block(blk.clone()).unwrap();
+                        prop_block(&blk, &connections_mut).unwrap();
                         let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
                         info!(
                             "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
