@@ -400,7 +400,7 @@ fn main() {
     let _ = blk.sign(&wall.private_key);
     let _ = check_block(blk.clone()).unwrap();
     let _ = saveBlock(blk.clone()).unwrap();
-    let _ = prop_block(&blk, connections_mut).unwrap();
+    let _ = prop_block(&blk, &connections_mut).unwrap();
     let _ = enact_block(blk).unwrap();
     let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
     info!("Our balance: {}", ouracc.balance_ui().unwrap());
