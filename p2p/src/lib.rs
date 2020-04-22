@@ -196,10 +196,10 @@ pub fn sync_needed() -> bool {
 /// In testnet 0.0.1 It simply sent to all conected peers
 pub fn prop_block(
     blk: &Block,
-    peers: Vec<&mut TcpStream>,
+    peers: &Vec<&mut TcpStream>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for peer in peers {
-        sendBlockStruct(blk, peer)?;
+        sendBlockStruct(blk, &mut peer.try_clone().unwrap())?;
     }
     return Ok(());
 }
@@ -244,10 +244,10 @@ pub fn sendBlockStruct(
 }
 /// This function asks the peer to sync, if they accept you can begin syncing
 pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
-    let mut peer_to_use_unwraped = peer.try_clone().unwrap();
+    lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     let syncreqres = sendData(
         &"syncreq".to_owned(),
-        &mut peer_to_use_unwraped.try_clone().unwrap(),
+        &mut peer.try_clone().unwrap(),
         0x22,
     );
     match syncreqres {
@@ -260,7 +260,7 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     let mut buf = [0; 1024];
     let mut no_read = true;
     while no_read == true {
-        if let Ok(a) = peer_to_use_unwraped.try_clone().unwrap().peek(&mut buf) {
+        if let Ok(a) = peer.peek(&mut buf) {
             if a == 0 {
             } else {
                 no_read = false;
@@ -268,20 +268,12 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
         }
     }
     // There are now bytes waiting in the stream
-    let _ = peer_to_use_unwraped.try_clone().unwrap().read(&mut buf);
-    let mut _reselect_needed = false;
-    let msg = String::from_utf8(buf.to_vec()).unwrap_or("utf8 failed".to_string());
-    let v: Vec<&str> = msg.split("}").collect();
-    let msg_c = v[0].to_string() + &"}".to_string();
-    drop(v);
-    trace!(
-        "(SYNC REQ) Recieved: {}",
-        String::from_utf8(buf.to_vec()).unwrap_or("utf8 failed".to_string())
-    );
-    let deformed: P2pdata = serde_json::from_str(&msg_c).unwrap_or(P2pdata::default());
+    let deformed: P2pdata = read(peer).unwrap_or_default();
+    debug!("Releasing lock on peer");
+    unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     if deformed.message == "syncack".to_string() {
         debug!("Got syncack from selected peer. Continuing");
-        return Ok(peer_to_use_unwraped);
+        return Ok(peer.try_clone()?);
     } else if deformed.message == "syncdec".to_string() {
         info!("Peer rejected sync request, choosing new peer...");
         // choose the next fasted peer from our socket list
@@ -290,7 +282,7 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
         info!("Recieved incorect message from peer (in context syncrequest). Message: {}. This could be caused by outdated software - check you are up to date!", deformed.message);
         info!("Retrying syncack with same peer...");
         // try again
-        return syncack_peer(&mut peer_to_use_unwraped);
+        return syncack_peer(&mut peer.try_clone()?);
     }
 }
 /// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
@@ -314,7 +306,6 @@ fn sendChainDigest(peer: &mut TcpStream) {
 fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
     lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     let _ = sendData(&"".to_owned(), peer, 0x1c);
-    let mut i: i32 = 0;
     let res = loop {
         let read = read(peer).unwrap_or_else(|e| {
             error!("Failed to read p2pdata: {}", e);
@@ -607,14 +598,16 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         }
     }
     let mut peer_to_use_unwraped: TcpStream = peer_to_use.unwrap().try_clone().unwrap();
+    lock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
+
     let try_ack = syncack_peer(&mut peer_to_use_unwraped);
     if let Err(e) = try_ack {
-        error!("Got error: {} when sync acking peer", e);
+        error!("Got error: {} when sync acking peer. Releasing lock", e);
+        unlock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
+
         // TODO sync ack the next fastest peer until we have peer (1)
         return Err("rejected sync ack".into());
     } else {
-        // We now have a peer to use and so lock their stream to prevent handle_cleint from stealing our msges
-        lock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
         // We have locked the peer now we ask them for their list of chains
         // They send their list of chains as a vec of strings
         if let Err(e) = sendData(&"".to_owned(), &mut peer_to_use_unwraped, 0x60) {
