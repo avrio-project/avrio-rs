@@ -608,6 +608,8 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         // TODO sync ack the next fastest peer until we have peer (1)
         return Err("rejected sync ack".into());
     } else {
+        // Relock peer
+        lock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
         // We have locked the peer now we ask them for their list of chains
         // They send their list of chains as a vec of strings
         if let Err(e) = sendData(&"".to_owned(), &mut peer_to_use_unwraped, 0x60) {
