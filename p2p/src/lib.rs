@@ -312,9 +312,10 @@ fn sendChainDigest(peer: &mut TcpStream) {
 }
 /// this asks the peer for thier chain digest
 fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
+    lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     let _ = sendData(&"".to_owned(), peer, 0x1c);
     let mut i: i32 = 0;
-    loop {
+    let res = loop {
         let read = read(peer).unwrap_or_else(|e| {
             error!("Failed to read p2pdata: {}", e);
             P2pdata::default()
@@ -331,7 +332,10 @@ fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
                 peer: None,
             };
         }
-    }
+    };
+    debug!("Releasing lock on peer");
+    unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+    return res;
 }
 /// this calculates the most common string in a list
 fn get_mode(v: Vec<String>) -> String {
@@ -662,6 +666,15 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
                 }
             }
         }
+    }
+    info!("Synced all chains, checking chain digest with peers");
+    if getData(config().db_path + &"/chainsdigest", "master") != mode_hash {
+        error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data ir and resync");
+        error!("Our CD: {}, expected: {}", getData(config().db_path + &"/chainsdigest", "master"), mode_hash);
+        return Err("invalid resultant chain digest".into());
+    } else {
+        info!("Finalised syncing, releasing lock on peer");
+        let _ = unlock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
     }
     return Ok(1);
 }
