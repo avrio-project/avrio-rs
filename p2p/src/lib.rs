@@ -512,6 +512,15 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
                     enact_block(block)?;
                     synced_blocks += 1;
                 }
+                if synced_blocks % print_synced_every == 0 {
+                    info!(
+                        "Synced {} / {} blocks (chain: {}). {} more to go",
+                        synced_blocks,
+                        amount_to_sync,
+                        chain,
+                        amount_to_sync - synced_blocks
+                    );
+                }
             }
         }
         let top_block_hash: String;
@@ -535,18 +544,9 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             );
             return Err(e.into());
         }
-        if synced_blocks <= amount_to_sync {
+        if synced_blocks >= amount_to_sync {
             info!("Synced all {} blocks for chain: {}", synced_blocks, chain);
             break;
-        }
-        if synced_blocks % print_synced_every == 0 {
-            info!(
-                "Synced {} / {} blocks (chain: {}). {} more to go",
-                synced_blocks,
-                amount_to_sync,
-                chain,
-                amount_to_sync - synced_blocks
-            );
         }
     }
     return Ok(amount_to_sync);
