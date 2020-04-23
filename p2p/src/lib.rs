@@ -707,6 +707,19 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     return Ok(1);
 }
 
+pub fn get_peerlist(peer: &mut TcpStream) -> Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
+    while locked(&peer.peer_addr()?.to_string()) {}
+    let _ = lock_peer(&peer.peer_addr()?.to_string())?;
+    let _ = sendData(&"".to_owned(), peer,0x99);
+    let p2p_data = read(peer)?;
+    if p2p_data.message_type != 0x9F {
+        return Err("wrong msg type".into());
+    } else {
+        let d: Vec<SocketAddr> = serde_json::from_str(&p2p_data.message)?;
+        return Ok(d);
+    }
+}
+
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let mut buf = [0; 100000];
