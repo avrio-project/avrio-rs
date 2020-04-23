@@ -58,6 +58,8 @@ pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error
 pub fn add_peer(peer: SocketAddr) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut current_peer_list = get_peerlist().unwrap_or_default();
     current_peer_list.push(peer);
+    let set: std::collections::HashSet<_> = current_peer_list.drain(..).collect(); // dedup
+    current_peer_list.extend(set.into_iter());
     return save_peerlist(&current_peer_list);
 }
 
