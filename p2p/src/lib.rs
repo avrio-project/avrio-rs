@@ -385,7 +385,7 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
                 if p2p != P2pdata::default() {
                     trace!("Found EOF of message!");
 
-                    logP2pMessage(p2p.clone());
+                    logP2pMessage(&p2p);
 
                     return Ok(p2p);
                 }
@@ -914,12 +914,12 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
         message: data_s,
     };
 
-    logP2pMessage(msg.clone());
+    logP2pMessage(&msg);
 
     return serde_json::to_string(&msg).unwrap() + &"EOT";
 }
 
-fn logP2pMessage(msg: P2pdata) {
+fn logP2pMessage(msg: &P2pdata) {
     trace!("Message Type: \"0x{:x}\"", msg.message_type);
     trace!("Message Length: \"{}\"", msg.message_bytes);
     trace!("Message Data: \"{}\"", msg.message);
