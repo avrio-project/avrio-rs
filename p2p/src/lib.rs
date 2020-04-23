@@ -874,7 +874,12 @@ fn process_message(s: String, p: &mut TcpStream) {
 }
 
 fn process_block(s: String) {
-    info!("Block {}", s);
+    let block: Block = serde_json::from_str(&to_json(&s)).unwrap_or_default();
+    if let Ok(_) = check_block(block.clone()) {
+        if let Ok(_) = saveBlock(block.clone()) {
+            let _ =enact_block(block);
+        }
+    }
 }
 
 fn process_handshake(s: String) -> Result<String, String> {
