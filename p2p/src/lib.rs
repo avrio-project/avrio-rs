@@ -77,6 +77,7 @@ fn in_peers(peer: &String) -> bool {
             trace!("Peer found");
             return true;
         }
+        trace!("Nonmatching peer: {}", peer_str);
     }
     trace!("Peer not found");
     return false;
@@ -113,7 +114,7 @@ fn unlock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn locked(peer: &String) -> bool {
-   // trace!("checking locked status for peer: {}", peer);
+    // trace!("checking locked status for peer: {}", peer);
     for (peer_str, lock_or_not) in get_peers() {
         if &peer_str == peer {
             if lock_or_not == "l" {
@@ -241,13 +242,9 @@ pub fn sendBlockStruct(
     }
 }
 /// This function asks the peer to sync, if they accept you can begin syncing
-pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
+pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box<dyn Error>> {
     lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
-    let syncreqres = sendData(
-        &"syncreq".to_owned(),
-        &mut peer.try_clone().unwrap(),
-        0x22,
-    );
+    let syncreqres = sendData(&"syncreq".to_owned(), &mut peer.try_clone().unwrap(), 0x22);
     match syncreqres {
         Ok(()) => {}
         Err(e) => {
@@ -267,8 +264,10 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     }
     // There are now bytes waiting in the stream
     let deformed: P2pdata = read(peer).unwrap_or_default();
-    debug!("Releasing lock on peer");
-    unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+    if unlock == true {
+        debug!("Releasing lock on peer");
+        unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+    }
     if deformed.message == "syncack".to_string() {
         debug!("Got syncack from selected peer. Continuing");
         return Ok(peer.try_clone()?);
@@ -280,7 +279,7 @@ pub fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
         info!("Recieved incorect message from peer (in context syncrequest). Message: {}. This could be caused by outdated software - check you are up to date!", deformed.message);
         info!("Retrying syncack with same peer...");
         // try again
-        return syncack_peer(&mut peer.try_clone()?);
+        return syncack_peer(&mut peer.try_clone()?, unlock);
     }
 }
 /// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
@@ -301,7 +300,7 @@ fn sendChainDigest(peer: &mut TcpStream) {
     }
 }
 /// this asks the peer for thier chain digest
-fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
+fn getChainDigest(peer: &mut TcpStream, unlock: bool) -> ChainDigestPeer {
     lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     let _ = sendData(&"".to_owned(), peer, 0x1c);
     let res = loop {
@@ -322,8 +321,10 @@ fn getChainDigest(peer: &mut TcpStream) -> ChainDigestPeer {
             };
         }
     };
-    debug!("Releasing lock on peer");
-    unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+    if unlock == true {
+        debug!("Releasing lock on peer");
+        unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+    }
     return res;
 }
 /// this calculates the most common string in a list
@@ -359,7 +360,7 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
             if let Ok(a) = peer.peek(&mut buf) {
                 if a > 0 {
                     trace!("DATA!!");
-                    break
+                    break;
                 } else {
                     trace!("no data yet");
                 }
@@ -529,14 +530,18 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
         );
         trace!("Asking peer for blocks above hash: {}", top_block_hash);
         if top_block_hash == "-1" {
-            if let Err(e) = sendData(&"0".to_owned(), peer, 0x6f) {
+            if let Err(e) = sendData(&serde_json::to_string(&(&"0", &chain))?, peer, 0x6f) {
                 error!(
                     "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
                     top_block_hash, chain, e
                 );
                 return Err(e.into());
             }
-        } else if let Err(e) = sendData(&top_block_hash, peer, 0x6f) {
+        } else if let Err(e) = sendData(
+            &serde_json::to_string(&(&top_block_hash, &chain))?,
+            peer,
+            0x6f,
+        ) {
             error!(
                 "Asking peer for their blocks above hash: {} for chain: {} gave error: {}",
                 top_block_hash, chain, e
@@ -573,7 +578,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             let handle = thread::Builder::new()
                 .name("getChainDigest".to_string())
                 .spawn(move || {
-                    let chain_digest = getChainDigest(&mut peer_new);
+                    let chain_digest = getChainDigest(&mut peer_new, false);
                     if chain_digest.digest == " " {
                         return ChainDigestPeer {
                             peer: Some(peer_new),
@@ -606,9 +611,15 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
         }
     }
     let mut peer_to_use_unwraped: TcpStream = peer_to_use.unwrap().try_clone().unwrap();
+    // Now unlock all peers we are not going to be using
+    for peer in pl {
+        if peer.peer_addr().unwrap() != peer_to_use_unwraped.peer_addr().unwrap() {
+            let _ = unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+        }
+    }
     lock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
 
-    let try_ack = syncack_peer(&mut peer_to_use_unwraped);
+    let try_ack = syncack_peer(&mut peer_to_use_unwraped, false);
     if let Err(e) = try_ack {
         error!("Got error: {} when sync acking peer. Releasing lock", e);
         unlock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
@@ -684,6 +695,11 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     let mut buf = [0; 100000];
     loop {
         if !locked(&stream.peer_addr()?.to_string()) {
+            trace!(
+                "peer: {}, not locked! in peerlist: {}",
+                &stream.peer_addr()?.to_string(),
+                in_peers(&stream.peer_addr()?.to_string())
+            );
             if let Ok(a) = stream.peek(&mut buf) {
                 if a > 0 {
                     let read_msg = read(&mut stream);
@@ -894,14 +910,20 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 }
 
 fn strip_msg(msg: &String) -> String {
-    info!("striping: {}", msg);
-    let v: Vec<&str> = msg.split("}").collect();
-    return v[0].to_string() + &"}".to_string();
+    return msg.trim_matches(char::from(0)).to_owned();
+}
+fn strip_eot(msg: &String) -> String {
+    return msg.trim_matches(&['E', 'O', 'T'] as &[_]).to_owned();
+}
+
+/// Takes the raw recieved msg (with EOT on the end and trailing null chars) and returns the raw json
+pub fn to_json(msg: &String) -> String {
+    return strip_eot(&strip_msg(msg));
 }
 
 pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
     // deforms message and excutes appropriate function to handle resultant data
-    let msg_c = strip_msg(&msg);
+    let msg_c = to_json(&msg);
     let msg_d: P2pdata = serde_json::from_str(&msg_c).unwrap_or_else(|e| {
         debug!(
             "Bad Packets recieved from peer, packets: {}. Parsing this gave error: {}",
