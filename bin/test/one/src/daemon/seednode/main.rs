@@ -216,6 +216,25 @@ fn main() {
     connect(get_peerlist().unwrap_or_default(), &mut connections);
     let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
     let syncneed = sync_needed();
+    let mut new_peers: Vec<SocketAddr> = vec![];
+    for connection in &connections_mut {
+        for peer in
+            avrio_p2p::get_peerlist(&mut connection.try_clone().unwrap()).unwrap_or_default()
+        {
+            new_peers.push(peer);
+        }
+    }
+    let set: std::collections::HashSet<_> = new_peers.drain(..).collect(); // dedup
+    new_peers.extend(set.into_iter());
+    let mut pl_u = get_peerlist().unwrap_or_default();
+    for peer in new_peers {
+        pl_u.push(peer);
+    }
+    let set: std::collections::HashSet<_> = pl_u.drain(..).collect(); // dedup
+    pl_u.extend(set.into_iter());
+    for peer in pl_u {
+        let _ = new_connection(peer);
+    }
     match pl {
         // do we need to sync
         Ok(_) => {
