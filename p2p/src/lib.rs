@@ -415,9 +415,13 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
     });
     let amount_to_sync: u64;
     if deformed.message_type != 0x46 {
+        warn!("Got wrong block count message from peer, this could cause syncing issues!");
         amount_to_sync = 0;
     } else {
-        amount_to_sync = deformed.message.parse().unwrap_or(0);
+        amount_to_sync = deformed.message.parse().unwrap_or_else(|e| {
+            warn!("Failed to parse block count msg, gave error: {}", e);
+            0
+        });
     }
     let print_synced_every: u64;
     info!("Got to get {} blocks for chain: {}", amount_to_sync, chain);
@@ -523,6 +527,10 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
                 }
             }
         }
+        if synced_blocks >= amount_to_sync {
+            info!("Synced all {} blocks for chain: {}", synced_blocks, chain);
+            break;
+        }
         let top_block_hash: String;
         top_block_hash = getData(
             config().db_path + "/chains/" + &chain + &"-chainindex",
@@ -547,10 +555,6 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
                 top_block_hash, chain, e
             );
             return Err(e.into());
-        }
-        if synced_blocks >= amount_to_sync {
-            info!("Synced all {} blocks for chain: {}", synced_blocks, chain);
-            break;
         }
     }
     return Ok(amount_to_sync);
@@ -695,7 +699,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
     let mut buf = [0; 100000];
     loop {
         if !locked(&stream.peer_addr()?.to_string()) {
-            trace!(
+            debug!(
                 "peer: {}, not locked! in peerlist: {}",
                 &stream.peer_addr()?.to_string(),
                 in_peers(&stream.peer_addr()?.to_string())
