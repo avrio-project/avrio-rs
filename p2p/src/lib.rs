@@ -579,6 +579,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     let _i: usize = 0;
     let mut chain_digests: Vec<ChainDigestPeer> = vec![];
     for peer in pl.iter_mut() {
+        let _ = lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
         if let Ok(mut peer_new) = peer.try_clone() {
             let handle = thread::Builder::new()
                 .name("getChainDigest".to_string())
