@@ -191,6 +191,16 @@ pub fn sync_needed() -> bool {
     return true;
 }
 
+fn send_peerlist(peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+    sendData(
+        &serde_json::to_string(&avrio_database::get_peerlist().unwrap_or_default())
+            .unwrap_or_default(),
+        peer,
+        0x9F,
+    )?;
+    return Ok(());
+}
+
 /// # prop_block
 /// This function sends a block to all peers it has from the comitee that is currently handeling the shard
 /// In testnet 0.0.1 It simply sent to all conected peers
@@ -877,7 +887,7 @@ fn process_block(s: String) {
     let block: Block = serde_json::from_str(&to_json(&s)).unwrap_or_default();
     if let Ok(_) = check_block(block.clone()) {
         if let Ok(_) = saveBlock(block.clone()) {
-            let _ =enact_block(block);
+            let _ = enact_block(block);
         }
     }
 }
@@ -1102,6 +1112,11 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                 }
             }
             return Some("getchainslist".into());
+        }
+        0x99 => {
+            trace!("Sending peerlist");
+            send_peerlist(peer);
+            return Some("get_peerlist");
         }
         _ => {
             warn!("Bad Message type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
