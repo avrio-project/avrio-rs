@@ -384,7 +384,10 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
             if split.len() > 1 {
                 let p2p: P2pdata = serde_json::from_str(split[0]).unwrap_or_default();
                 if p2p != P2pdata::default() {
-                    trace!("Found EOF, returning");
+                    trace!("Found EOF of message!");
+
+                    logP2pMessage(&p2p);
+
                     return Ok(p2p);
                 }
             }
@@ -911,8 +914,8 @@ pub enum p2p_errors {
 
 pub fn sendData(data: &String, peer: &mut TcpStream, msg_type: u16) -> Result<(), std::io::Error> {
     // This function takes some data as a string and places it into a struct before sending to the peer
+    trace!("Sending data");
     let data_s: String = formMsg(data.clone(), msg_type);
-    trace!("Sent data: {}", data_s);
     let sent = peer.write_all(data_s.as_bytes());
     let _ = peer.flush()?;
     return sent;
@@ -925,7 +928,16 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
         message_type: data_type,
         message: data_s,
     };
+
+    logP2pMessage(&msg);
+
     return serde_json::to_string(&msg).unwrap() + &"EOT";
+}
+
+fn logP2pMessage(msg: &P2pdata) {
+    trace!("Message Type: \"0x{:x}\"", msg.message_type);
+    trace!("Message Length: \"{}\"", msg.message_bytes);
+    trace!("Message Data: \"{}\"", msg.message);
 }
 
 fn strip_msg(msg: &String) -> String {
