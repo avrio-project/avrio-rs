@@ -843,6 +843,9 @@ pub fn rec_server() -> u8 {
     return 1;
 }
 pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
+    if in_peers(&socket.to_string()) {
+        return Err("already connected".into());
+    }
     // This Fucntion handles all the details of conecting to a peer, geting id and constructing a Peer struct
     let mut stream = TcpStream::connect(socket)?;
     let self_config = config();
