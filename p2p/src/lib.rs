@@ -710,7 +710,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
 pub fn get_peerlist(peer: &mut TcpStream) -> Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
     while locked(&peer.peer_addr()?.to_string()) {}
     let _ = lock_peer(&peer.peer_addr()?.to_string())?;
-    let _ = sendData(&"".to_owned(), peer,0x99);
+    let _ = sendData(&"".to_owned(), peer, 0x99);
     let p2p_data = read(peer)?;
     if p2p_data.message_type != 0x9F {
         return Err("wrong msg type".into());
@@ -816,6 +816,7 @@ pub fn rec_server() -> u8 {
                     "New incoming connection to peer: {}",
                     stream.peer_addr().unwrap()
                 );
+                let _ = avrio_database::add_peer(stream.peer_addr().unwrap());
                 if let Err(e) = avrio_database::add_peer(stream.peer_addr().unwrap()) {
                     error!(
                         "Failed to add peer: {} to peer list, gave error: {}",
@@ -1128,7 +1129,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         }
         0x99 => {
             trace!("Sending peerlist");
-            let _ =send_peerlist(peer);
+            let _ = send_peerlist(peer);
             return Some("get_peerlist".into());
         }
         _ => {
