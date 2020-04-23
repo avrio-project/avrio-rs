@@ -380,16 +380,13 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
             }
         }
         if as_string.contains("EOT") {
-            let split: Vec<&str> = as_string.split("EOT").collect();
-            if split.len() > 1 {
-                let p2p: P2pdata = serde_json::from_str(split[0]).unwrap_or_default();
-                if p2p != P2pdata::default() {
-                    trace!("Found EOF of message!");
-
-                    logP2pMessage(&p2p);
-
-                    return Ok(p2p);
-                }
+            let p2p: P2pdata = serde_json::from_str(&to_json(&as_string)).unwrap_or_default();
+            if p2p != P2pdata::default() {
+                trace!("Found EOF of message!");
+                logP2pMessage(&p2p);
+                return Ok(p2p);
+            } else {
+                trace!("from_str returned default");
             }
         }
     }
