@@ -1115,8 +1115,8 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         }
         0x99 => {
             trace!("Sending peerlist");
-            send_peerlist(peer);
-            return Some("get_peerlist");
+            let _ =send_peerlist(peer);
+            return Some("get_peerlist".into());
         }
         _ => {
             warn!("Bad Message type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
