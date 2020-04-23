@@ -314,7 +314,7 @@ fn main() {
             }
         };
         info!("Enacting genesis block");
-        let _ = prop_block(&blk, &connections_mut).unwrap();
+        let _ = prop_block(&genesis_block_clone, &connections_mut).unwrap();
         info!("Sent block to network");
         match enact_block(genesis_block_clone) {
             Ok(_) => {
