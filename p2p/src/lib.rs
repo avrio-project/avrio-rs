@@ -707,6 +707,12 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_millis() as u64;
+    while (SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as u64)
+        <= 1000
+    {}
     loop {
         if time >= 100 {
             time = SystemTime::now()
