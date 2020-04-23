@@ -209,13 +209,15 @@ fn main() {
         info!("Chain digest: {}", chainsdigest);
     }
     info!(
-        " Launching P2p server on 127.0.0.1::{:?}",
+        " Launching P2p server on {}::{:?}",
+        config().ip_host,
         config().p2p_port
     );
     let _p2p_handler = thread::spawn(|| {
         if rec_server() != 1 {
             error!(
-                "Error launching P2p server on 127.0.0.1::{:?} (Fatal)",
+                "Error launching P2p server on {}::{:?} (Fatal)",
+                config().ip_host,
                 config().p2p_port
             );
             process::exit(1);
@@ -225,7 +227,7 @@ fn main() {
     let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
     if pl.len() < 1 {
         let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(35,230,157,42)),
+            IpAddr::V4(Ipv4Addr::new(35, 230, 157, 42)),
             56789,
         )];
         for node in seednodes {
@@ -233,8 +235,27 @@ fn main() {
         }
     }
     let mut connections: Vec<TcpStream> = vec![];
-    connect_seednodes(pl, &mut connections);
+    connect_seednodes(pl.clone(), &mut connections);
     let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
+    let mut new_peers: Vec<SocketAddr> = vec![];
+    for connection in &connections_mut {
+        for peer in
+            avrio_p2p::get_peerlist(&mut connection.try_clone().unwrap()).unwrap_or_default()
+        {
+            new_peers.push(peer);
+        }
+    }
+    let set: std::collections::HashSet<_> = new_peers.drain(..).collect(); // dedup
+    new_peers.extend(set.into_iter());
+
+    for peer in new_peers {
+        pl.push(peer);
+    }
+    let set: std::collections::HashSet<_> = pl.drain(..).collect(); // dedup
+    pl.extend(set.into_iter());
+    for peer in pl {
+        let _ = new_connection(peer);
+    }
     match syncneed {
         // do we need to sync
         true => {
