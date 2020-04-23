@@ -314,6 +314,8 @@ fn main() {
             }
         };
         info!("Enacting genesis block");
+        let _ = prop_block(&blk, &connections_mut).unwrap();
+        info!("Sent block to network");
         match enact_block(genesis_block_clone) {
             Ok(_) => {
                 info!("Sucessfully enacted genesis block!");
@@ -502,6 +504,7 @@ fn main() {
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
+            let _ = prop_block(&blk, &connections_mut).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
@@ -739,6 +742,8 @@ fn main() {
                             info!("checked block");
                             let _ = saveBlock(blk.clone()).unwrap();
                             info!("saved block");
+                            let _ = prop_block(&blk, &connections_mut).unwrap();
+                            info!("Sent block");
                             let _ = enact_block(blk.clone()).unwrap();
                             info!("enacted block :{}", i_block);
                             i_block += 1;
@@ -833,6 +838,7 @@ fn main() {
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
+            let _ = prop_block(&blk, &connections_mut).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
@@ -935,6 +941,7 @@ fn main() {
                         let _ = blk.sign(&wall.private_key);
                         let _ = check_block(blk.clone()).unwrap();
                         let _ = saveBlock(blk.clone()).unwrap();
+                        let _ = prop_block(&blk, &connections_mut).unwrap();
                         let _ = enact_block(blk.clone()).unwrap();
                         let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
                         info!(
