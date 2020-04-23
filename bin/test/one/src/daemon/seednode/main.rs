@@ -468,12 +468,13 @@ fn main() {
             let mut highest_so_far: u64 = 0;
             invIter.seek_to_first();
             while invIter.valid() {
-                let height: u64 = String::from_utf8(invIter.key().unwrap().into())
+                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
                     .unwrap()
-                    .parse()
-                    .unwrap();
-                if height > highest_so_far {
-                    highest_so_far = height
+                    .parse::<u64>()
+                {
+                    if height > highest_so_far {
+                        highest_so_far = height
+                    }
                 }
                 invIter.next();
             }
@@ -802,12 +803,13 @@ fn main() {
             let mut highest_so_far: u64 = 0;
             invIter.seek_to_first();
             while invIter.valid() {
-                let height: u64 = String::from_utf8(invIter.key().unwrap().into())
+                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
                     .unwrap()
-                    .parse()
-                    .unwrap();
-                if height > highest_so_far {
-                    highest_so_far = height
+                    .parse::<u64>()
+                {
+                    if height > highest_so_far {
+                        highest_so_far = height
+                    }
                 }
                 invIter.next();
             }
@@ -903,12 +905,13 @@ fn main() {
                         let mut highest_so_far: u64 = 0;
                         invIter.seek_to_first();
                         while invIter.valid() {
-                            let height: u64 = String::from_utf8(invIter.key().unwrap().into())
+                            if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
                                 .unwrap()
-                                .parse()
-                                .unwrap();
-                            if height > highest_so_far {
-                                highest_so_far = height
+                                .parse::<u64>()
+                            {
+                                if height > highest_so_far {
+                                    highest_so_far = height
+                                }
                             }
                             invIter.next();
                         }
