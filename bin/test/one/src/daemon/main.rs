@@ -155,7 +155,7 @@ fn generate_keypair(out: &mut Vec<String>) {
     out.push(wallet.private_key);
     let mut conf = config();
     conf.chain_key = wallet.public_key;
-    let _ = conf.save();
+    let _ = conf.create();
 }
 
 fn open_wallet(key: String, address: bool) -> Wallet {

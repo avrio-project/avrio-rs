@@ -145,7 +145,7 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
     let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
     info!("Saved wallet to {}", path);
     conf.chain_key = keypair[0].clone();
-    conf.save()?;
+    conf.create()?;
     return Ok(());
 }
 
