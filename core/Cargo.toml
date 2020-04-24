@@ -21,3 +21,4 @@ rand = "0.7"
 bs58 = "0.3.0"
 avrio_crypto = { path = "../crypto" }
 rocksdb = "0.13"
+avrio_p2p = { path = "../p2p" }
