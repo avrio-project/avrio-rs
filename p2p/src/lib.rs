@@ -71,6 +71,10 @@ fn update(n: Vec<(String, String)>) -> Result<(), Box<dyn std::error::Error>> {
     return Ok(());
 }
 
+fn strip_port(p: &String) -> String {
+    p.split(":").to_owned().collect::<Vec<&str>>()[0].to_owned()
+}
+
 fn in_peers(peer: &String) -> bool {
     trace!("checking if peer: {} in peerlist", peer);
     for (peer_str, _) in get_peers() {
@@ -908,11 +912,24 @@ fn process_message(s: String, p: &mut TcpStream) {
     }
 }
 
-fn process_block(s: String) {
+fn process_block(s: String, from_peer: SocketAddr) {
     let block: Block = serde_json::from_str(&to_json(&s)).unwrap_or_default();
-    if let Ok(_) = check_block(block.clone()) {
-        if let Ok(_) = saveBlock(block.clone()) {
-            let _ = enact_block(block);
+    if getBlockFromRaw(block.hash.clone()) == Block::default() {
+        if let Ok(_) = check_block(block.clone()) {
+            if let Ok(_) = saveBlock(block.clone()) {
+                let _ = enact_block(block);
+            }
+        }
+        for peer in get_peers() {
+            if peer.1 != "l" {
+                if strip_port(&peer.0) != strip_port(&from_peer.to_string()) {
+                    if let Ok(peer_addr) = peer.0.parse::<SocketAddr>() {
+                        if let Ok(mut stream) = TcpStream::connect(peer_addr) {
+                            let _ = sendData(&s, &mut stream, 0x0a);
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1033,7 +1050,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             return Some("message".into());
         }
         0x0a => {
-            process_block(msg_d.message);
+            process_block(msg_d.message, peer.peer_addr().unwrap());
             return Some("getblock".into());
         }
         0x1a => {
