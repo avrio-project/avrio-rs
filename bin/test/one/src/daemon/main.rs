@@ -544,6 +544,7 @@ fn main() {
         } else if read == "exit" {
             // TODO: save mempool to disk, close p2p conns, send kill to all threads.
             info!("Goodbye!");
+            avrio_p2p::close_all(connections_mut);
             process::exit(0);
         } else if read == "address_details" {
             info!("Enter the address of the account.");
