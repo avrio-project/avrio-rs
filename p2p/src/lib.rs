@@ -839,14 +839,12 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
 }
 pub fn rec_server() -> u8 {
     let config = config();
-    let listener = TcpListener::bind(
-        config.ip_host.to_string() + &":".to_string() + &config.p2p_port.to_string(),
-    )
-    .unwrap();
+    let listener =
+        TcpListener::bind("0.0.0.0:".to_string() + &config.p2p_port.to_string()).unwrap();
     // accept connections and process them, spawning a new thread for each one
     info!(
-        "P2P Server Launched on {}",
-        config.ip_host.to_string() + &":".to_string() + &config.p2p_port.to_string()
+        "P2P Server Launched on 0.0.0.0::{}",
+        &config.p2p_port.to_string()
     );
     for stream in listener.incoming() {
         match stream {
