@@ -753,12 +753,13 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                                         This is in the following format
                                         network id, our peer id, our node type;
                                         */
-                                        add_peer(stream.peer_addr().unwrap().to_string());
-                                        let msg = hex::encode(config().network_id)
-                                            + "*"
-                                            + &config().identitiy
-                                            + "*"
-                                            + &config().node_type.to_string();
+                                        let msg = &format!(
+                                            "{}*{}*{}*{}",
+                                            hex::encode(config().network_id),
+                                            &config().identitiy,
+                                            &config().node_type,
+                                            &config().p2p_port
+                                        );
                                         debug!("Our handshake: {}", msg);
                                         // send our handshake
                                         let _ = sendData(&msg, &mut stream, 0x1a);
@@ -845,18 +846,20 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
     network id,our peer id, our node type;
     The recipitent then verifyes this then they send the same hand shake back to us;
     */
-    let msg = hex::encode(self_config.network_id)
-        + "*"
-        + &self_config.identitiy
-        + "*"
-        + &self_config.node_type.to_string();
+    let msg = &format!(
+        "{}*{}*{}*{}",
+        hex::encode(config().network_id),
+        &config().identitiy,
+        &config().node_type,
+        &config().p2p_port
+    );
     let _ = sendData(&msg, &mut stream, 0x1a);
     let p2p_data = read(&mut stream).unwrap_or_else(|e| {
         error!("Failed peers handshake response,gave error: {}", e);
         P2pdata::default()
     });
     let pid: String;
-    match process_handshake(p2p_data.message) {
+    match process_handshake(p2p_data.message, &mut stream) {
         Ok(x) => {
             pid = x;
         }
@@ -900,7 +903,7 @@ fn process_block(s: String) {
     }
 }
 
-fn process_handshake(s: String) -> Result<String, String> {
+fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> {
     trace!("Handshake: {}", s);
     if in_handshakes(&s) {
         return Err("already handshook".into());
@@ -918,6 +921,7 @@ fn process_handshake(s: String) -> Result<String, String> {
         return Err("Handshake too short".to_string());
     }
     let peer_network_id_hex: &String = &s[0..network_id_hex.len()].to_string();
+    let mut port: u64 = 0;
     if network_id_hex != peer_network_id_hex.to_owned() {
         debug!("Recived erroness network id {}", peer_network_id_hex);
         return Err(String::from("Incorrect network id"));
@@ -925,10 +929,22 @@ fn process_handshake(s: String) -> Result<String, String> {
         let val = s[peer_network_id_hex.len() + 1..s.len()].to_string();
         let v: Vec<&str> = val.split("*").collect();
         id = v[0].to_string();
+        port = v[2].parse().unwrap_or_default();
     }
     info!("Handshook with peer, gave id {}", id);
     let id_cow = Cow::from(&id);
     add_handsake(s);
+
+    add_peer(format!(
+        "{}:{}",
+        peer.peer_addr()
+            .unwrap()
+            .to_string()
+            .split(":")
+            .to_owned()
+            .collect::<Vec<&str>>()[0],
+        port
+    ));
     return Ok((&id_cow).to_string());
 }
 
@@ -1008,7 +1024,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
         }
         0x1a => {
             if !in_handshakes(&msg_d.message) {
-                if let Ok(_) = process_handshake(msg_d.message) {
+                if let Ok(_) = process_handshake(msg_d.message, peer) {
                     return Some("handshake".to_string());
                 } else {
                     return None;
