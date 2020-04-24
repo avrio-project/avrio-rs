@@ -508,6 +508,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
         let mut is_in_db = false;
         match getGenesisBlock(&blk.header.chain_key) {
             Ok(b) => {
+                trace!("found genesis block in db");
                 genesis = b;
                 is_in_db = true;
             }
@@ -527,6 +528,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             },
         }
         if blk != genesis && genesis != Block::default() {
+            trace!("Genesis blocks missmatch. Ours: {:?}, propsed: {:?}", genesis, blk);
             return Err(blockValidationErrors::genesisBlockMissmatch);
         } else {
             if is_in_db == true {
@@ -538,6 +540,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     return Err(blockValidationErrors::invalidPreviousBlockhash);
                 } else if let Ok(_) = getAccount(&blk.header.chain_key) {
                     // this account allready exists, you can't have two genesis blocks
+                    trace!("Already got acc");
                     return Err(blockValidationErrors::genesisBlockMissmatch);
                 } else if !blk.validSignature() {
                     return Err(blockValidationErrors::badSignature);
