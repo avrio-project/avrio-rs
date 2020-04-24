@@ -295,7 +295,7 @@ impl Default for NetworkConfig {
             probatory_epoch_count: 10,
             certificateDifficulty: 1000, // TODO find this value
             fullnode_lock_amount: 50000,
-            transactionTimestampMaxOffset: 600,
+            transactionTimestampMaxOffset: 600000, // 10 mins
             max_time_to_live: 600000,      // millisecconds
             target_epoch_length: 18000000, // 5 Hours
             fullnode_lock_time: 30 * 5,    // epoches (30 days)
