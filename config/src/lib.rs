@@ -152,12 +152,9 @@ impl Default for ConfigSave {
                     chain_key: "".to_string(),
                     state: 0,
                     ip_host: "127.0.0.1".to_string(),
-                    seednodes: vec![
-                        "127.0.0.1:12345".to_string(),
-                        "127.0.0.1:123456".to_string(),
-                    ],
+                    seednodes: vec!["35.230.157.42:56789".to_string()],
                     ignore_minor_updates: false,
-                    p2p_port: 12345,
+                    p2p_port: 56789,
                     rpc_port: 54321,
                     allow_cors: 'n',
                     node_type: 'n',
@@ -175,12 +172,9 @@ impl Default for ConfigSave {
                     chain_key: "".to_string(),
                     state: 0,
                     ip_host: "127.0.0.1".to_string(),
-                    seednodes: vec![
-                        "127.0.0.1:12345".to_string(),
-                        "127.0.0.1:123456".to_string(),
-                    ],
+                    seednodes: vec!["35.230.157.42:56789".to_string()],
                     ignore_minor_updates: false,
-                    p2p_port: 12345,
+                    p2p_port: 56789,
                     rpc_port: 54321,
                     allow_cors: 'n',
                     node_type: 'n',
@@ -199,12 +193,9 @@ impl Default for ConfigSave {
                 chain_key: "".to_string(),
                 state: 0,
                 ip_host: "127.0.0.1".to_string(),
-                seednodes: vec![
-                    "127.0.0.1:12345".to_string(),
-                    "127.0.0.1:123456".to_string(),
-                ],
+                seednodes: vec!["35.230.157.42:56789".to_string()],
                 ignore_minor_updates: false,
-                p2p_port: 12345,
+                p2p_port: 56789,
                 rpc_port: 54321,
                 allow_cors: 'n',
                 node_type: 'n',
@@ -296,10 +287,10 @@ impl Default for NetworkConfig {
             certificateDifficulty: 1000, // TODO find this value
             fullnode_lock_amount: 50000,
             transactionTimestampMaxOffset: 600000, // 10 mins
-            max_time_to_live: 600000,      // millisecconds
-            target_epoch_length: 18000000, // 5 Hours
-            fullnode_lock_time: 30 * 5,    // epoches (30 days)
-            username_burn_amount: 5000,    // 0.5000 AIO
+            max_time_to_live: 600000,              // millisecconds
+            target_epoch_length: 18000000,         // 5 Hours
+            fullnode_lock_time: 30 * 5,            // epoches (30 days)
+            username_burn_amount: 5000,            // 0.5000 AIO
             first_block_hash: "0x...".to_string(),
             commitee_size: 15,
             consensus_commitee_size: 21,
