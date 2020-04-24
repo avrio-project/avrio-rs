@@ -148,6 +148,7 @@ fn generate_keypair(out: &mut Vec<String>) {
 }
 
 fn main() {
+    ctrlc::set_handler(|| avrio_core::safe_exit()).expect("Error setting Ctrl-C handler");
     let matches = App::new("Avrio Daemon")
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
@@ -542,10 +543,7 @@ fn main() {
         } else if read == "get_address" {
             info!("Your wallet's addres is: {}", wall.address());
         } else if read == "exit" {
-            // TODO: save mempool to disk, close p2p conns, send kill to all threads.
-            info!("Goodbye!");
-            avrio_p2p::close_all(connections_mut);
-            process::exit(0);
+            avrio_core::safe_exit();
         } else if read == "address_details" {
             info!("Enter the address of the account.");
             let addr: String = read!("{}\n");
