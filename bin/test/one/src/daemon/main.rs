@@ -47,8 +47,6 @@ use avrio_crypto::Wallet;
 
 use text_io::read;
 
-extern crate avrio_p2p;
-
 fn connect_seednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
     let mut conn_count: u8 = 0;
     for peer in seednodes {
@@ -107,10 +105,11 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
     return Ok(());
 }
 
-pub fn safe_exit() {
+pub fn safe_exit(mut con_mut: Vec<TcpStream>) {
     // TODO: save mempool to disk + send kill to all threads.
 
     info!("Goodbye!");
+    let connections_mut: Vec<&mut TcpStream> = con_mut.iter_mut().collect();
     avrio_p2p::close_all(connections_mut);
     std::process::exit(0);
 }
@@ -158,7 +157,6 @@ fn generate_keypair(out: &mut Vec<String>) {
 }
 
 fn main() {
-    ctrlc::set_handler(|| safe_exit()).expect("Error setting Ctrl-C handler");
     let matches = App::new("Avrio Daemon")
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
@@ -267,6 +265,9 @@ fn main() {
     for peer in pl {
         let _ = new_connection(peer);
     }
+ 
+    
+
     match syncneed {
         // do we need to sync
         true => {
@@ -553,7 +554,8 @@ fn main() {
         } else if read == "get_address" {
             info!("Your wallet's addres is: {}", wall.address());
         } else if read == "exit" {
-            safe_exit();
+            safe_exit(connections);
+            process::exit(1);
         } else if read == "address_details" {
             info!("Enter the address of the account.");
             let addr: String = read!("{}\n");

@@ -45,15 +45,14 @@ use avrio_rpc::start_server;
 extern crate avrio_crypto;
 use avrio_crypto::Wallet;
 
-extern crate avrio_p2p;
-
 use text_io::read;
 
-pub fn safe_exit() {
+pub fn safe_exit(mut connections_mut: Vec<TcpStream>) {
     // TODO: save mempool to disk + send kill to all threads.
 
     info!("Goodbye!");
-    avrio_p2p::close_all(connections_mut);
+    let con: Vec<&mut TcpStream> = connections_mut.iter_mut().collect();
+    avrio_p2p::close_all(con);
     std::process::exit(0);
 }
 
@@ -158,7 +157,6 @@ fn generate_keypair(out: &mut Vec<String>) {
 }
 
 fn main() {
-    ctrlc::set_handler(|| safe_exit()).expect("Error setting Ctrl-C handler");
     let matches = App::new("Avrio Daemon")
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
@@ -246,6 +244,7 @@ fn main() {
     for peer in pl_u {
         let _ = new_connection(peer);
     }
+
     match pl {
         // do we need to sync
         Ok(_) => {
@@ -555,7 +554,8 @@ fn main() {
         } else if read == "get_address" {
             info!("Your wallet's addres is: {}", wall.address());
         } else if read == "exit" {
-            safe_exit();
+            safe_exit(connections);
+            process::exit(0);
         } else if read == "address_details" {
             info!("Enter the address of the account.");
             let addr: String = read!("{}\n");

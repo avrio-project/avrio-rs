@@ -39,4 +39,3 @@ aead = "0.2.0"
 hex = "0.4.2"
 text_io = "0.1.8"
 avrio_rpc = { path = "../../../rpc" }
-ctrlc = "3.1.4"
