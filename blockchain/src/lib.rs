@@ -528,7 +528,11 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             },
         }
         if blk != genesis && genesis != Block::default() {
-            trace!("Genesis blocks missmatch. Ours: {:?}, propsed: {:?}", genesis, blk);
+            trace!(
+                "Genesis blocks missmatch. Ours: {:?}, propsed: {:?}",
+                genesis,
+                blk
+            );
             return Err(blockValidationErrors::genesisBlockMissmatch);
         } else {
             if is_in_db == true {
@@ -538,9 +542,9 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 // if it isn't it needs to be validated like any other block
                 if &blk.header.prev_hash != "00000000000" {
                     return Err(blockValidationErrors::invalidPreviousBlockhash);
-                } else if let Ok(_) = getAccount(&blk.header.chain_key) {
-                    // this account allready exists, you can't have two genesis blocks
-                    trace!("Already got acc");
+                } else if let Ok(acc) = getAccount(&blk.header.chain_key) {
+                    // this account already exists, you can't have two genesis blocks
+                    trace!("Already got acccount: {:?}", acc);
                     return Err(blockValidationErrors::genesisBlockMissmatch);
                 } else if !blk.validSignature() {
                     return Err(blockValidationErrors::badSignature);
@@ -596,10 +600,14 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 .expect("Time went backwards")
                 .as_millis() as u64)
         {
-            debug!("Block: {} too far in futre. Our time: {}, block time: {}, block justifyed time: {}", blk.hash, (SystemTime::now()
+            debug!("Block: {} too far in futre. Our time: {}, block time: {}, block justifyed time: {}. Delta {}", blk.hash, (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
-            .as_millis() as u64), blk.header.timestamp, blk.header.timestamp - (config().transactionTimestampMaxOffset as u64));
+            .as_millis() as u64), blk.header.timestamp, blk.header.timestamp - (config().transactionTimestampMaxOffset as u64),
+            blk.header.timestamp - (SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+        .as_millis() as u64),);
             return Err(blockValidationErrors::timestampInvalid);
         } else if blk.header.height != 0
             && getBlockFromRaw(blk.header.prev_hash).header.timestamp > blk.header.timestamp
