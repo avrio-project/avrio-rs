@@ -574,7 +574,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             }
         }
         let prev_blk_hash = getBlock(&blk.header.chain_key, &blk.header.height - 1).hash;
-        if blk.header.prev_hash != prev_blk_hash {
+        if blk.header.prev_hash != prev_blk_hash && blk.header.prev_hash != "".to_owned() {
             debug!(
                 "Expected prev hash to be: {}, got: {}. For block at height: {}",
                 prev_blk_hash, blk.header.prev_hash, blk.header.height
