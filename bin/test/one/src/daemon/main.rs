@@ -553,7 +553,7 @@ fn main() {
         } else if read == "get_address" {
             info!("Your wallet's addres is: {}", wall.address());
         } else if read == "exit" {
-            avrio_core::safe_exit();
+            safe_exit();
         } else if read == "address_details" {
             info!("Enter the address of the account.");
             let addr: String = read!("{}\n");
