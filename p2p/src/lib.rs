@@ -430,7 +430,6 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
     }
 }
 
-// TODO sync specific chain func
 /// This function syncs the specifyed chain only from the peer specifyed.
 /// It returns Ok(()) on succsess and handles the inventory generation, inventory saving, block geting, block validation,
 /// block saving, block enacting and informing the user of the progress.
@@ -599,7 +598,6 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
     return Ok(amount_to_sync);
 }
 
-// TODO: Finish syncing code
 /// This is a cover all sync function that will sync all chains and covers getting the top index and syncing from there
 /// for more controll over your sync you should call the sync_chain function which will sync only the chain specifyed.
 /// pl is a vector of mutable refrences of TcpStreams (Vec<&mut TcpStream>), thi function finds the most common chain digest
