@@ -107,6 +107,14 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
     return Ok(());
 }
 
+pub fn safe_exit() {
+    // TODO: save mempool to disk + send kill to all threads.
+
+    info!("Goodbye!");
+    avrio_p2p::close_all(connections_mut);
+    std::process::exit(0);
+}
+
 fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let conf = config();
     let path = conf.db_path + &"/wallets/".to_owned() + &keypair[0];
@@ -150,7 +158,7 @@ fn generate_keypair(out: &mut Vec<String>) {
 }
 
 fn main() {
-    ctrlc::set_handler(|| avrio_core::safe_exit()).expect("Error setting Ctrl-C handler");
+    ctrlc::set_handler(|| safe_exit()).expect("Error setting Ctrl-C handler");
     let matches = App::new("Avrio Daemon")
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
