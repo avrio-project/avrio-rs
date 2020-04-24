@@ -859,9 +859,11 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         P2pdata::default()
     });
     let pid: String;
+    let port: u64;
     match process_handshake(p2p_data.message, &mut stream) {
-        Ok(x) => {
+        Ok((x, p)) => {
             pid = x;
+            port = p.parse().unwrap_or_default();
         }
         _ => {
             debug!("Got no id from peer");
@@ -872,9 +874,21 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
         sent_bytes: 0,
         recieved_bytes: 0,
     };
-    avrio_database::add_peer(socket)?;
+    let peer_str = format!(
+        "{}:{}",
+        stream
+            .peer_addr()
+            .unwrap()
+            .to_string()
+            .split(":")
+            .to_owned()
+            .collect::<Vec<&str>>()[0],
+        port
+    );
+    let sockadd: SocketAddr = peer_str.parse()?;
+    avrio_database::add_peer(sockadd)?;
     let _ = stream.flush();
-    add_peer(stream.peer_addr()?.to_string());
+    add_peer(peer_str);
     let cloned = stream.try_clone()?;
     thread::spawn(move || {
         let _ = handle_client(cloned);
@@ -903,7 +917,7 @@ fn process_block(s: String) {
     }
 }
 
-fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> {
+fn process_handshake(s: String, peer: &mut TcpStream) -> Result<(String, String), String> {
     trace!("Handshake: {}", s);
     if in_handshakes(&s) {
         return Err("already handshook".into());
@@ -945,7 +959,7 @@ fn process_handshake(s: String, peer: &mut TcpStream) -> Result<String, String> 
             .collect::<Vec<&str>>()[0],
         port
     ));
-    return Ok((&id_cow).to_string());
+    return Ok(((&id_cow).to_string(), port.to_string()));
 }
 
 pub enum p2p_errors {
