@@ -66,7 +66,7 @@ fn get_peers() -> Vec<(String, String)> {
 }
 
 fn update(n: Vec<(String, String)>) -> Result<(), Box<dyn std::error::Error>> {
-    trace!("UPDATING PEER");
+    trace!("UPDATING PEERS");
     *PEERS.lock()? = n;
     return Ok(());
 }
@@ -74,7 +74,9 @@ fn update(n: Vec<(String, String)>) -> Result<(), Box<dyn std::error::Error>> {
 fn in_peers(peer: &String) -> bool {
     trace!("checking if peer: {} in peerlist", peer);
     for (peer_str, _) in get_peers() {
-        if &peer_str == peer {
+        if peer_str.split(":").to_owned().collect::<Vec<&str>>()[0]
+            == peer.split(":").to_owned().collect::<Vec<&str>>()[0]
+        {
             trace!("Peer found");
             return true;
         }
@@ -89,7 +91,9 @@ fn lock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
     let mut peers = get_peers();
     let mut i: usize = 0;
     for (peer_str, _) in get_peers() {
-        if &peer_str == peer {
+        if peer_str.split(":").to_owned().collect::<Vec<&str>>()[0].to_owned()
+            == peer.split(":").to_owned().collect::<Vec<&str>>()[0]
+        {
             trace!("Peer found, locking");
             peers[i].1 = "l".to_owned();
         }
@@ -104,7 +108,9 @@ fn unlock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
     let mut peers = get_peers();
     let mut i: usize = 0;
     for (peer_str, _) in get_peers() {
-        if &peer_str == peer {
+        if peer_str.split(":").to_owned().collect::<Vec<&str>>()[0].to_owned()
+            == peer.split(":").to_owned().collect::<Vec<&str>>()[0]
+        {
             trace!("Peer found");
             peers[i].1 = "nl".to_owned();
         }
@@ -117,7 +123,9 @@ fn unlock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
 fn locked(peer: &String) -> bool {
     // trace!("checking locked status for peer: {}", peer);
     for (peer_str, lock_or_not) in get_peers() {
-        if &peer_str == peer {
+        if peer_str.split(":").to_owned().collect::<Vec<&str>>()[0].to_owned()
+            == peer.split(":").to_owned().collect::<Vec<&str>>()[0]
+        {
             if lock_or_not == "l" {
                 return true;
             } else {
