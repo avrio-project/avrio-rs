@@ -231,7 +231,20 @@ pub struct ChainDigestPeer {
 
 // TODO: Sync needed function
 pub fn sync_needed() -> bool {
-    return true;
+    let mut chain_digests: Vec<String> = vec![];
+    for mut peer in get_streams() {
+        chain_digests.push(get_chain_digest_string(&mut peer, true));
+    }
+    if chain_digests.len() == 0 {
+        return true;
+    } else {
+        let mode: String = get_mode(chain_digests);
+        if getData(config().db_path + &"/chaindigest".to_owned(), &"master") == mode {
+            return false;
+        } else {
+            return true;
+        }
+    }
 }
 
 fn send_peerlist(peer: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
@@ -359,6 +372,24 @@ pub fn close_all(streams: Vec<&mut TcpStream>) {
     for stream in streams {
         let _ = sendData(&"".to_string(), stream, 0xFF);
     }
+}
+
+fn get_chain_digest_string(peer: &mut TcpStream, unlock: bool) -> String {
+    lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+    let _ = sendData(&"".to_owned(), peer, 0x1c);
+    let res = loop {
+        let read = read(peer).unwrap_or_else(|e| {
+            error!("Failed to read p2pdata: {}", e);
+            P2pdata::default()
+        });
+        let peer_n = peer.try_clone();
+        break read.message;
+    };
+    if unlock == true {
+        debug!("Releasing lock on peer");
+        unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+    }
+    return res;
 }
 
 /// this asks the peer for their chain digest
