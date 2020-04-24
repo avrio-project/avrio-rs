@@ -32,6 +32,37 @@ lazy_static! {
     static ref HANDSHAKES: Mutex<Vec<String>> = Mutex::new(vec![]);
 }
 
+lazy_static! {
+    static ref STREAMS: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
+}
+
+fn add_streams(p: TcpStream) {
+    STREAMS.lock().unwrap().push(p);
+}
+
+fn get_streams() -> Vec<TcpStream> {
+    let val = STREAMS.lock().unwrap();
+    let iter = val.iter();
+    let mut peers: Vec<TcpStream> = vec![];
+    for peer in iter {
+        peers.push(peer.try_clone().unwrap())
+    }
+    return peers;
+}
+
+fn in_streams(p: &String) -> bool {
+    trace!("peer: {}", p);
+    for peer in get_streams() {
+        if strip_port(&peer.peer_addr().unwrap().to_string()) == strip_port(p) {
+            trace!("Handshake found");
+            return true;
+        }
+        trace!("peer: {:?}", peer);
+    }
+    trace!("Peer streams not found");
+    return false;
+}
+
 fn add_handsake(hs: String) {
     HANDSHAKES.lock().unwrap().push(hs);
 }
@@ -221,6 +252,7 @@ pub fn prop_block(
     peers: &Vec<&mut TcpStream>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     for peer in peers {
+        debug!("Sending block to peer: {:?}", peer);
         sendBlockStruct(blk, &mut peer.try_clone().unwrap())?;
     }
     return Ok(());
@@ -827,6 +859,7 @@ pub fn rec_server() -> u8 {
                     stream.peer_addr().unwrap()
                 );
                 let _ = avrio_database::add_peer(stream.peer_addr().unwrap());
+                let _ = add_streams(stream.try_clone().unwrap());
                 if let Err(e) = avrio_database::add_peer(stream.peer_addr().unwrap()) {
                     error!(
                         "Failed to add peer: {} to peer list, gave error: {}",
@@ -907,6 +940,7 @@ pub fn new_connection(socket: SocketAddr) -> Result<Peer, Box<dyn Error>> {
     avrio_database::add_peer(sockadd)?;
     let _ = stream.flush();
     add_peer(peer_str);
+    let _ = add_streams(stream.try_clone()?);
     let cloned = stream.try_clone()?;
     thread::spawn(move || {
         let _ = handle_client(cloned);
@@ -933,14 +967,14 @@ fn process_block(s: String, from_peer: SocketAddr) {
             if let Ok(_) = saveBlock(block.clone()) {
                 let _ = enact_block(block);
             }
-        }
-        for peer in get_peers() {
-            if peer.1 != "l" {
-                if strip_port(&peer.0) != strip_port(&from_peer.to_string()) {
-                    if let Ok(peer_addr) = peer.0.parse::<SocketAddr>() {
-                        if let Ok(mut stream) = TcpStream::connect(peer_addr) {
-                            let _ = sendData(&s, &mut stream, 0x0a);
-                        }
+
+            for mut peer in get_streams() {
+                if !locked(&peer.peer_addr().unwrap().to_string()) {
+                    if strip_port(&peer.peer_addr().unwrap().to_string())
+                        != strip_port(&from_peer.to_string())
+                    {
+                        trace!("Propigating block to peer: {:?}", peer);
+                        let _ = sendData(&s, &mut peer, 0x0a);
                     }
                 }
             }
