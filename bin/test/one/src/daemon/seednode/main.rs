@@ -115,8 +115,8 @@ fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> 
 }
 
 fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let conf = config();
-    let path = conf.db_path + &"/wallets/".to_owned() + &keypair[0];
+    let mut conf = config();
+    let path = conf.db_path.clone() + &"/wallets/".to_owned() + &keypair[0];
     if conf.wallet_password == Config::default().wallet_password {
         warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword>");
     }
@@ -144,6 +144,8 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
     let _ = saveData(publickey_en, path.clone(), "pubkey".to_owned());
     let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
     info!("Saved wallet to {}", path);
+    conf.chain_key = keypair[0].clone();
+    conf.save()?;
     return Ok(());
 }
 
@@ -154,6 +156,47 @@ fn generate_keypair(out: &mut Vec<String>) {
     let mut conf = config();
     conf.chain_key = wallet.public_key;
     let _ = conf.save();
+}
+
+fn open_wallet(key: String, address: bool) -> Wallet {
+    let wall: Wallet;
+    if address == true {
+        wall = Wallet::from_address(key);
+    } else {
+        wall = Wallet::new(key, "".to_owned());
+    }
+    // TODO: use unique nonce
+    let mut padded = config().wallet_password.as_bytes().to_vec();
+    while padded.len() != 32 && padded.len() < 33 {
+        padded.push(b"n"[0]);
+    }
+    let padded_string = String::from_utf8(padded).unwrap();
+    let key = GenericArray::clone_from_slice(padded_string.as_bytes());
+    let aead = Aes256Gcm::new(key);
+    let mut padded = b"nonce".to_vec();
+    while padded.len() != 12 {
+        padded.push(b"n"[0]);
+    }
+    let padded_string = String::from_utf8(padded).unwrap();
+    let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message    let ciphertext = getData(
+    let ciphertext = getData(
+        config().db_path + &"/wallets/".to_owned() + &wall.public_key,
+        &"privkey".to_owned(),
+    );
+    let privkey = String::from_utf8(
+        hex::decode(
+            String::from_utf8(
+                aead.decrypt(nonce, ciphertext.as_ref())
+                    .expect("decryption failure!"),
+            )
+            .expect("failed to parse utf8"),
+        )
+        .expect("failed to parse hex")
+        .to_vec(),
+    )
+    .expect("Failed to parse hex bytes");
+    // now send block
+    return Wallet::from_private_key(privkey);
 }
 
 fn main() {
@@ -276,6 +319,7 @@ fn main() {
     } else {
         return ();
     }
+    let wall: Wallet;
     if config().chain_key == "".to_owned() {
         info!("Generating a chain for self");
         generate_keypair(&mut chain_key);
@@ -357,8 +401,10 @@ fn main() {
                 process::exit(1);
             }
         };
+        wall = Wallet::from_private_key(chain_key[1].clone());
     } else {
         info!("Using chain: {}", config().chain_key);
+        wall = open_wallet(config().chain_key, false);
     }
     info!(
         " Launching P2p server on 127.0.0.1::{:?}",
@@ -373,8 +419,6 @@ fn main() {
             process::exit(1);
         }
     });
-
-    let wall = Wallet::from_private_key(chain_key[1].clone());
     info!(
         "txn count for our chain: {}",
         avrio_database::getData(
