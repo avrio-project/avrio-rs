@@ -47,6 +47,8 @@ use avrio_crypto::Wallet;
 
 use text_io::read;
 
+extern crate avrio_p2p;
+
 fn connect_seednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
     let mut conn_count: u8 = 0;
     for peer in seednodes {

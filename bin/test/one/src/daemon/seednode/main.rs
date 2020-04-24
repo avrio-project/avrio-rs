@@ -45,6 +45,8 @@ use avrio_rpc::start_server;
 extern crate avrio_crypto;
 use avrio_crypto::Wallet;
 
+extern crate avrio_p2p;
+
 use text_io::read;
 
 fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
