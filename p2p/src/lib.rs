@@ -1163,7 +1163,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     debug!("Cant find block (context getblocksabovehash)");
                     return None;
                 } else {
-                    let mut got: u64 = 0;
+                    let mut got: u64 = block_from.header.height;
                     let mut prev: Block = block_from;
                     let mut blks: Vec<Block> = vec![];
                     while prev != Default::default() {
