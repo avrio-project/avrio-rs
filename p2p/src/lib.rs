@@ -322,7 +322,14 @@ fn sendChainDigest(peer: &mut TcpStream) {
         let _ = sendData(&chains_digest, peer, 0x01);
     }
 }
-/// this asks the peer for thier chain digest
+
+pub fn close_all(streams: Vec<&mut TcpStream>) {
+    for stream in streams {
+        let _ = sendData(&"".to_string(), stream, 0xFF);
+    }
+}
+
+/// this asks the peer for their chain digest
 fn getChainDigest(peer: &mut TcpStream, unlock: bool) -> ChainDigestPeer {
     lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     let _ = sendData(&"".to_owned(), peer, 0x1c);
@@ -733,7 +740,6 @@ pub fn get_peerlist(peer: &mut TcpStream) -> Result<Vec<SocketAddr>, Box<dyn std
 }
 
 fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
-    use std::time::{SystemTime, UNIX_EPOCH};
     let mut buf = [0; 100000];
     thread::sleep_ms(1);
     loop {
@@ -774,6 +780,9 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                                     );
                                         stream.shutdown(Shutdown::Both).unwrap();
                                         return Err("Nonhandshake first msg".into());
+                                    } else if a == "shutdown" {
+                                        stream.shutdown(Shutdown::Both).unwrap();
+                                        return Ok(());
                                     }
                                 }
                                 _ => {}
@@ -1172,6 +1181,13 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
             trace!("Sending peerlist");
             let _ = send_peerlist(peer);
             return Some("get_peerlist".into());
+        }
+        0xFF => {
+            trace!(
+                "Shutting connection to peer: {:?} (requested)",
+                peer.peer_addr()
+            );
+            return Some("shutdown".into());
         }
         _ => {
             warn!("Bad Message type from peer. Message type: {}. (If you are getting, lots of these check for updates)", msg_d.message_type.to_string());
