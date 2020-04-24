@@ -125,6 +125,7 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
         padded.push(b"n"[0]);
     }
     let padded_string = String::from_utf8(padded).unwrap();
+    trace!("key: {}", padded_string);
     let key = GenericArray::clone_from_slice(padded_string.as_bytes());
     let aead = Aes256Gcm::new(key);
     let mut padded = b"nonce".to_vec();
@@ -133,6 +134,7 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
     }
     let padded_string = String::from_utf8(padded).unwrap();
     let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
+    trace!("nonce: {}", padded_string);
     let publickey_en = hex::encode(
         aead.encrypt(nonce, keypair[0].as_bytes().as_ref())
             .expect("wallet public key encryption failure!"),
@@ -171,6 +173,7 @@ fn open_wallet(key: String, address: bool) -> Wallet {
         padded.push(b"n"[0]);
     }
     let padded_string = String::from_utf8(padded).unwrap();
+    trace!("key: {}", padded_string);
     let key = GenericArray::clone_from_slice(padded_string.as_bytes());
     let aead = Aes256Gcm::new(key);
     let mut padded = b"nonce".to_vec();
@@ -178,11 +181,13 @@ fn open_wallet(key: String, address: bool) -> Wallet {
         padded.push(b"n"[0]);
     }
     let padded_string = String::from_utf8(padded).unwrap();
-    let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message    let ciphertext = getData(
+    let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
+    trace!("nonce: {}", padded_string);
     let ciphertext = getData(
         config().db_path + &"/wallets/".to_owned() + &wall.public_key,
         &"privkey".to_owned(),
     );
+    trace!("ciphertext: {}", ciphertext);
     let privkey = String::from_utf8(
         hex::decode(
             String::from_utf8(
