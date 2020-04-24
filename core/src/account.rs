@@ -84,7 +84,8 @@ impl Account {
 /// Gets the account assosiated with the username provided
 /// if the account or the username does not exist it returns an err
 pub fn getByUsername(username: &String) -> Result<Account, String> {
-    let path = config().db_path + &"/usernames/".to_owned() + &avrio_crypto::raw_hash(username) + ".uname";
+    let path =
+        config().db_path + &"/usernames/".to_owned() + &avrio_crypto::raw_hash(username) + ".uname";
     if let Ok(mut file) = File::open(path) {
         let mut contents = String::new();
         let _ = file.read_to_string(&mut contents);
@@ -100,7 +101,10 @@ pub fn setAccount(acc: &Account) -> u8 {
     let getAccOld = getAccount(&acc.public_key);
     if let Ok(deserialized) = getAccOld {
         if acc.username != deserialized.username && deserialized != Account::default() {
-            let upath = config().db_path + &"/usernames/".to_owned() + &avrio_crypto::raw_hash(&acc.username) + ".uname";
+            let upath = config().db_path
+                + &"/usernames/".to_owned()
+                + &avrio_crypto::raw_hash(&acc.username)
+                + ".uname";
             info!("saving uname: {}.", deserialized.username);
             let filetry = File::create(upath);
             if let Ok(mut file) = filetry {
