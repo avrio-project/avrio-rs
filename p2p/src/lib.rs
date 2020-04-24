@@ -422,24 +422,7 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
             if p2p != P2pdata::default() {
                 trace!("Found EOF of message!");
                 logP2pMessage(&p2p);
-                if p2p.message_type == 0x1a {
-                    // rehandshake
-
-                    let msg = &format!(
-                        "{}*{}*{}*{}",
-                        hex::encode(config().network_id),
-                        &config().identitiy,
-                        &config().node_type,
-                        &config().p2p_port
-                    );
-                    debug!("Our rehandshake: {}", msg);
-                    // send our handshake
-                    let _ = sendData(&msg, peer, 0x1a);
-
-                    return read(peer);
-                } else {
-                    return Ok(p2p);
-                }
+                return Ok(p2p);
             } else {
                 trace!("from_str returned default");
             }
@@ -801,19 +784,11 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                                         let _ = sendData(&msg, &mut stream, 0x1a);
                                     } else if !in_peers(&stream.peer_addr().unwrap().to_string()) {
                                         debug!(
-                                            "handshaking with {}, first message not handshake",
+                                            "Terminating connection with {}, first message not handshake",
                                             stream.peer_addr().unwrap()
                                         );
-                                        let msg = &format!(
-                                            "{}*{}*{}*{}",
-                                            hex::encode(config().network_id),
-                                            &config().identitiy,
-                                            &config().node_type,
-                                            &config().p2p_port
-                                        );
-                                        debug!("Our handshake: {}", msg);
-                                        // send our handshake
-                                        let _ = sendData(&msg, &mut stream, 0x1a);
+                                        stream.shutdown(Shutdown::Both).unwrap();
+                                        return Err("Nonhandshake first msg".into());
                                     } else if a == "shutdown" {
                                         stream.shutdown(Shutdown::Both).unwrap();
                                         return Ok(());
