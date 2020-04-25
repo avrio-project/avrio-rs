@@ -145,7 +145,7 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
     let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
     info!("Saved wallet to {}", path);
     conf.chain_key = keypair[0].clone();
-    conf.save()?;
+    conf.create()?;
     return Ok(());
 }
 
@@ -412,20 +412,20 @@ fn main() {
         wall = open_wallet(config().chain_key, false);
     }
     info!(
-        " Launching P2p server on 127.0.0.1::{:?}",
+        " Launching P2p server on 0.0.0.0:{}",
         config().p2p_port
     );
     let _p2p_handler = thread::spawn(|| {
         if rec_server() != 1 {
             error!(
-                "Error launching P2p server on 127.0.0.1::{:?} (Fatal)",
+                "Error launching P2p server on 0.0.0.0:{} (Fatal)",
                 config().p2p_port
             );
             process::exit(1);
         }
     });
     info!(
-        "txn count for our chain: {}",
+        "Transaction count for our chain: {}",
         avrio_database::getData(
             config().db_path
                 + &"/chains/".to_owned()
@@ -434,54 +434,6 @@ fn main() {
             &"txncount".to_owned(),
         )
     );
-    let mut txn = Transaction {
-        hash: String::from(""),
-        amount: 500005, // 1234.5 AIO
-        extra: String::from(""),
-        flag: 'c',
-        sender_key: wall.public_key.clone(),
-        receive_key: String::from(""),
-        access_key: String::from(""),
-        unlock_time: 0,
-        gas_price: 10, // 0.001 AIO
-        gas: 0,        // claim uses 0 fee
-        max_gas: u64::max_value(),
-        nonce: 0,
-        timestamp: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_millis() as u64,
-        signature: String::from(""),
-    };
-    txn.hash();
-    let _ = txn.sign(&wall.private_key);
-    txn.validate_transaction();
-    let mut blk = Block {
-        header: Header {
-            version_major: 0,
-            version_breaking: 0,
-            version_minor: 0,
-            chain_key: wall.public_key.clone(),
-            prev_hash: getBlock(&wall.public_key, 0).hash,
-            height: 1,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_millis() as u64,
-            network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101],
-        },
-        txns: vec![txn],
-        hash: "".to_owned(),
-        signature: "".to_owned(),
-        confimed: false,
-        node_signatures: vec![],
-    };
-    blk.hash();
-    let _ = blk.sign(&wall.private_key);
-    let _ = check_block(blk.clone()).unwrap();
-    let _ = saveBlock(blk.clone()).unwrap();
-    prop_block(&blk, &connections_mut).unwrap();
-    let _ = enact_block(blk).unwrap();
     let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
     info!("Our balance: {}", ouracc.balance_ui().unwrap());
     loop {
