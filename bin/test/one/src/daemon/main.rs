@@ -145,7 +145,7 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
     let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
     info!("Saved wallet to {}", path);
     conf.chain_key = keypair[0].clone();
-    //conf.save()?;
+    conf.save()?;
     return Ok(());
 }
 
@@ -179,23 +179,16 @@ fn open_wallet(key: String, address: bool) -> Wallet {
     }
     let padded_string = String::from_utf8(padded).unwrap();
     let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message    let ciphertext = getData(
-    let ciphertext = getData(
+    let ciphertext = hex::decode(getData(
         config().db_path + &"/wallets/".to_owned() + &wall.public_key,
         &"privkey".to_owned(),
-    );
+    ))
+    .expect("failed to parse hex");
     let privkey = String::from_utf8(
-        hex::decode(
-            String::from_utf8(
-                aead.decrypt(nonce, ciphertext.as_ref())
-                    .expect("decryption failure!"),
-            )
-            .expect("failed to parse utf8"),
-        )
-        .expect("failed to parse hex")
-        .to_vec(),
+        aead.decrypt(nonce, ciphertext.as_ref())
+            .expect("decryption failure!"),
     )
-    .expect("Failed to parse hex bytes");
-    // now send block
+    .expect("failed to parse utf8 (i1)");
     return Wallet::from_private_key(privkey);
 }
 
