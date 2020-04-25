@@ -260,10 +260,7 @@ fn main() {
         let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
     }
-    info!(
-        "Launching P2p server on 0.0.0.0:{}",
-        config().p2p_port
-    );
+    info!("Launching P2p server on 0.0.0.0:{}", config().p2p_port);
     let _p2p_handler = thread::spawn(|| {
         if rec_server() != 1 {
             error!(
@@ -277,7 +274,6 @@ fn main() {
     let mut connections: Vec<TcpStream> = vec![];
     connect(get_peerlist().unwrap_or_default(), &mut connections);
     let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
-    let syncneed = sync_needed();
     let mut new_peers: Vec<SocketAddr> = vec![];
     for connection in &connections_mut {
         for peer in
@@ -297,6 +293,7 @@ fn main() {
     for peer in pl_u {
         let _ = new_connection(peer);
     }
+    let syncneed = sync_needed();
 
     match pl {
         // do we need to sync

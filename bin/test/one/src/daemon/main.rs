@@ -263,7 +263,6 @@ fn main() {
             process::exit(1);
         }
     });
-    let syncneed = avrio_p2p::sync_needed();
     let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
     if pl.len() < 1 {
         let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
@@ -296,7 +295,7 @@ fn main() {
     for peer in pl {
         let _ = new_connection(peer);
     }
-
+    let syncneed = avrio_p2p::sync_needed();
     match syncneed {
         // do we need to sync
         true => {

@@ -233,13 +233,20 @@ pub struct ChainDigestPeer {
 pub fn sync_needed() -> bool {
     let mut chain_digests: Vec<String> = vec![];
     for mut peer in get_streams() {
+        trace!("Getting chain digest for peer: {:?}", peer);
         chain_digests.push(get_chain_digest_string(&mut peer, true));
     }
     if chain_digests.len() == 0 {
+        trace!("No streams in list");
         return true;
     } else {
-        let mode: String = get_mode(chain_digests);
-        if getData(config().db_path + &"/chaindigest".to_owned(), &"master") == mode {
+        let mode: String = get_mode(chain_digests.clone());
+        let ours = getData(config().db_path + &"/chaindigest".to_owned(), &"master");
+        debug!(
+            "Chain digests: {:#?}, mode: {}, ours: {}",
+            chain_digests, mode, ours
+        );
+        if ours == mode {
             return false;
         } else {
             return true;
