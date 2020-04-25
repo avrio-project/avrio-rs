@@ -253,16 +253,11 @@ fn main() {
         let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
     }
-    info!(
-        " Launching P2p server on {}::{:?}",
-        config().ip_host,
-        config().p2p_port
-    );
+    info!(" Launching P2p server on 0.0.0.0:{}", config().p2p_port);
     let _p2p_handler = thread::spawn(|| {
         if rec_server() != 1 {
             error!(
-                "Error launching P2p server on {}::{:?} (Fatal)",
-                config().ip_host,
+                "Error launching P2p server on 0.0.0.0:{} (Fatal)",
                 config().p2p_port
             );
             process::exit(1);
@@ -411,19 +406,6 @@ fn main() {
         info!("Using chain: {}", config().chain_key);
         wall = open_wallet(config().chain_key, false);
     }
-    info!(
-        " Launching P2p server on 0.0.0.0:{}",
-        config().p2p_port
-    );
-    let _p2p_handler = thread::spawn(|| {
-        if rec_server() != 1 {
-            error!(
-                "Error launching P2p server on 0.0.0.0:{} (Fatal)",
-                config().p2p_port
-            );
-            process::exit(1);
-        }
-    });
     info!(
         "Transaction count for our chain: {}",
         avrio_database::getData(
