@@ -122,7 +122,7 @@ fn in_peers(peer: &String) -> bool {
 }
 
 fn lock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
-    trace!("LOCKING PEER");
+    trace!("LOCKING PEER {:?}", peer);
     let mut peers = get_peers();
     let mut i: usize = 0;
     for (peer_str, _) in get_peers() {
@@ -139,7 +139,7 @@ fn lock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn unlock_peer(peer: &String) -> Result<(), Box<dyn std::error::Error>> {
-    trace!("UNLOCKING PEER");
+    trace!("UNLOCKING PEER {:?}", peer);
     let mut peers = get_peers();
     let mut i: usize = 0;
     for (peer_str, _) in get_peers() {
@@ -826,54 +826,70 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                 in_peers(&stream.peer_addr()?.to_string())
             );
             if let Ok(a) = stream.peek(&mut buf) {
+                info!("peeked: {}", a);
                 if a > 0 {
-                    let read_msg = read(&mut stream);
-                    match read_msg {
-                        Ok(read) => {
-                            debug!("DEFORMING");
-                            match deformMsg(&serde_json::to_string(&read).unwrap(), &mut stream) {
-                                Some(a) => {
-                                    if a == "handshake" {
-                                        /* we just recieved a handshake, now we send ours
-                                        This is in the following format
-                                        network id, our peer id, our node type;
-                                        */
-                                        let msg = &format!(
-                                            "{}*{}*{}*{}",
-                                            hex::encode(config().network_id),
-                                            &config().identitiy,
-                                            &config().node_type,
-                                            &config().p2p_port
-                                        );
-                                        debug!("Our handshake: {}", msg);
-                                        // send our handshake
-                                        let _ = sendData(&msg, &mut stream, 0x1a);
-                                    } else if !in_peers(&stream.peer_addr().unwrap().to_string()) {
-                                        debug!(
+                    trace!("peeked non zero byte message");
+                    if !locked(&stream.peer_addr()?.to_string()) {
+                        debug!(
+                            "peer: {}, not locked! in peerlist: {}",
+                            &stream.peer_addr()?.to_string(),
+                            in_peers(&stream.peer_addr()?.to_string())
+                        );
+                        let read_msg = read(&mut stream);
+                        match read_msg {
+                            Ok(read) => {
+                                debug!("Deforming: {:?}", read);
+                                match deformMsg(&serde_json::to_string(&read).unwrap(), &mut stream)
+                                {
+                                    Some(a) => {
+                                        if a == "handshake" {
+                                            /* we just recieved a handshake, now we send ours
+                                            This is in the following format
+                                            network id, our peer id, our node type;
+                                            */
+                                            let msg = &format!(
+                                                "{}*{}*{}*{}",
+                                                hex::encode(config().network_id),
+                                                &config().identitiy,
+                                                &config().node_type,
+                                                &config().p2p_port
+                                            );
+                                            debug!("Our handshake: {}", msg);
+                                            // send our handshake
+                                            let _ = sendData(&msg, &mut stream, 0x1a);
+                                        } else if !in_peers(
+                                            &stream.peer_addr().unwrap().to_string(),
+                                        ) {
+                                            debug!(
                                             "Terminating connection with {}, first message not handshake",
                                             stream.peer_addr().unwrap()
                                         );
-                                        stream.shutdown(Shutdown::Both).unwrap();
-                                        return Err("Nonhandshake first msg".into());
-                                    } else if a == "shutdown" {
-                                        stream.shutdown(Shutdown::Both).unwrap();
-                                        return Ok(());
+                                            stream.shutdown(Shutdown::Both).unwrap();
+                                            return Err("Nonhandshake first msg".into());
+                                        } else if a == "shutdown" {
+                                            stream.shutdown(Shutdown::Both).unwrap();
+                                            return Ok(());
+                                        }
                                     }
+                                    _ => {}
                                 }
-                                _ => {}
+                            }
+                            Err(e) => {
+                                debug!(
+                                    "Terminating connection with {}, gave error {}",
+                                    stream.peer_addr().unwrap(),
+                                    e
+                                );
+                                stream.shutdown(Shutdown::Both).unwrap();
+                                return Err(e.into());
                             }
                         }
-                        Err(e) => {
-                            debug!(
-                                "Terminating connection with {}, gave error {}",
-                                stream.peer_addr().unwrap(),
-                                e
-                            );
-                            stream.shutdown(Shutdown::Both).unwrap();
-                            return Err(e.into());
-                        }
                     }
+                } else {
+                    trace!("no data");
                 }
+            } else {
+                trace!("failed to peek");
             }
         }
     }
