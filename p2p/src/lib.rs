@@ -360,10 +360,8 @@ pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box
 /// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
 /// it is calculated with the generateChainDigest function which is auto called every time we get a new block
 fn sendChainDigest(peer: &mut TcpStream) {
-    let chains_digest = getData(
-        config().db_path + &"/chains/masterchainindex",
-        &"digest".to_string(),
-    );
+    let chains_digest = getData(config().db_path + &"/chaindigest".to_owned(), &"master");
+    trace!("sending our chain digest: {}", chains_digest);
     if chains_digest == "-1".to_owned() || chains_digest == "0".to_owned() {
         let _ = sendData(
             &generate_merkle_root_all().unwrap_or("".to_owned()),
