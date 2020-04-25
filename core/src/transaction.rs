@@ -144,6 +144,21 @@ impl Transaction {
             acc.balance += self.amount;
             trace!("Saving acc");
             let _ = acc.save();
+            trace!("Get txn count");
+            let txn_count: u64 = avrio_database::getDataDb(chain_idex_db, &"txncount").parse()?;
+            trace!("Setting txn count");
+            if avrio_database::setDataDb(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
+                != 1
+            {
+                return Err("failed to update send acc nonce".into());
+            } else {
+                trace!(
+                    "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
+                    self.sender_key,
+                    txn_count,
+                    txn_count + 1
+                );
+            }
         } else if txn_type == "username registraion".to_string() {
             trace!("Getting acc (uname reg)");
             let mut acc = getAccount(&self.sender_key).unwrap_or_default();
@@ -158,6 +173,25 @@ impl Transaction {
                 trace!("Saving acc");
                 if let Err(_) = acc.save() {
                     return Err("failed to save account (after username addition)".into());
+                }
+                trace!("Get txn count");
+                let txn_count: u64 =
+                    avrio_database::getDataDb(chain_idex_db, &"txncount").parse()?;
+                trace!("Setting txn count");
+                if avrio_database::setDataDb(
+                    &(txn_count + 1).to_string(),
+                    chain_idex_db,
+                    &"txncount",
+                ) != 1
+                {
+                    return Err("failed to update send acc nonce".into());
+                } else {
+                    trace!(
+                        "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
+                        self.sender_key,
+                        txn_count,
+                        txn_count + 1
+                    );
                 }
             }
         } else {
