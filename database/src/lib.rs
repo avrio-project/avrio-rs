@@ -35,7 +35,7 @@ pub fn saveData(serialized: String, path: String, key: String) -> u8 {
         error!("Failed to save data to db, gave error: {}", e);
         return 0;
     } else {
-        debug!(
+        trace!(
             "set data to db: {}, key: {}, value, {}",
             db.path().display(),
             key,
@@ -94,11 +94,11 @@ pub fn getData(path: String, key: &str) -> String {
     match db.get(key) {
         Ok(Some(value)) => {
             data = String::from_utf8(value).unwrap_or("".to_owned());
-            debug!("got data from db: {}, data: {}", path, data);
+            trace!("got data from db: {}, data: {}", path, data);
         }
         Ok(None) => {
             data = "-1".to_owned();
-            debug!("got data from db: {}, data: None", path);
+            trace!("got data from db: {}, data: None", path);
         }
         Err(e) => {
             data = "0".to_owned();
@@ -113,11 +113,11 @@ pub fn getDataDb(db: &DB, key: &str) -> String {
     match db.get(key) {
         Ok(Some(value)) => {
             data = String::from_utf8(value).unwrap_or("".to_owned());
-            debug!("got data (db) from db: {}, data: {}", db.path().display(), data);
+            trace!("got data (db) from db: {}, data: {}", db.path().display(), data);
         }
         Ok(None) => {
             data = "-1".to_owned();
-            debug!("got data (db) from db: {}, data: None", db.path().display());
+            trace!("got data (db) from db: {}, data: None", db.path().display());
         }
         Err(e) => {
             data = "0".to_owned();
@@ -136,7 +136,7 @@ pub fn setDataDb(value: &String, db: &DB, key: &str) -> u8 {
         );
         return 0;
     } else {
-        debug!(
+        trace!(
             "set data (db) to db: {}, key: {}, value, {}",
             db.path().display(),
             key,
