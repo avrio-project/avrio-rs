@@ -12,9 +12,12 @@ pub fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x1c, "Send Chain Digest");
     message_types.insert(0x22, "Sync Request");
     message_types.insert(0x45, "Send Block Count");
+    message_types.insert(0x46, "Got Block Count");
     message_types.insert(0x60, "Get Chain List");
+    message_types.insert(0x61, "Got Chain List");
     message_types.insert(0x6f, "Get Block Above Hash");
     message_types.insert(0x99, "Get Peer List");
+    message_types.insert(0x9f, "Got Peer List");
     message_types.insert(0xff, "Shutdown");
 
     return message_types;
