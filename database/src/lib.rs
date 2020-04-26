@@ -31,10 +31,16 @@ pub fn saveData(serialized: String, path: String, key: String) -> u8 {
         error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
     });
-    if let Err(e) = db.put(key, serialized) {
+    if let Err(e) = db.put(key.clone(), serialized.clone()) {
         error!("Failed to save data to db, gave error: {}", e);
         return 0;
     } else {
+        debug!(
+            "set data to db: {}, key: {}, value, {}",
+            db.path().display(),
+            key,
+            serialized
+        );
         return 1;
     }
 }
@@ -80,15 +86,24 @@ pub fn save_peerlist(
 }
 
 pub fn getData(path: String, key: &str) -> String {
-    let db = openDb(path).unwrap_or_else(|e| {
+    let db = openDb(path.clone()).unwrap_or_else(|e| {
         error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
     });
     let data: String;
     match db.get(key) {
-        Ok(Some(value)) => data = String::from_utf8(value).unwrap_or("".to_owned()),
-        Ok(None) => data = "-1".to_owned(),
-        Err(_) => data = "0".to_owned(),
+        Ok(Some(value)) => {
+            data = String::from_utf8(value).unwrap_or("".to_owned());
+            debug!("got data from db: {}, data: {}", path, data);
+        }
+        Ok(None) => {
+            data = "-1".to_owned();
+            debug!("got data from db: {}, data: None", path);
+        }
+        Err(e) => {
+            data = "0".to_owned();
+            error!("Error {} getting data from db", e);
+        }
     }
     return data;
 }
@@ -96,9 +111,18 @@ pub fn getData(path: String, key: &str) -> String {
 pub fn getDataDb(db: &DB, key: &str) -> String {
     let data: String;
     match db.get(key) {
-        Ok(Some(value)) => data = String::from_utf8(value).unwrap_or("".to_owned()),
-        Ok(None) => data = "-1".to_owned(),
-        Err(_e) => data = "0".to_owned(),
+        Ok(Some(value)) => {
+            data = String::from_utf8(value).unwrap_or("".to_owned());
+            debug!("got data (db) from db: {}, data: {}", db.path().display(), data);
+        }
+        Ok(None) => {
+            data = "-1".to_owned();
+            debug!("got data (db) from db: {}, data: None", db.path().display());
+        }
+        Err(e) => {
+            data = "0".to_owned();
+            error!("Error {} getting data (db) from db", e);
+        }
     }
     return data;
 }
@@ -106,12 +130,18 @@ pub fn getDataDb(db: &DB, key: &str) -> String {
 pub fn setDataDb(value: &String, db: &DB, key: &str) -> u8 {
     if let Err(e) = db.put(key, value) {
         error!(
-            "Failed to save data to db: {}, gave error: {}",
+            "Failed to save data (db) to db: {}, gave error: {}",
             db.path().display(),
             e
         );
         return 0;
     } else {
+        debug!(
+            "set data (db) to db: {}, key: {}, value, {}",
+            db.path().display(),
+            key,
+            value
+        );
         return 1;
     }
 }
