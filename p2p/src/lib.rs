@@ -604,37 +604,37 @@ pub fn sync_chain(chain: &String, peer: &mut TcpStream) -> Result<u64, Box<dyn s
             return Err("failed to get block".into());
         } else {
             let blocks: Vec<Block> = serde_json::from_str(&deformed.message).unwrap_or_default();
-            if blocks.len() == 0 {
-                error!("Got 0 blocks from peer when expecting at least 1");
-                return Err("Got 0 blocks from peer when expecting at least 1".into());
-            }
-            trace!(
-                "Got: {} blocks from peer. Hash: {} up to: {}",
-                blocks.len(),
-                blocks[0].hash,
-                blocks[blocks.len() - 1].hash
-            );
-            for block in blocks {
-                if let Err(e) = check_block(block.clone()) {
-                    error!("Recieved invalid block with hash: {} from peer, validation gave error: {:#?}. Invalid blocks from peer: {}", block.hash, e, invalid_blocks);
-                    invalid_blocks += 1;
-                } else {
-                    saveBlock(block.clone())?;
-                    enact_block(block)?;
-                    synced_blocks += 1;
+            if blocks.len() != 0 {
+                trace!(
+                    "Got: {} blocks from peer. Hash: {} up to: {}",
+                    blocks.len(),
+                    blocks[0].hash,
+                    blocks[blocks.len() - 1].hash
+                );
+                for block in blocks {
+                    if let Err(e) = check_block(block.clone()) {
+                        error!("Recieved invalid block with hash: {} from peer, validation gave error: {:#?}. Invalid blocks from peer: {}", block.hash, e, invalid_blocks);
+                        invalid_blocks += 1;
+                    } else {
+                        saveBlock(block.clone())?;
+                        enact_block(block)?;
+                        synced_blocks += 1;
+                    }
+                    if synced_blocks % print_synced_every == 0 {
+                        info!(
+                            "Synced {} / {} blocks (chain: {}). {} more to go",
+                            synced_blocks,
+                            amount_to_sync,
+                            chain,
+                            amount_to_sync - synced_blocks
+                        );
+                    }
                 }
-                if synced_blocks % print_synced_every == 0 {
-                    info!(
-                        "Synced {} / {} blocks (chain: {}). {} more to go",
-                        synced_blocks,
-                        amount_to_sync,
-                        chain,
-                        amount_to_sync - synced_blocks
-                    );
-                }
+            } else {
+                synced_blocks = synced_blocks;
             }
         }
-        if synced_blocks >= amount_to_sync {
+        if synced_blocks >= synced_blocks {
             info!("Synced all {} blocks for chain: {}", synced_blocks, chain);
             break;
         }
@@ -1217,10 +1217,12 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     return None;
                 } else {
                     let mut got: u64 = block_from.header.height;
-                    let mut prev: Block = block_from;
+                    let mut prev: Block = block_from.clone();
                     let mut blks: Vec<Block> = vec![];
                     while prev != Default::default() {
-                        blks.push(prev);
+                        if prev != block_from {
+                            blks.push(prev);
+                        }
                         got += 1;
                         trace!("Sent block at height: {}", got);
                         prev = getBlock(&chain, got);
