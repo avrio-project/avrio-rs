@@ -30,6 +30,6 @@ pub fn get_message_type(message_type: &u16) -> &str {
 
     match message_type_option {
         None => return "Unknown",
-     Some(m) => return m,
+        Some(m) => return m,
     }
 }
