@@ -61,7 +61,7 @@ pub fn genesis_blocks() -> Vec<Block> {
     let _ = blk.sign(&wall.private_key);
     vec![blk]
     */
-    vec![];
+    vec![]
 }
 
 pub fn get_genesis_txns() -> Vec<Transaction> {
