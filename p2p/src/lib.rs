@@ -344,7 +344,7 @@ pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box
         unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     }
     if deformed.message == "syncack".to_string() {
-        debug!("Got syncack from selected peer. Continuing");
+        info!("Got syncack from selected peer. Continuing");
         return Ok(peer.try_clone()?);
     } else if deformed.message == "syncdec".to_string() {
         info!("Peer rejected sync request, choosing new peer...");
@@ -827,7 +827,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                 in_peers(&stream.peer_addr()?.to_string())
             );
             if let Ok(a) = stream.peek(&mut buf) {
-                info!("peeked: {}", a);
+                debug!("peeked: {}", a);
                 if a > 0 {
                     trace!("peeked non zero byte message");
                     if !locked(&stream.peer_addr()?.to_string()) {
