@@ -551,19 +551,22 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
                     .duration_since(std::time::UNIX_EPOCH)
                     .expect("Time went backwards")
                     .as_millis() as u64;
-            }
-        }
 
-        if as_string.contains("EOT") {
-            trace!("found EOT");
-            let p2p: P2pdata = serde_json::from_str(&to_json(&as_string)).unwrap_or_default();
+                if s.contains("EOT") {
+                    trace!("found EOT");
 
-            if p2p != P2pdata::default() {
-                trace!("Confirmed EOT of message!");
-                log_p2p_message(&p2p);
-                return Ok(p2p);
-            } else {
-                trace!("from_str returned default");
+                    let p2p: P2pdata =
+                        serde_json::from_str(&to_json(&as_string)).unwrap_or_default();
+
+                    if p2p != P2pdata::default() {
+                        trace!("Confirmed EOT of message!");
+                        log_p2p_message(&p2p);
+
+                        return Ok(p2p);
+                    } else {
+                        trace!("from_str returned default");
+                    }
+                }
             }
         }
     }
@@ -1275,7 +1278,11 @@ pub fn form_msg(data_s: String, data_type: u16) -> String {
 fn log_p2p_message(msg: &P2pdata) {
     let message_type = message_types::get_message_type(&msg.message_type);
 
-    trace!("Message Type: \"0x{:x}\" -> \"{}\"", msg.message_type, message_type);
+    trace!(
+        "Message Type: \"0x{:x}\" -> \"{}\"",
+        msg.message_type,
+        message_type
+    );
     trace!("Message Length: \"{}\"", msg.message_bytes);
     trace!("Message Data: \"{}\"", msg.message);
 }
@@ -1395,7 +1402,9 @@ pub fn deform_msg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     let mut blks: Vec<Block> = vec![];
 
                     while prev != Default::default() {
-                        if prev != block_from && hash != "0" {
+                        if prev == block_from && hash == "0" {
+                            blks.push(prev);
+                        } else if prev != block_from {
                             blks.push(prev);
                         }
 
