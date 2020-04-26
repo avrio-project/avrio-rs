@@ -400,6 +400,7 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     )
     .unwrap();
     if getDataDb(&chaindex_db, &block.header.height.to_string()) == "-1" {
+        debug!("block not in invs");
         let hash = block.hash.clone();
         use std::sync::Arc;
         let arc_db = Arc::new(openDb(config().db_path + &"/chaindigest".to_owned()).unwrap());
@@ -488,6 +489,8 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         }
         drop(txn_db);
         drop(chaindex_db);
+    } else {
+        debug!("Block in invs, ignoring");
     }
     return Ok(());
 }
