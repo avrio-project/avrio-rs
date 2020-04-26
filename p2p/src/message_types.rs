@@ -28,9 +28,8 @@ pub fn get_message_type(message_type: &u16) -> &str {
 
     let message_type_option = message_types.get(message_type);
 
-    if message_type_option.is_none() {
-        return "Unknown";
-    } else {
-        return message_type_option.unwrap();
+    match message_type_option {
+        None => return "Unknown",
+     Some(m) => return m,
     }
 }
