@@ -1210,7 +1210,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     block_from = getBlock(&chain, 0);
                     trace!("Block from: {:#?}", block_from);
                 } else {
-                    block_from = getBlockFromRaw(hash);
+                    block_from = getBlockFromRaw(hash.clone());
                 }
                 if block_from == Default::default() {
                     debug!("Cant find block (context getblocksabovehash)");
@@ -1220,7 +1220,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     let mut prev: Block = block_from.clone();
                     let mut blks: Vec<Block> = vec![];
                     while prev != Default::default() {
-                        if prev != block_from {
+                        if prev != block_from && hash != "0" {
                             blks.push(prev);
                         }
                         got += 1;
@@ -1234,7 +1234,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     ) {
                         trace!(
                             "Sent all blocks (amount: {}) for chain: {} to peer",
-                            got - 1,
+                            got,
                             chain
                         );
                     }
