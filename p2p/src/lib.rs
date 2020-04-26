@@ -486,9 +486,10 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
             }
         }
         if as_string.contains("EOT") {
+            trace!("found EOT");
             let p2p: P2pdata = serde_json::from_str(&to_json(&as_string)).unwrap_or_default();
             if p2p != P2pdata::default() {
-                trace!("Found EOF of message!");
+                trace!("Confirmed EOT of message!");
                 logP2pMessage(&p2p);
                 return Ok(p2p);
             } else {
