@@ -207,7 +207,7 @@ impl BlockSignature {
 }
 
 pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
-    trace!("Generating merkle root from scratch");
+    trace!(target: "blockchain::chain_digest","Generating merkle root from scratch");
     let mut roots: Vec<String> = vec![];
     if let Ok(db) = openDb(config().db_path + "/chainlist") {
         let mut iter = db.raw_iterator();
@@ -228,7 +228,7 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
                                     String::from_utf8(iter.key().unwrap_or_default().to_vec())?
                                         .parse::<u64>()
                                 {
-                                    update_chain_digest(&s, &cd_db);
+                                    trace!(target: "blockchain::chain_digest","Chain digest: {}", update_chain_digest(&s, &cd_db));
                                 }
                             }
                             blkiter.next();
@@ -243,18 +243,18 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
 }
 
 pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String {
-    trace!("Updating chain digest with block hash: {}", new_blk_hash);
+    trace!(target: "blockchain::chain_digest","Updating chain digest with block hash: {}", new_blk_hash);
     let curr = getDataDb(cd_db, "master");
     let root: String;
     if &curr == "-1" {
-        trace!("chain digest not set");
+        trace!(target: "blockchain::chain_digest","chain digest not set");
         root = avrio_crypto::raw_lyra(new_blk_hash);
     } else {
-        trace!("Updating set chain digest. Curr: {}", curr);
+        trace!(target: "blockchain::chain_digest","Updating set chain digest. Curr: {}", curr);
         root = avrio_crypto::raw_lyra(&(curr + new_blk_hash));
     }
     let _ = setDataDb(&root, &cd_db, &"master");
-    trace!("Set chain digest to: {}.", root);
+    trace!(target: "blockchain::chain_digest","Set chain digest to: {}.", root);
     drop(cd_db);
     return root;
 }

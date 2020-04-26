@@ -346,7 +346,7 @@ pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box
         unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     }
     if deformed.message == "syncack".to_string() {
-        debug!("Got syncack from selected peer. Continuing");
+        info!("Got syncack from selected peer. Continuing");
         return Ok(peer.try_clone()?);
     } else if deformed.message == "syncdec".to_string() {
         info!("Peer rejected sync request, choosing new peer...");
@@ -829,7 +829,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
                 in_peers(&stream.peer_addr()?.to_string())
             );
             if let Ok(a) = stream.peek(&mut buf) {
-                info!("peeked: {}", a);
+                debug!("peeked: {}", a);
                 if a > 0 {
                     trace!("peeked non zero byte message");
                     if !locked(&stream.peer_addr()?.to_string()) {
@@ -1214,7 +1214,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     block_from = getBlock(&chain, 0);
                     trace!("Block from: {:#?}", block_from);
                 } else {
-                    block_from = getBlockFromRaw(hash);
+                    block_from = getBlockFromRaw(hash.clone());
                 }
                 if block_from == Default::default() {
                     debug!("Cant find block (context getblocksabovehash)");
@@ -1224,7 +1224,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     let mut prev: Block = block_from.clone();
                     let mut blks: Vec<Block> = vec![];
                     while prev != Default::default() {
-                        if prev != block_from {
+                        if prev != block_from && hash != "0" {
                             blks.push(prev);
                         }
                         got += 1;
@@ -1238,7 +1238,7 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     ) {
                         trace!(
                             "Sent all blocks (amount: {}) for chain: {} to peer",
-                            got - 1,
+                            got,
                             chain
                         );
                     }
