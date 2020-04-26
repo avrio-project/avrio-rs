@@ -28,6 +28,8 @@ extern crate lazy_static;
 
 use std::sync::Mutex;
 
+pub mod message_types;
+
 lazy_static! {
     static ref HANDSHAKES: Mutex<Vec<String>> = Mutex::new(vec![]);
 }
@@ -1110,7 +1112,9 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 }
 
 fn logP2pMessage(msg: &P2pdata) {
-    trace!("Message Type: \"0x{:x}\"", msg.message_type);
+    let message_type = message_types::get_message_type(&msg.message_type);
+
+    trace!("Message Type: \"0x{:x}\" -> \"{}\"", msg.message_type, message_type);
     trace!("Message Length: \"{}\"", msg.message_bytes);
     trace!("Message Data: \"{}\"", msg.message);
 }
