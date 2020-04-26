@@ -392,7 +392,14 @@ impl Block {
 // TODO: finish enact block
 /// Enacts a block. Updates all relavant dbs and files
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    if getBlockFromRaw(block.hash.clone()) == Block::default() {
+    let chaindex_db = openDb(
+        config().db_path
+            + &"/chains/".to_owned()
+            + &block.header.chain_key
+            + &"-chainindex".to_owned(),
+    )
+    .unwrap();
+    if getDataDb(&chaindex_db, &block.header.height.to_string()) == "-1" {
         let hash = block.hash.clone();
         use std::sync::Arc;
         let arc_db = Arc::new(openDb(config().db_path + &"/chaindigest".to_owned()).unwrap());
@@ -400,13 +407,6 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         std::thread::spawn(move || {
             update_chain_digest(&hash, &arc);
         });
-        let chaindex_db = openDb(
-            config().db_path
-                + &"/chains/".to_owned()
-                + &block.header.chain_key
-                + &"-chainindex".to_owned(),
-        )
-        .unwrap();
         setDataDb(&block.hash, &chaindex_db, &"topblockhash");
         setDataDb(
             &(block.header.height + 1).to_string(),
