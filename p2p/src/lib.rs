@@ -723,7 +723,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
     }
     let mut peer_to_use_unwraped: TcpStream = peer_to_use.unwrap().try_clone().unwrap();
     // Now unlock all peers we are not going to be using
-    for peer in pl {
+    for peer in pl.iter_mut() {
         if peer.peer_addr().unwrap() != peer_to_use_unwraped.peer_addr().unwrap() {
             let _ = unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
         }
@@ -794,7 +794,7 @@ pub fn sync(pl: &mut Vec<&mut TcpStream>) -> Result<u64, String> {
             getData(config().db_path + &"/chaindigest", "master"),
             mode_hash
         );
-        return Err("invalid resultant chain digest".into());
+        return sync(pl);
     } else {
         info!("Finalised syncing, releasing lock on peer");
         let _ = unlock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
