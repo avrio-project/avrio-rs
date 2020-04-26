@@ -1229,7 +1229,9 @@ pub fn deformMsg(msg: &String, peer: &mut TcpStream) -> Option<String> {
                     let mut prev: Block = block_from.clone();
                     let mut blks: Vec<Block> = vec![];
                     while prev != Default::default() {
-                        if prev != block_from && hash != "0" {
+                        if prev == block_from && hash == "0" {
+                            blks.push(prev);
+                        } else if prev != block_from {
                             blks.push(prev);
                         }
                         got += 1;
