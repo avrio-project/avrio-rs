@@ -19,7 +19,7 @@ extern crate avrio_crypto;
 use avrio_crypto::Wallet;
 
 pub fn genesis_blocks() -> Vec<Block> {
-    //example
+    /*example
     let priv_key= "GD8M1Qm17WXoukx8QqqfvXY5t8ft7APi9iUqUXAytM1dUsiZxCwaDyMhn7pNDBaybagw6QVgYkye5oosd2zmoeiFRak1MjoUSi5Nfen6PQHrzj6y3FrR".to_owned();
     let wall = Wallet::from_private_key(priv_key);
     let mut txn = Transaction {
@@ -60,6 +60,8 @@ pub fn genesis_blocks() -> Vec<Block> {
     blk.hash();
     let _ = blk.sign(&wall.private_key);
     vec![blk]
+    */
+    vec![];
 }
 
 pub fn get_genesis_txns() -> Vec<Transaction> {
