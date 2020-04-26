@@ -15,7 +15,7 @@ pub fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x60, "Get Chain List");
     message_types.insert(0x6f, "Get Block Above Hash");
     message_types.insert(0x99, "Get Peer List");
-    message_types.insert(0xFF, "Shutdown");
+    message_types.insert(0xff, "Shutdown");
 
     return message_types;
 }
