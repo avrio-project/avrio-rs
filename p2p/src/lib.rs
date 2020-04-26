@@ -485,17 +485,18 @@ pub fn read(peer: &mut TcpStream) -> Result<P2pdata, Box<dyn Error>> {
                     .duration_since(std::time::UNIX_EPOCH)
                     .expect("Time went backwards")
                     .as_millis() as u64;
-            }
-        }
-        if as_string.contains("EOT") {
-            trace!("found EOT");
-            let p2p: P2pdata = serde_json::from_str(&to_json(&as_string)).unwrap_or_default();
-            if p2p != P2pdata::default() {
-                trace!("Confirmed EOT of message!");
-                logP2pMessage(&p2p);
-                return Ok(p2p);
-            } else {
-                trace!("from_str returned default");
+                if s.contains("EOT") {
+                    trace!("found EOT");
+                    let p2p: P2pdata =
+                        serde_json::from_str(&to_json(&as_string)).unwrap_or_default();
+                    if p2p != P2pdata::default() {
+                        trace!("Confirmed EOT of message!");
+                        logP2pMessage(&p2p);
+                        return Ok(p2p);
+                    } else {
+                        trace!("from_str returned default");
+                    }
+                }
             }
         }
     }
@@ -1114,7 +1115,11 @@ pub fn formMsg(data_s: String, data_type: u16) -> String {
 fn logP2pMessage(msg: &P2pdata) {
     let message_type = message_types::get_message_type(&msg.message_type);
 
-    trace!("Message Type: \"0x{:x}\" -> \"{}\"", msg.message_type, message_type);
+    trace!(
+        "Message Type: \"0x{:x}\" -> \"{}\"",
+        msg.message_type,
+        message_type
+    );
     trace!("Message Length: \"{}\"", msg.message_bytes);
     trace!("Message Data: \"{}\"", msg.message);
 }
