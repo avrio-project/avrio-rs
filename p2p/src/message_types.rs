@@ -6,7 +6,8 @@ pub fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0, "Raw / Invalid");
     message_types.insert(0x01, "Sync Acknowledged");
     message_types.insert(0x05, "Send Block");
-    message_types.insert(0x0a, "Get Block");
+    message_types.insert(0x0a, "Block");
+    message_types.insert(0x0b, "Block Ack");
     message_types.insert(0x1a, "Handshake");
     message_types.insert(0x1b, "Send Chain Digest");
     message_types.insert(0x1c, "Send Chain Digest");
