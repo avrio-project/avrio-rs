@@ -27,7 +27,7 @@ simple_logger = "1.5.0"
 log = "0.4"
 avrio_core = { path = "../../../core" }
 avrio_database = { path = "../../../database" }
-avrio_config = "0.2.3"
+avrio_config = "0.3.4"
 avrio_blockchain = { path = "../../../blockchain" }
 avrio_p2p = { path = "../../../p2p" }
 avrio_crypto = { path = "../../../crypto" }

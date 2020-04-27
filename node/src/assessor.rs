@@ -1,12 +1,12 @@
 // This file handles the assessor node functions
 
-use avrio_p2p::{send_data, P2pdata};
+use avrio_p2p::{io::send, format::P2pData};
 use std::io::Read;
 use std::net::TcpStream;
 extern crate serde_json;
 
 pub fn test_prt(peer: &mut TcpStream) -> u64 {
-    let _ = send_data(&"ping".to_owned(), peer, 0x00);
+    let _ = send("ping".to_owned(), peer, 0x00);
     let now = std::time::SystemTime::now();
     let mut buf = [0; 1024];
     let mut no_read = true;
@@ -28,7 +28,7 @@ pub fn test_prt(peer: &mut TcpStream) -> u64 {
     let v: Vec<&str> = msg.split("}").collect();
     let msg_c = v[0].to_string() + &"}".to_string();
     drop(v);
-    let deformed: P2pdata = serde_json::from_str(&msg_c).unwrap_or(P2pdata::default());
+    let deformed: P2pData = serde_json::from_str(&msg_c).unwrap_or(P2pData::default());
     if deformed.message != "pong".to_owned() {
         return 100000;
     } else {
