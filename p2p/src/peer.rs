@@ -41,6 +41,15 @@ pub fn in_peers(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
     return Ok(false);
 }
 
+pub fn add_peer(peer: TcpStream, out: bool) -> Result<(), Box<dyn Error>> {
+    if !out {
+        let _ = *INCOMING.lock()?.push(peer);
+    } else {
+        let _ = *OUTGOING.lock()?.push(peer);
+    }
+    return Ok(());
+}
+
 pub fn locked(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
     if !in_peers(peer)? {
         return Err("not in peer list".into());
@@ -63,7 +72,8 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
         if std::time::SystemTime::now()
             .duration_since(begin)?
             .as_millis() as u64
-            >= timeout && timeout != 0
+            >= timeout
+            && timeout != 0
         {
             return Err("timed out".into());
         }
@@ -90,9 +100,7 @@ pub fn unlock(peer: TcpStream) -> Result<(), Box<dyn Error>> {
     } else {
         return Err("failed to get peer addr".into());
     }
-    if !locked(
-        &peer_add,
-    )? {
+    if !locked(&peer_add)? {
         return Err("peer not locked".into());
     } else {
         let _ = LOCKED.lock()?.retain(|&x| x != peer_add);
