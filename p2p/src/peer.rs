@@ -1,12 +1,13 @@
 use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 lazy_static! {
-    static ref INCOMING: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
-    static ref OUTGOING: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
-    static ref LOCKED: Mutex<Vec<SocketAddr>> = Mutex::new(vec![]);
+    pub static ref INCOMING: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
+    pub static ref OUTGOING: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
+    pub static ref PEERS: Mutex<HashMap<String, (String, bool)>> = Mutex::new(HashMap::new());
 }
 
 /// # get_peers
@@ -41,11 +42,12 @@ pub fn in_peers(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
     return Ok(false);
 }
 
-pub fn add_peer(peer: TcpStream, out: bool) -> Result<(), Box<dyn Error>> {
+pub fn add_peer(peer: TcpStream, out: bool, key: String) -> Result<(), Box<dyn Error>> {
+    (*PEERS.lock()?).insert(strip_port(&peer.peer_addr()?), (key, false));
     if !out {
-        let _ = *INCOMING.lock()?.push(peer);
+        let _ = (*INCOMING.lock()?).push(peer);
     } else {
-        let _ = *OUTGOING.lock()?.push(peer);
+        let _ = (*OUTGOING.lock()?).push(peer);
     }
     return Ok(());
 }
@@ -54,12 +56,12 @@ pub fn locked(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
     if !in_peers(peer)? {
         return Err("not in peer list".into());
     } else {
-        for p in LOCKED.lock()?.iter() {
-            if strip_port(&p) == strip_port(&peer) {
-                return Ok(true);
-            }
+        let map = PEERS.lock()?;
+        if let Some(x) = map.get(&strip_port(&peer)) {
+            return Ok(x.1);
+        } else {
+            return Err("cant find peer".into());
         }
-        return Ok(false);
     }
 }
 
@@ -80,17 +82,22 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     // now the peer is unlocked
-    let _ = LOCKED.lock()?.push(peer.clone());
-    for p in get_peers()? {
-        if strip_port(
-            &p.peer_addr()
-                .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
-        ) == strip_port(peer)
-        {
-            return Ok(p);
+    let mut map = PEERS.lock()?;
+    if let Some(x) = map.get_mut(&strip_port(&peer)) {
+        x.1 = true;
+        for p in get_peers()? {
+            if strip_port(
+                &p.peer_addr()
+                    .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
+            ) == strip_port(peer)
+            {
+                return Ok(p);
+            }
         }
+        return Err("cant find peer".into());
+    } else {
+        return Err("cant find peer".into());
     }
-    return Err("cant find peer".into());
 }
 
 pub fn unlock(peer: TcpStream) -> Result<(), Box<dyn Error>> {
@@ -103,7 +110,16 @@ pub fn unlock(peer: TcpStream) -> Result<(), Box<dyn Error>> {
     if !locked(&peer_add)? {
         return Err("peer not locked".into());
     } else {
-        let _ = LOCKED.lock()?.retain(|&x| x != peer_add);
+        let mut map = PEERS.lock()?;
+        if let Some(x) = map.get_mut(&strip_port(
+            &peer
+                .peer_addr()
+                .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
+        )) {
+            x.1 = false;
+        } else {
+            return Err("cant find peer".into());
+        }
         drop(peer);
     }
     return Ok(());
