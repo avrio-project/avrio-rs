@@ -63,9 +63,8 @@ pub fn add_block(blk: &Block) -> Result<(), Box<dyn std::error::Error>> {
     if map.contains_key(&blk.hash) {
         return Err("block already in mempool".into());
     } else {
-        if !map.blocks.contains_key(&blk.hash) {
-            map.blocks
-                .insert(blk.hash.clone(), (blk.clone(), SystemTime::now()));
+        if !map.contains_key(&blk.hash) {
+            map.insert(blk.hash.clone(), (blk.clone(), SystemTime::now()));
         }
         return Ok(());
     }
