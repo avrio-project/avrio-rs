@@ -58,6 +58,38 @@ impl Default for MempoolState {
     }
 }
 
+pub fn add_block(blk: &Block) -> Result<(), Box<dyn std::error::Error>> {
+    let mut map = MEMPOOL.lock()?;
+    if map.contains_key(&blk.hash) {
+        return Err("block already in mempool".into());
+    } else {
+        if !map.blocks.contains_key(&blk.hash) {
+            map.blocks
+                .insert(blk.hash.clone(), (blk.clone(), SystemTime::now()));
+        }
+        return Ok(());
+    }
+}
+
+pub fn remove_block(hash: &String) -> Result<(), Box<dyn std::error::Error>> {
+    let mut map = MEMPOOL.lock()?;
+    if let Some(_) = map.remove(hash) {
+        return Ok(());
+    } else {
+        return Err("cant find block in mempool".into());
+    }
+}
+
+pub fn get_block(hash: &String) -> Result<Block, Box<dyn std::error::Error>> {
+    let map = MEMPOOL.lock()?;
+    for (b,_) in map.values() {
+        if &b.hash == hash {
+            return Ok(b.clone());
+        }
+    } 
+    return Err("cant find block in mempool".into());
+}
+
 impl Mempool {
     pub fn new(blocks: Vec<Block>) -> Self {
         let mut mem: Mempool = Mempool {
@@ -84,8 +116,8 @@ impl Mempool {
         &mut self,
         rx: mpsc::Receiver<String>,
     ) -> Result<JoinHandle<()>, Box<dyn std::error::Error>> {
-        let self_clone = Mempool {
-            blocks: self.blocks,
+        let mut self_clone = Mempool {
+            blocks: self.blocks.clone(),
             init: MempoolState::Initialized,
             purge_handle: None,
             purge_stream: None,
@@ -99,7 +131,12 @@ impl Mempool {
                         return ();
                     }
                 } else {
-                    if SystemTime::now().duration_since(start).unwrap_or_default().as_millis() as u64 >= PURGE_EVERY {
+                    if SystemTime::now()
+                        .duration_since(start)
+                        .unwrap_or_default()
+                        .as_millis() as u64
+                        >= PURGE_EVERY
+                    {
                         start = SystemTime::now();
                         if let Err(e) = self_clone.purge() {
                             error!("Failed to purge mempool, gave error: {}", e);
@@ -178,13 +215,32 @@ impl Mempool {
         }
         let now = SystemTime::now();
         let mut map = MEMPOOL.lock()?;
-        let mut to_remove: Vec<String> = vec![];
+        let mut to_remove: Vec<(String, String)> = vec![];
         for (k, v) in map.iter_mut() {
-            if now.duration_since(v.1)?.as_millis() as u64 >= MEMPOOL_ENTRY_EXPIREY_TIME {
-                to_remove.push(k.clone());
+            if let Ok(_) = avrio_blockchain::check_block(v.0.clone()) {
+                let e_res = avrio_blockchain::saveBlock(v.0.clone());
+                if let Ok(_) = e_res {
+                    if let Err(enact_res) = avrio_blockchain::enact_block(v.0.clone()) {
+                        error!(
+                            "Failed to enact saved & valid block from mempool. Gave error: {}",
+                            enact_res
+                        );
+                    }
+                } else {
+                    error!(
+                        "Failed to save validated block from mempool. Gave error: {}",
+                        e_res.unwrap_err()
+                    );
+                }
+                to_remove.push((k.clone(), "enacted".to_owned()));
+            } else if now.duration_since(v.1)?.as_millis() as u64 >= MEMPOOL_ENTRY_EXPIREY_TIME {
+                to_remove.push((k.clone(), "timed out".to_owned()));
             }
         }
-        for key in to_remove {
+        let set: std::collections::HashSet<_> = to_remove.drain(..).collect(); // dedup
+        to_remove.extend(set.into_iter());
+        for (key, r) in to_remove {
+            trace!("Removing block: {} from mempool. Reason: {}", key, r);
             map.remove(&key);
             self.blocks.remove(&key);
         }
@@ -229,6 +285,17 @@ impl Mempool {
             return Ok(serde_json::from_str(&contents)?);
         } else {
             return Err("cant open mempool file".into());
+        }
+    }
+    pub fn init(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.init != MempoolState::Uninitialized {
+            return Err("Already initalised".into());
+        } else {
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.purge_stream = Some(tx);
+            self.purge_handle = Some(self.purge_worker(rx)?);
+            self.init = MempoolState::Initialized;
+            return Ok(());
         }
     }
 }
