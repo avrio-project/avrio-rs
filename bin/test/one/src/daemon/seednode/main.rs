@@ -23,7 +23,9 @@ extern crate avrio_core;
 use avrio_core::{account::to_atomc, transaction::Transaction};
 
 extern crate avrio_p2p;
-use avrio_p2p::{new_connection, prop_block, rec_server, sync, sync_needed};
+use avrio_p2p::{
+    core::new_connection, core::rec_server, helper::prop_block, helper::sync, helper::sync_needed,
+};
 
 extern crate avrio_blockchain;
 use avrio_blockchain::{
@@ -52,7 +54,7 @@ pub fn safe_exit(mut connections_mut: Vec<TcpStream>) {
 
     info!("Goodbye!");
     let con: Vec<&mut TcpStream> = connections_mut.iter_mut().collect();
-    avrio_p2p::close_all(con);
+    avrio_p2p::core::close_all(con);
     std::process::exit(0);
 }
 
@@ -96,14 +98,12 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
 fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
     let mut conn_count: u8 = 0;
     for peer in seednodes {
-        let error = new_connection(peer);
+        let error = new_connection(&peer.to_string());
         match error {
             Ok(_) => {
                 info!("Connected to {:?}::{:?}", peer, 11523);
                 conn_count += 1;
-                let peer_struct = error.unwrap();
-                let peer_cloned = peer_struct.stream.try_clone().unwrap();
-                connected_peers.push(peer_cloned);
+                connected_peers.push(error.unwrap());
             }
             _ => warn!(
                 "Failed to connect to {:?}:: {:?}, returned error {:?}",
@@ -260,11 +260,16 @@ fn main() {
         let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
     }
-    info!("Launching P2p server on 0.0.0.0:{}", config().p2p_port);
+    info!(
+        "Launching P2p server on {}:{}",
+        config().ip_host,
+        config().p2p_port
+    );
     let _p2p_handler = thread::spawn(|| {
-        if rec_server() != 1 {
+        if let Err(_) = rec_server(&format!("{}:{}", config().ip_host, config().p2p_port)) {
             error!(
-                "Error launching P2p server on 0.0.0.0:{} (Fatal)",
+                "Error launching P2p server on {}:{} (Fatal)",
+                config().ip_host,
                 config().p2p_port
             );
             process::exit(1);
@@ -276,8 +281,8 @@ fn main() {
     let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
     let mut new_peers: Vec<SocketAddr> = vec![];
     for connection in &connections_mut {
-        for peer in
-            avrio_p2p::get_peerlist(&mut connection.try_clone().unwrap()).unwrap_or_default()
+        for peer in avrio_p2p::helper::get_peerlist_from_peer(&mut connection.try_clone().unwrap())
+            .unwrap_or_default()
         {
             new_peers.push(peer);
         }
