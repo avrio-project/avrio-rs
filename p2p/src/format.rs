@@ -37,9 +37,9 @@ impl P2pData {
     }
     /// # Length
     /// Returns the length that will be appened on the end of a message.
-    /// You must pad this valie with the pad_len() method
+    /// You must pad this value with the pad_len() method before appending to the end of your string
     pub fn length(&self) -> usize {
-        self.message.len() + CHECKSUM_BYTES + CHECKSUM_BYTES
+        self.message.len() + CHECKSUM_BYTES + LEN_DECL_BYTES
     }
     /// # Checksum
     /// Calculates the checksum of a message in P2pData
