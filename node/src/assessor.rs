@@ -1,12 +1,12 @@
 // This file handles the assessor node functions
 
-use avrio_p2p::{io::send, format::P2pData};
+use avrio_p2p::{format::P2pData, io::send};
 use std::io::Read;
 use std::net::TcpStream;
 extern crate serde_json;
 
 pub fn test_prt(peer: &mut TcpStream) -> u64 {
-    let _ = send("ping".to_owned(), peer, 0x00);
+    let _ = send("ping".to_owned(), peer, 0x00, true, None);
     let now = std::time::SystemTime::now();
     let mut buf = [0; 1024];
     let mut no_read = true;

@@ -14,7 +14,7 @@ extern crate rocket;
 use rocket::config::{Config, Environment, LoggingLevel};
 
 extern crate avrio_p2p;
-use avrio_p2p::prop_block;
+use avrio_p2p::helper::prop_block;
 
 fn not_supported() -> String {
     "{ \"error\": \"this method is not yet supported\"}".to_owned()
