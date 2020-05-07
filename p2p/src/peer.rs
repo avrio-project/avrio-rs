@@ -7,7 +7,7 @@ use std::sync::Mutex;
 lazy_static! {
     pub static ref INCOMING: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
     pub static ref OUTGOING: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
-    pub static ref PEERS: Mutex<HashMap<String, (String, bool)>> = Mutex::new(HashMap::new());
+    pub static ref PEERS: Mutex<HashMap<String, (String, bool, Option<std::sync::mpsc::Sender<String>>)>> = Mutex::new(HashMap::new());
 }
 
 /// # get_peers
@@ -42,8 +42,8 @@ pub fn in_peers(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
     return Ok(false);
 }
 
-pub fn add_peer(peer: TcpStream, out: bool, key: String) -> Result<(), Box<dyn Error>> {
-    (*PEERS.lock()?).insert(strip_port(&peer.peer_addr()?), (key, false));
+pub fn add_peer(peer: TcpStream, out: bool, key: String, tx: &std::sync::mpsc::Sender<String>) -> Result<(), Box<dyn Error>> {
+    (*PEERS.lock()?).insert(strip_port(&peer.peer_addr()?), (key, false, Some(tx.clone())));
     if !out {
         let _ = (*INCOMING.lock()?).push(peer);
     } else {
@@ -85,6 +85,12 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
     let mut map = PEERS.lock()?;
     if let Some(x) = map.get_mut(&strip_port(&peer)) {
         x.1 = true;
+        //tell the handler stream to pause
+        if let Some(tx) = x.2.clone() {
+            tx.send("pause".to_string())?;
+        } else {
+            return Err("peer has no handler stream".into());
+        }
         for p in get_peers()? {
             if strip_port(
                 &p.peer_addr()
@@ -117,6 +123,11 @@ pub fn unlock(peer: TcpStream) -> Result<(), Box<dyn Error>> {
                 .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
         )) {
             x.1 = false;
+            if let Some(tx) = x.2.clone() {
+                tx.send("run".to_string())?;
+            } else {
+                return Err("peer has no handler stream".into());
+            }
         } else {
             return Err("cant find peer".into());
         }
