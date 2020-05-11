@@ -45,7 +45,7 @@ pub fn new_connection(addr: &String) -> Result<std::net::TcpStream, Box<dyn std:
                 local_sec.diffie_hellman(&PublicKey::from(from_slice(&hex::decode(d_split[4])?)));
             let ss = key.as_bytes();
             send("".into(), &mut a, 0xa2, true, Some(ss))?;
-            let p2_read = read(&mut a, Some(10000), Some(ss));
+            let p2_read = read(&mut a, Some(10000), Some("hand_res".as_bytes()));
             if let Ok(data) = p2_read {
                 if data.message_type != 0xa3 {
                     return Err(format!(
@@ -65,7 +65,9 @@ pub fn new_connection(addr: &String) -> Result<std::net::TcpStream, Box<dyn std:
                             log::error!("Failed to handshake with peer, adding peer to peerlist gave error: {}", e);
                             return Err("failed to add peer to peer list".into());
                         } else {
-                            if let Err(e) = 
+                            if let Err(e) = crate::handle::launch_handle_client(rx, &mut a) {
+                                log::error!("Failed to launch peer handler stream, gave error: {}", e);
+                            }
                         }
                         return Ok(a);
                     }
