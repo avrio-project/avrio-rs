@@ -8,19 +8,21 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     let mut message_types = HashMap::new();
 
     message_types.insert(0, "Raw / Invalid");
+    message_types.insert(0x22, "Sync Request");
     message_types.insert(0x01, "Sync Acknowledged");
     message_types.insert(0x05, "Send Block");
     message_types.insert(0x0a, "Block");
     message_types.insert(0x0b, "Block Ack");
+    message_types.insert(0x0c, "Block Reject");
     // 4 part handshake
     message_types.insert(0x0a, "Handshake Init");
     message_types.insert(0xa1, "Handshake Init Response");
     message_types.insert(0xa2, "Handshake Test Key");
     message_types.insert(0xa3, "Handshake Confim Key Test");
     // chain digests
-    message_types.insert(0x1b, "Send Chain Digest");
-    message_types.insert(0x1c, "Send Chain Digest");
-    message_types.insert(0x22, "Sync Request");
+    message_types.insert(0x1b, "Send Chain Digest (ask)");
+    message_types.insert(0x1c, "Send Chain Digest (ask)");
+    message_types.insert(0xcd, "Send Chain Digest (response)");
     message_types.insert(0x45, "Send Block Count");
     message_types.insert(0x46, "Got Block Count");
     message_types.insert(0x60, "Get Chain List");
