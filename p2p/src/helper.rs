@@ -43,3 +43,18 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
         }
     }
 }
+
+pub fn send_block_with_hash(hash: String, peer: &mut TcpStream)-> Result<(), Box<dyn Error>> {
+    let block = avrio_blockchain::getBlockFromRaw(hash);
+    if block.hash == Block::default().hash {
+        return Err("block does not exist".into());
+    } else {
+        let block_ser: String = bson::to_bson(&block)?.to_string();
+
+        if let Err(e) = send(block_ser, peer, 0x0a, true, None) {
+            return Err(e.into());
+        } else {
+            return Ok(());
+        }
+    }
+}
