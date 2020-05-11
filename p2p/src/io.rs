@@ -10,6 +10,12 @@ use rust_crypto::{
 use std::error::Error;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+
+pub fn peek(peer: &mut TcpStream) -> Result<usize, std::io::Error> {
+    let mut buf = [0;1000000];
+    return peer.peek(&mut buf);
+}
+
 pub trait Sendable {
     /// # encode
     /// Should encode T into a String that can be transported and then decoded with the decode function
@@ -84,6 +90,7 @@ pub fn send(
     key: Option<&[u8]>,
 ) -> Result<(), Box<dyn Error>> {
     let p2p_dat = P2pData::gen(msg, msg_type);
+    p2p_dat.log();
     let data: String = p2p_dat.to_string();
     let s: S;
     let mut k: AesGcm;
