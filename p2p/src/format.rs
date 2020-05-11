@@ -25,6 +25,22 @@ pub fn pad_len(length: usize) -> String {
 }
 
 impl P2pData {
+    /// # Log
+    /// Logs self (on a trace level)
+    pub fn log(&self) {
+        let message_type = crate::message_types::get_message_type(&self.message_type);
+        log::trace!(
+            "Message Type: \"0x{:x}\" -> \"{}\"",
+            self.message_type,
+            message_type
+        );
+        log::trace!(
+            "Message Length: \"{}\" -> {}",
+            self.length(),
+            pad_len(self.length())
+        );
+        log::trace!("Message Data: \"{}\"", self.message);
+    }
     /// # Gen
     /// Takes a message and a type and returns a fully filled out P2pData struct
     pub fn gen(message: String, message_type: u16) -> P2pData {
