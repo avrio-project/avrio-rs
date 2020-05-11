@@ -11,12 +11,14 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x01, "Sync Acknowledged");
     message_types.insert(0x05, "Send Block");
     message_types.insert(0x0a, "Block");
-    message_types.insert(0x0b, "Block Ack");
+    message_types.insert(0x0b, "Block Acknowledged");
+
     // 4 part handshake
     message_types.insert(0x0a, "Handshake Init");
     message_types.insert(0xa1, "Handshake Init Response");
     message_types.insert(0xa2, "Handshake Test Key");
-    message_types.insert(0xa3, "Handshake Confim Key Test");
+    message_types.insert(0xa3, "Handshake Confirm Key Test");
+
     // chain digests
     message_types.insert(0x1b, "Send Chain Digest");
     message_types.insert(0x1c, "Send Chain Digest");
@@ -36,6 +38,7 @@ fn get_message_types() -> HashMap<u16, &'static str> {
 pub fn get_message_type(message_type: &u16) -> &str {
     let message_types = &MSG_TYPES;
     let message_type_option = message_types.get(message_type);
+
     match message_type_option {
         None => return "Unknown",
         Some(m) => return m,
