@@ -329,6 +329,9 @@ impl Hashable for Block {
     }
 }
 impl Block {
+    pub fn is_default(&self) -> bool {
+        self == &Block::default()
+    }
     /// Sets the hash of a block
     pub fn hash(&mut self) {
         self.hash = self.hash_item();
