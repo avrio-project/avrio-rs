@@ -98,6 +98,7 @@ impl P2pServer {
                 for stream in listener.incoming() {
                     match stream {
                         Ok(mut stream) => {
+                            log::trace!("New incoming stream");
                             if let Ok(read_msg) =
                                 read(&mut stream, Some(1000), Some("hand_key".as_bytes()))
                             {
@@ -227,6 +228,8 @@ impl P2pServer {
                                         log::debug!("Got handshake from handshook peer, ignoring");
                                     }
                                 }
+                            } else {
+                                log::debug!("Failed to read any data from newly connected peer");
                             }
                         }
 
@@ -241,7 +244,7 @@ impl P2pServer {
                 }
             }
         } else {
-            return Err("allready running".into());
+            return Err("already running".into());
         }
         return Ok(());
     }
