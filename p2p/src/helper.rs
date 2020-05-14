@@ -9,8 +9,18 @@ use log::*;
 use std::error::Error;
 use std::net::TcpStream;
 
-pub fn get_peerlist_from_peer(peer: &mut TcpStream) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn get_peerlist_from_peer(
+    peer: &mut TcpStream,
+) -> Result<Vec<std::net::SocketAddr>, Box<dyn Error>> {
     return Ok(vec![]);
+}
+
+pub fn sync() -> Result<(), Box<dyn Error>> {
+    return Ok(());
+}
+
+pub fn sync_needed() -> Result<bool, Box<dyn Error>> {
+    return Ok(true);
 }
 
 /// # Prop_block
@@ -44,7 +54,7 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
     }
 }
 
-pub fn send_block_with_hash(hash: String, peer: &mut TcpStream)-> Result<(), Box<dyn Error>> {
+pub fn send_block_with_hash(hash: String, peer: &mut TcpStream) -> Result<(), Box<dyn Error>> {
     let block = avrio_blockchain::getBlockFromRaw(hash);
     if block.hash == Block::default().hash {
         return Err("block does not exist".into());
