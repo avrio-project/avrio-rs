@@ -5,8 +5,8 @@ use std::io;
 use std::io::prelude::*;
 extern crate log;
 use dirs::*;
-use rand::prelude::*;
-use sha2::{Digest, Sha256, Sha512};
+
+use sha2::{Digest, Sha256};
 #[macro_use]
 extern crate lazy_static;
 extern crate hex;

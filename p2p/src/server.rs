@@ -1,8 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use lazy_static::lazy_static;
-use std::net::TcpStream;
-use std::sync::Mutex;
+
+
+
 extern crate rand_os;
 extern crate x25519_dalek;
 
@@ -234,7 +234,7 @@ impl P2pServer {
         }
         return Ok(());
     }
-    pub fn shutdown(mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn shutdown(self) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 }

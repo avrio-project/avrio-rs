@@ -1,16 +1,13 @@
 use crate::{io::send, peer::get_peers};
-use avrio_blockchain::{check_block, enact_block, getBlock, getBlockFromRaw, saveBlock, Block};
-use avrio_core::{
-    account::{getAccount, getByUsername, Account},
-    transaction::{Transaction, TransactionValidationErrors},
-};
+use avrio_blockchain::{Block};
+
 use bson;
 use log::*;
 use std::error::Error;
 use std::net::TcpStream;
 
 pub fn get_peerlist_from_peer(
-    peer: &mut TcpStream,
+    _peer: &mut TcpStream,
 ) -> Result<Vec<std::net::SocketAddr>, Box<dyn Error>> {
     return Ok(vec![]);
 }

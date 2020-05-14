@@ -1,9 +1,9 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 
-use std::time::Duration;
 
-use std::io::{self, BufRead, Write};
+
+use std::io::{self, Write};
 
 use std::thread;
 
@@ -24,7 +24,7 @@ use avrio_core::{account::to_atomc, transaction::Transaction};
 
 extern crate avrio_p2p;
 use avrio_p2p::{
-    core::new_connection, core::rec_server, helper::prop_block, helper::sync, helper::sync_needed,
+    core::new_connection, core::rec_server, helper::prop_block, helper::sync,
 };
 extern crate avrio_blockchain;
 use avrio_blockchain::{
@@ -274,7 +274,7 @@ fn main() {
     }
     let mut connections: Vec<TcpStream> = vec![];
     connect_seednodes(pl.clone(), &mut connections);
-    let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
+    let connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
     let mut new_peers: Vec<SocketAddr> = vec![];
     for connection in &connections_mut {
         for peer in avrio_p2p::helper::get_peerlist_from_peer(&mut connection.try_clone().unwrap())

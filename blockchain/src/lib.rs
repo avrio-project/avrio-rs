@@ -15,7 +15,6 @@ extern crate log;
 extern crate bs58;
 
 use ring::{
-    digest::SHA256,
     rand as randc,
     signature::{self, KeyPair},
 };
@@ -208,7 +207,7 @@ impl BlockSignature {
 
 pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
     trace!(target: "blockchain::chain_digest","Generating merkle root from scratch");
-    let mut roots: Vec<String> = vec![];
+    let _roots: Vec<String> = vec![];
     if let Ok(db) = openDb(config().db_path + "/chainlist") {
         let mut iter = db.raw_iterator();
         iter.seek_to_first();

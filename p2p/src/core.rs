@@ -1,5 +1,4 @@
 use crate::{
-    format::P2pData,
     io::{read, send},
     peer::add_peer,
 };
@@ -94,10 +93,10 @@ pub fn form_handshake(l_pub: &[u8; 32]) -> String {
     );
 }
 
-pub fn rec_server(address: &String) -> Result<(), Box<dyn std::error::Error>> {
+pub fn rec_server(_address: &String) -> Result<(), Box<dyn std::error::Error>> {
     return Ok(());
 }
 
 pub fn close_all() {}
 
-pub fn close(peer: std::net::SocketAddr) {}
+pub fn close(_peer: std::net::SocketAddr) {}

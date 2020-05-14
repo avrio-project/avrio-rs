@@ -12,7 +12,7 @@ use ring::signature;
 extern crate avrio_database;
 
 use crate::{
-    account::{deltaFunds, getAccount, getByUsername, open_or_create, Accesskey, Account},
+    account::{getAccount, getByUsername, open_or_create, Accesskey, Account},
     certificate::Certificate,
     gas::*,
 };

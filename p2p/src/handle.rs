@@ -12,11 +12,11 @@ use std::sync::Mutex;
 extern crate rand_os;
 extern crate x25519_dalek;
 
-use avrio_config::config;
-use rand_os::OsRng;
 
-use x25519_dalek::EphemeralSecret;
-use x25519_dalek::PublicKey;
+
+
+
+
 
 static MAX_SYNCING_PEERS: u64 = 8;
 

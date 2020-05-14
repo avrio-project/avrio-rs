@@ -1,9 +1,9 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 
-use std::time::Duration;
 
-use std::io::{self, BufRead, Write};
+
+use std::io::{self, Write};
 
 use std::thread;
 
@@ -12,7 +12,7 @@ use clap::{App, Arg};
 
 use std::fs::create_dir_all;
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -277,7 +277,7 @@ fn main() {
     let pl = get_peerlist();
     let mut connections: Vec<TcpStream> = vec![];
     connect(get_peerlist().unwrap_or_default(), &mut connections);
-    let mut connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
+    let connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
     let mut new_peers: Vec<SocketAddr> = vec![];
     for connection in &connections_mut {
         for peer in avrio_p2p::helper::get_peerlist_from_peer(&mut connection.try_clone().unwrap())
