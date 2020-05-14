@@ -81,11 +81,11 @@ pub fn remove_block(hash: &String) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn get_block(hash: &String) -> Result<Block, Box<dyn std::error::Error>> {
     let map = MEMPOOL.lock()?;
-    for (b,_) in map.values() {
+    for (b, _) in map.values() {
         if &b.hash == hash {
             return Ok(b.clone());
         }
-    } 
+    }
     return Err("cant find block in mempool".into());
 }
 

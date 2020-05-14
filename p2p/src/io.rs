@@ -12,7 +12,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 
 pub fn peek(peer: &mut TcpStream) -> Result<usize, std::io::Error> {
-    let mut buf = [0;1000000];
+    let mut buf = [0; 1000000];
     return peer.peek(&mut buf);
 }
 

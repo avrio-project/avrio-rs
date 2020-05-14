@@ -58,14 +58,19 @@ pub fn new_connection(addr: &String) -> Result<std::net::TcpStream, Box<dyn std:
                             "peer did not understand our message; key derivitation failed".into(),
                         );
                     } else {
-                        log::info!("Handshook with peer. Adding to peer list and launching handler stream");
-                        let (tx,rx) = std::sync::mpsc::channel::<String>();
+                        log::info!(
+                            "Handshook with peer. Adding to peer list and launching handler stream"
+                        );
+                        let (tx, rx) = std::sync::mpsc::channel::<String>();
                         if let Err(e) = add_peer(a.try_clone()?, true, hex::encode(&ss), &tx) {
                             log::error!("Failed to handshake with peer, adding peer to peerlist gave error: {}", e);
                             return Err("failed to add peer to peer list".into());
                         } else {
                             if let Err(e) = crate::handle::launch_handle_client(rx, &mut a) {
-                                log::error!("Failed to launch peer handler stream, gave error: {}", e);
+                                log::error!(
+                                    "Failed to launch peer handler stream, gave error: {}",
+                                    e
+                                );
                             }
                         }
                         return Ok(a);

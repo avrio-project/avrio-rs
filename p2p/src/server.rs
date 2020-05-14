@@ -1,8 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-
-
-
 extern crate rand_os;
 extern crate x25519_dalek;
 

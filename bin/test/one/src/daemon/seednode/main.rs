@@ -1,8 +1,6 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 
-
-
 use std::io::{self, Write};
 
 use std::thread;
@@ -728,9 +726,10 @@ fn main() {
                             let mut highest_so_far: u64 = 0;
                             inv_iter.seek_to_first();
                             while inv_iter.valid() {
-                                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                                    .unwrap()
-                                    .parse::<u64>()
+                                if let Ok(height) =
+                                    String::from_utf8(inv_iter.key().unwrap().into())
+                                        .unwrap()
+                                        .parse::<u64>()
                                 {
                                     if height > highest_so_far {
                                         highest_so_far = height

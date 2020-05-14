@@ -1,7 +1,6 @@
-
 use rocksdb::{DBRawIterator, Error, Options, DB};
 use serde::{Deserialize, Serialize};
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::process;
 #[macro_use]
 extern crate log;

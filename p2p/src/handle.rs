@@ -12,12 +12,6 @@ use std::sync::Mutex;
 extern crate rand_os;
 extern crate x25519_dalek;
 
-
-
-
-
-
-
 static MAX_SYNCING_PEERS: u64 = 8;
 
 lazy_static! {
@@ -158,7 +152,7 @@ pub fn launch_handle_client(
                                 );
                             }
                             0x0a => {
-                                // the peer just sent us a block, 
+                                // the peer just sent us a block,
                                 // validate it, save it an enact it
                                 let block: avrio_blockchain::Block =
                                     serde_json::from_str(&read_msg.message).unwrap_or_default();

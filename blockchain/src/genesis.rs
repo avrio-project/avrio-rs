@@ -3,7 +3,6 @@
 extern crate avrio_config;
 use avrio_config::config;
 
-
 extern crate hex;
 use crate::{Block, Header};
 use avrio_core::transaction::Transaction;
@@ -16,7 +15,6 @@ pub enum genesisBlockErrors {
 }
 
 extern crate avrio_crypto;
-
 
 pub fn genesis_blocks() -> Vec<Block> {
     /*example

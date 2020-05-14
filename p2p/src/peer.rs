@@ -9,7 +9,8 @@ const MAX_INVALID_BLOCKS: u64 = 15;
 lazy_static! {
     pub static ref INCOMING: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
     pub static ref OUTGOING: Mutex<Vec<TcpStream>> = Mutex::new(vec![]);
-    pub static ref PEERS: Mutex<HashMap<String, (String, bool, Option<std::sync::mpsc::Sender<String>>, u64)>> = Mutex::new(HashMap::new());
+    pub static ref PEERS: Mutex<HashMap<String, (String, bool, Option<std::sync::mpsc::Sender<String>>, u64)>> =
+        Mutex::new(HashMap::new());
 }
 
 /// # get_peers
@@ -44,8 +45,16 @@ pub fn in_peers(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
     return Ok(false);
 }
 
-pub fn add_peer(peer: TcpStream, out: bool, key: String, tx: &std::sync::mpsc::Sender<String>) -> Result<(), Box<dyn Error>> {
-    (*PEERS.lock()?).insert(strip_port(&peer.peer_addr()?), (key, false, Some(tx.clone()), 0));
+pub fn add_peer(
+    peer: TcpStream,
+    out: bool,
+    key: String,
+    tx: &std::sync::mpsc::Sender<String>,
+) -> Result<(), Box<dyn Error>> {
+    (*PEERS.lock()?).insert(
+        strip_port(&peer.peer_addr()?),
+        (key, false, Some(tx.clone()), 0),
+    );
     if !out {
         let _ = (*INCOMING.lock()?).push(peer);
     } else {
@@ -158,11 +167,14 @@ pub fn get_invalid_block_count(peer: &SocketAddr) -> Result<u64, Box<dyn std::er
     }
 }
 
-pub fn set_invalid_block_count(peer: &SocketAddr, new: u64) -> Result<(), Box<dyn std::error::Error>> {
+pub fn set_invalid_block_count(
+    peer: &SocketAddr,
+    new: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut map = PEERS.lock()?;
     if let Some(x) = map.get_mut(&strip_port(&peer)) {
         x.3 = new;
-        return Ok(())
+        return Ok(());
     } else {
         return Err("cant find peer".into());
     }

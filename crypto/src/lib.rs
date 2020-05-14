@@ -21,7 +21,6 @@ use ring::{
 // avrio config, for getting the address prefix
 extern crate avrio_config;
 
-
 pub struct Keypair {
     pub public_key: Publickey,
     pub private_key: Privatekey,

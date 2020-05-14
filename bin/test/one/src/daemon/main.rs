@@ -1,8 +1,6 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 
-
-
 use std::io::{self, Write};
 
 use std::thread;
@@ -23,9 +21,7 @@ extern crate avrio_core;
 use avrio_core::{account::to_atomc, transaction::Transaction};
 
 extern crate avrio_p2p;
-use avrio_p2p::{
-    core::new_connection, core::rec_server, helper::prop_block, helper::sync,
-};
+use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
 extern crate avrio_blockchain;
 use avrio_blockchain::{
     genesis::{generateGenesisBlock, genesisBlockErrors, genesis_blocks, getGenesisBlock},

@@ -1,5 +1,5 @@
 use crate::{io::send, peer::get_peers};
-use avrio_blockchain::{Block};
+use avrio_blockchain::Block;
 
 use bson;
 use log::*;
