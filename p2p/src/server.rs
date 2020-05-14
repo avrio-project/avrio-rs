@@ -94,6 +94,7 @@ impl P2pServer {
         if self.state == P2pServerState::Uninitialized {
             let bind_res = std::net::TcpListener::bind(format!("{}:{}", self.ip, self.port));
             if let Ok(listener) = bind_res {
+                log::info!("P2P Server bound to {}:{}", self.ip, self.port);
                 for stream in listener.incoming() {
                     match stream {
                         Ok(mut stream) => {
