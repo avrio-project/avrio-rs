@@ -91,7 +91,7 @@ impl P2pServer {
         }
     }
     pub fn launch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.state != P2pServerState::Uninitialized {
+        if self.state == P2pServerState::Uninitialized {
             let bind_res = std::net::TcpListener::bind(format!("{}:{}", self.ip, self.port));
             if let Ok(listener) = bind_res {
                 for stream in listener.incoming() {
