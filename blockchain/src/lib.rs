@@ -43,6 +43,12 @@ pub enum blockValidationErrors {
 }
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub enum BlockType {
+    Send,
+    Recieve,
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Header {
     pub version_major: u8,
@@ -58,6 +64,7 @@ pub struct Header {
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Block {
     pub header: Header,
+    pub block_type: BlockType,
     pub txns: Vec<Transaction>,
     pub hash: String,
     pub signature: String,
