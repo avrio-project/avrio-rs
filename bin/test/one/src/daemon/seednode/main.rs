@@ -49,12 +49,11 @@ use avrio_crypto::Wallet;
 
 use text_io::read;
 
-pub fn safe_exit(mut connections_mut: Vec<TcpStream>) {
+pub fn safe_exit() {
     // TODO: save mempool to disk + send kill to all threads.
 
     info!("Goodbye!");
-    let con: Vec<&mut TcpStream> = connections_mut.iter_mut().collect();
-    avrio_p2p::core::close_all(con);
+    avrio_p2p::core::close_all();
     std::process::exit(0);
 }
 
@@ -296,7 +295,7 @@ fn main() {
     let set: std::collections::HashSet<_> = pl_u.drain(..).collect(); // dedup
     pl_u.extend(set.into_iter());
     for peer in pl_u {
-        let _ = new_connection(peer);
+        let _ = new_connection(&peer.to_string());
     }
     let syncneed = sync_needed();
 
@@ -305,19 +304,25 @@ fn main() {
         Ok(_) => {
             match syncneed {
                 // do we need to sync
-                true => {
-                    info!("Starting sync (this will take some time)");
-                    if let Ok(_) = sync(&mut connections_mut) {
-                        info!("Successfully synced with the network!");
-                        synced = true;
-                    } else {
-                        error!("Syncing failed");
-                        process::exit(1);
+                Ok(val) => match val {
+                    true => {
+                        info!("Starting sync (this will take some time)");
+                        if let Ok(_) = sync() {
+                            info!("Successfully synced with the network!");
+                            synced = true;
+                        } else {
+                            error!("Syncing failed");
+                            process::exit(1);
+                        }
                     }
-                }
-                false => {
-                    info!("No sync needed");
-                    synced = true;
+                    false => {
+                        info!("No sync needed");
+                        synced = true;
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to ask peers if we need to sync, gave error: {}", e);
+                    process::exit(1);
                 }
             }
         }
@@ -399,7 +404,7 @@ fn main() {
             }
         };
         info!("Enacting genesis block");
-        let _ = prop_block(&genesis_block_clone, &connections_mut).unwrap();
+        let _ = prop_block(&genesis_block_clone).unwrap();
         info!("Sent block to network");
         match enact_block(genesis_block_clone) {
             Ok(_) => {
@@ -488,11 +493,11 @@ fn main() {
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-            let mut invIter = getIter(&inv_db);
+            let mut inv_iter = getIter(&inv_db);
             let mut highest_so_far: u64 = 0;
-            invIter.seek_to_first();
-            while invIter.valid() {
-                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
+            inv_iter.seek_to_first();
+            while inv_iter.valid() {
+                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
                     .unwrap()
                     .parse::<u64>()
                 {
@@ -500,9 +505,9 @@ fn main() {
                         highest_so_far = height
                     }
                 }
-                invIter.next();
+                inv_iter.next();
             }
-            drop(invIter);
+            drop(inv_iter);
             drop(inv_db);
             let height: u64 = highest_so_far;
             let mut blk = Block {
@@ -529,7 +534,7 @@ fn main() {
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
-            let _ = prop_block(&blk, &connections_mut).unwrap();
+            let _ = prop_block(&blk).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
@@ -549,7 +554,7 @@ fn main() {
         } else if read == "get_address" {
             info!("Your wallet's addres is: {}", wall.address());
         } else if read == "exit" {
-            safe_exit(connections);
+            safe_exit();
             process::exit(0);
         } else if read == "address_details" {
             info!("Enter the address of the account.");
@@ -719,11 +724,11 @@ fn main() {
                                     + &"-chainindex".to_string(),
                             )
                             .unwrap();
-                            let mut invIter = getIter(&inv_db);
+                            let mut inv_iter = getIter(&inv_db);
                             let mut highest_so_far: u64 = 0;
-                            invIter.seek_to_first();
-                            while invIter.valid() {
-                                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
+                            inv_iter.seek_to_first();
+                            while inv_iter.valid() {
+                                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
                                     .unwrap()
                                     .parse::<u64>()
                                 {
@@ -731,10 +736,10 @@ fn main() {
                                         highest_so_far = height
                                     }
                                 }
-                                invIter.next();
+                                inv_iter.next();
                             }
                             let height: u64 = highest_so_far;
-                            drop(invIter);
+                            drop(inv_iter);
                             drop(inv_db);
                             let mut blk = Block {
                                 header: Header {
@@ -766,7 +771,7 @@ fn main() {
                             info!("checked block");
                             let _ = saveBlock(blk.clone()).unwrap();
                             info!("saved block");
-                            let _ = prop_block(&blk, &connections_mut).unwrap();
+                            let _ = prop_block(&blk).unwrap();
                             info!("Sent block");
                             let _ = enact_block(blk.clone()).unwrap();
                             info!("enacted block :{}", i_block);
@@ -822,11 +827,11 @@ fn main() {
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-            let mut invIter = getIter(&inv_db);
+            let mut inv_iter = getIter(&inv_db);
             let mut highest_so_far: u64 = 0;
-            invIter.seek_to_first();
-            while invIter.valid() {
-                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
+            inv_iter.seek_to_first();
+            while inv_iter.valid() {
+                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
                     .unwrap()
                     .parse::<u64>()
                 {
@@ -834,9 +839,9 @@ fn main() {
                         highest_so_far = height
                     }
                 }
-                invIter.next();
+                inv_iter.next();
             }
-            drop(invIter);
+            drop(inv_iter);
             drop(inv_db);
             let height: u64 = highest_so_far;
             let mut blk = Block {
@@ -863,7 +868,7 @@ fn main() {
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
-            let _ = prop_block(&blk, &connections_mut).unwrap();
+            let _ = prop_block(&blk).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
@@ -924,11 +929,11 @@ fn main() {
                                 + &"-chainindex".to_string(),
                         )
                         .unwrap();
-                        let mut invIter = getIter(&inv_db);
+                        let mut inv_iter = getIter(&inv_db);
                         let mut highest_so_far: u64 = 0;
-                        invIter.seek_to_first();
-                        while invIter.valid() {
-                            if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
+                        inv_iter.seek_to_first();
+                        while inv_iter.valid() {
+                            if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
                                 .unwrap()
                                 .parse::<u64>()
                             {
@@ -936,9 +941,9 @@ fn main() {
                                     highest_so_far = height
                                 }
                             }
-                            invIter.next();
+                            inv_iter.next();
                         }
-                        drop(invIter);
+                        drop(inv_iter);
                         drop(inv_db);
                         let height: u64 = highest_so_far;
                         let mut blk = Block {
@@ -967,7 +972,7 @@ fn main() {
                         let _ = blk.sign(&wall.private_key);
                         let _ = check_block(blk.clone()).unwrap();
                         let _ = saveBlock(blk.clone()).unwrap();
-                        let _ = prop_block(&blk, &connections_mut).unwrap();
+                        let _ = prop_block(&blk).unwrap();
                         let _ = enact_block(blk.clone()).unwrap();
                         let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
                         info!(
