@@ -9,6 +9,7 @@ fn get_message_types() -> HashMap<u16, &'static str> {
 
     message_types.insert(0, "Raw / Invalid");
     message_types.insert(0x22, "Sync Request");
+    message_types.insert(0x23, "Sync Close");
     message_types.insert(0x01, "Sync Acknowledged");
     message_types.insert(0x05, "Send Block");
     message_types.insert(0x0a, "Block");
