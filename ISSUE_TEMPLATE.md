@@ -25,8 +25,8 @@
 
 ## Your Environment
 <!--- Include as many relevant details about the environment you experienced the bug in -->
-* Version used:
-* Environment name and version (e.g. PHP 5.4 on nginx 1.9.1):
-* Server type and version:
+* Avrio Version used (eg 103):
+* Rust toolchain name and version (e.g. Rust nightly 1.0.3):
+* Computer specs (eg 3 core, 3gb ram with a 100gb ssd):
 * Operating System and version:
-* Link to your project:
+* Any changes to the code? (eg custom additions):
