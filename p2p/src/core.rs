@@ -98,8 +98,10 @@ pub fn form_handshake(l_pub: &[u8; 32]) -> String {
     );
 }
 
-pub fn rec_server(_address: &String) -> Result<(), Box<dyn std::error::Error>> {
-    return Ok(());
+pub fn rec_server(address: &String) -> Result<(), Box<dyn std::error::Error>> {
+    let mut p2p_server = crate::server::P2pServer::default();
+    p2p_server.set_bind_addr(&address.parse()?)?;
+    return p2p_server.launch();
 }
 
 pub fn close_all() {}

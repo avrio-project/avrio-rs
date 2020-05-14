@@ -22,6 +22,19 @@ pub struct P2pServer {
     pub accept_in: bool,
     tx: Option<std::sync::mpsc::Sender<&'static str>>,
 }
+
+impl Default for P2pServer {
+    fn default() -> Self {
+        Self {
+            state: P2pServerState::Uninitialized,
+            connections: 0,
+            ip: "0.0.0.0".to_string(),
+            port: "56789".to_string(),
+            accept_in: true,
+            tx: None,
+        }
+    }
+}
 #[derive(PartialEq, Debug)]
 enum P2pServerState {
     AcceptingIncoming,
