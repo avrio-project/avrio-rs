@@ -19,7 +19,6 @@ rand = "0.7"
 log = "0.4"
 ring = "0.16.11"
 bincode = "1.2.1"
-cryptonightrs = { path = "../crypto/cn-rs", package = "cryptonight-rs" }
 simple_logger = "1.5.0"
 merkle = "1.11.0"
 bs58 = "0.3"

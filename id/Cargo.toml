@@ -12,7 +12,6 @@ serde_json = "1.0"
 avrio_blockchain = { path = "../blockchain/" }
 avrio_database = { path = "../database" }
 rand = "0.7"
-cryptonight-rs = { path = "../crypto/cn-rs"}
 hex = "0.4"
 log = "0.4"
 ring = "0.16.11"
