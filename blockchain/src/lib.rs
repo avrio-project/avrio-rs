@@ -401,6 +401,9 @@ impl Block {
 // TODO: finish enact block
 /// Enacts a block. Updates all relavant dbs and files
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    if (block.block_type != BlockType::Recieve) {
+        return Err("tryed to enact a send block".into());
+    }
     let chaindex_db = openDb(
         config().db_path
             + &"/chains/".to_owned()
