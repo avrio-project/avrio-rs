@@ -24,6 +24,7 @@ use avrio_crypto::Hashable;
 
 use std::fs::File;
 use std::io::prelude::*;
+use avrio_node;
 
 #[derive(Debug)]
 pub enum blockValidationErrors {
@@ -401,8 +402,10 @@ impl Block {
 // TODO: finish enact block
 /// Enacts a block. Updates all relavant dbs and files
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    if (block.block_type != BlockType::Recieve) {
-        return Err("tryed to enact a send block".into());
+    if (block.block_type != BlockType::Recieve) { // we only enact recive blocks, ignore send blocks
+        return Err("tried to enact a send block".into());
+    } else if let Ok(_) = avrio_node::mempool::get_block(block.hash) { // if the block is already in the mempool this will return a block
+        return Err("block alrady in mempool".into());
     }
     let chaindex_db = openDb(
         config().db_path
