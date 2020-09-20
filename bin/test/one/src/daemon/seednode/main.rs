@@ -20,7 +20,6 @@ use avrio_config::{config, Config};
 extern crate avrio_core;
 use avrio_core::{account::to_atomc, transaction::Transaction};
 
-extern crate avrio_p2p;
 use avrio_p2p::{
     core::new_connection, core::rec_server, helper::prop_block, helper::sync, helper::sync_needed,
 };
@@ -522,6 +521,8 @@ fn main() {
                         .as_millis() as u64,
                     network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101],
                 },
+                block_type: BlockType::Send,
+                send_block: None,
                 txns: vec![txn],
                 hash: "".to_owned(),
                 signature: "".to_owned(),
@@ -533,7 +534,34 @@ fn main() {
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
-            let _ = enact_block(blk.clone()).unwrap();
+            // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+            let mut proccessed_accs: Vec<String> = vec![];
+            for txn in &blk.txns {
+                if !proccessed_accs.contains(&txn.receive_key) {
+                    let rec_blk = blk
+                        .form_recieve_block(Some(txn.receive_key.to_owned()))
+                        .unwrap();
+                    let _ = check_block(rec_blk.clone()).unwrap();
+                    let _ = saveBlock(rec_blk.clone()).unwrap();
+                    let _ = prop_block(&rec_blk).unwrap();
+                    let _ = enact_block(rec_blk.clone()).unwrap();
+                }
+            }
+            // all done
+            // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+            let mut proccessed_accs: Vec<String> = vec![];
+            for txn in &blk.txns {
+                if !proccessed_accs.contains(&txn.receive_key) {
+                    let rec_blk = blk
+                        .form_recieve_block(Some(txn.receive_key.to_owned()))
+                        .unwrap();
+                    let _ = check_block(rec_blk.clone()).unwrap();
+                    let _ = saveBlock(rec_blk.clone()).unwrap();
+                    let _ = prop_block(&rec_blk).unwrap();
+                    let _ = enact_block(rec_blk.clone()).unwrap();
+                }
+            }
+            // all done
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
                 "Transaction sent! Txn hash: {}, Block hash: {}. Our new balance: {} AIO",
@@ -757,23 +785,33 @@ fn main() {
                                         97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101,
                                     ],
                                 },
+                                block_type: BlockType::Send,
+                                send_block: None,
                                 txns,
                                 hash: "".to_owned(),
                                 signature: "".to_owned(),
                                 confimed: false,
                                 node_signatures: vec![],
                             };
-                            info!("hashing block");
                             blk.hash();
                             let _ = blk.sign(&wall.private_key);
                             let _ = check_block(blk.clone()).unwrap();
-                            info!("checked block");
                             let _ = saveBlock(blk.clone()).unwrap();
-                            info!("saved block");
                             let _ = prop_block(&blk).unwrap();
-                            info!("Sent block");
-                            let _ = enact_block(blk.clone()).unwrap();
-                            info!("enacted block :{}", i_block);
+                            // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+                            let mut proccessed_accs: Vec<String> = vec![];
+                            for txn in &blk.txns {
+                                if !proccessed_accs.contains(&txn.receive_key) {
+                                    let rec_blk = blk
+                                        .form_recieve_block(Some(txn.receive_key.to_owned()))
+                                        .unwrap();
+                                    let _ = check_block(rec_blk.clone()).unwrap();
+                                    let _ = saveBlock(rec_blk.clone()).unwrap();
+                                    let _ = prop_block(&rec_blk).unwrap();
+                                    let _ = enact_block(rec_blk.clone()).unwrap();
+                                }
+                            }
+                            // all done
                             i_block += 1;
                         }
                         let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
@@ -857,6 +895,8 @@ fn main() {
                         .as_millis() as u64,
                     network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101],
                 },
+                block_type: BlockType::Send,
+                send_block: None,
                 txns: vec![txn],
                 hash: "".to_owned(),
                 signature: "".to_owned(),
@@ -868,7 +908,20 @@ fn main() {
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
-            let _ = enact_block(blk.clone()).unwrap();
+            // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+            let mut proccessed_accs: Vec<String> = vec![];
+            for txn in &blk.txns {
+                if !proccessed_accs.contains(&txn.receive_key) {
+                    let rec_blk = blk
+                        .form_recieve_block(Some(txn.receive_key.to_owned()))
+                        .unwrap();
+                    let _ = check_block(rec_blk.clone()).unwrap();
+                    let _ = saveBlock(rec_blk.clone()).unwrap();
+                    let _ = prop_block(&rec_blk).unwrap();
+                    let _ = enact_block(rec_blk.clone()).unwrap();
+                }
+            }
+            // all done
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
                 "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
@@ -961,6 +1014,8 @@ fn main() {
                                     97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101,
                                 ],
                             },
+                            block_type: BlockType::Send,
+                            send_block: None,
                             txns: vec![txn],
                             hash: "".to_owned(),
                             signature: "".to_owned(),
@@ -972,7 +1027,20 @@ fn main() {
                         let _ = check_block(blk.clone()).unwrap();
                         let _ = saveBlock(blk.clone()).unwrap();
                         let _ = prop_block(&blk).unwrap();
-                        let _ = enact_block(blk.clone()).unwrap();
+                        // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+                        let mut proccessed_accs: Vec<String> = vec![];
+                        for txn in &blk.txns {
+                            if !proccessed_accs.contains(&txn.receive_key) {
+                                let rec_blk = blk
+                                    .form_recieve_block(Some(txn.receive_key.to_owned()))
+                                    .unwrap();
+                                let _ = check_block(rec_blk.clone()).unwrap();
+                                let _ = saveBlock(rec_blk.clone()).unwrap();
+                                let _ = prop_block(&rec_blk).unwrap();
+                                let _ = enact_block(rec_blk.clone()).unwrap();
+                            }
+                        }
+                        // all done;
                         let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
                         info!(
                             "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
