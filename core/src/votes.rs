@@ -3,7 +3,6 @@ Copyright the Avrio Core Developers 2020
 
 This file handles the creation/ calculation and validation of node votes
 */
-extern crate cryptonight;
 use avrio_crypto::Hashable;
 extern crate bs58;
 use std::time::Instant;

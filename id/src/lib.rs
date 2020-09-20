@@ -1,19 +1,17 @@
 // This lib deals with the generation of ID's based off the random strings provided by the consensius commitee at the end of the last round
 
 use std::time::{SystemTime, UNIX_EPOCH};
-extern crate cryptonight;
-extern crate rand;
-use cryptonight::cryptonight;
 
 extern crate hex;
+extern crate rand;
 #[macro_use]
 extern crate log;
+use avrio_crypto::raw_hash;
 use ring::{
     rand as randc,
     signature::{self, KeyPair},
 };
 use serde::{Deserialize, Serialize};
-
 pub struct HashParams {
     pub iterations: u32,
     pub memory: u32,
@@ -52,12 +50,11 @@ fn calculate_hash_params(PrevBlockHash: String) -> HashParams {
 }
 
 fn hash_string(params: &HashParams, s: &String) -> String {
-    unsafe {
-        let input = s.as_bytes();
-        cryptonight::set_params(params.memory as u64, params.iterations as u64);
-        let out = cryptonight(&input, input.len(), 0);
-        return hex::encode(out);
+    let mut out: String = s.to_owned();
+    for _ in 0..params.iterations {
+        out = raw_hash(&out);
     }
+    return out;
 }
 
 pub fn generateId(
