@@ -4,7 +4,7 @@ extern crate avrio_config;
 use avrio_config::config;
 
 extern crate hex;
-use crate::{Block, Header};
+use crate::{Block, BlockType, Header};
 use avrio_core::transaction::Transaction;
 
 #[derive(Debug, PartialEq)]
@@ -107,6 +107,8 @@ pub fn generateGenesisBlock(
             timestamp: 0,
             network: config().network_id,
         },
+        block_type: BlockType::Send,
+        send_block: None,
         hash: "".to_string(),
         txns: my_genesis_txns,
         signature: "".to_string(),

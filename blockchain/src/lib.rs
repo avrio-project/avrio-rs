@@ -43,6 +43,12 @@ pub enum blockValidationErrors {
 }
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub enum BlockType {
+    Send,
+    Recieve,
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Header {
     pub version_major: u8,
@@ -58,6 +64,8 @@ pub struct Header {
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Block {
     pub header: Header,
+    pub block_type: BlockType,
+    pub send_block: Option<String>, // the send block this recieve block is in refrence to
     pub txns: Vec<Transaction>,
     pub hash: String,
     pub signature: String,
@@ -89,6 +97,12 @@ impl Hashable for BlockSignature {
         bytes.extend(self.signer_public_key.as_bytes());
         write!(bytes, "{}", self.nonce).unwrap();
         bytes
+    }
+}
+
+impl Default for BlockType {
+    fn default() -> Self {
+        BlockType::Send
     }
 }
 
@@ -390,10 +404,40 @@ impl Block {
     pub fn isOtherBlock(&self, OtherBlock: &Block) -> bool {
         self == OtherBlock
     }
+
+    pub fn form_recieve_block(
+        &self,
+        chain_key: Option<String>,
+    ) -> Result<Block, Box<dyn std::error::Error>> {
+        if (self.block_type == BlockType::Recieve) {
+            return Err("Block is recive block already".into());
+        }
+        // else we can get on with forming the rec block for this block
+        let mut blk_clone = self.clone();
+        blk_clone.block_type = BlockType::Recieve;
+        let mut chainKey: String = config().chain_key;
+        if let Some(key) = chain_key {
+            chainKey = key;
+        }
+        let our_height: u64 = getData(
+            config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
+            &"blockcount".to_owned(),
+        )
+        .parse()?;
+        blk_clone.header.chain_key = chainKey;
+        blk_clone.header.height = our_height + 1;
+        blk_clone.send_block = Some(self.hash.to_owned());
+        blk_clone.hash();
+        return Ok(blk_clone);
+    }
 }
 // TODO: finish enact block
 /// Enacts a block. Updates all relavant dbs and files
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    if (block.block_type != BlockType::Recieve) {
+        // we only enact recive blocks, ignore send blocks
+        return Err("tried to enact a send block".into());
+    }
     let chaindex_db = openDb(
         config().db_path
             + &"/chains/".to_owned()
