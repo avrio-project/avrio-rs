@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-extern crate cryptonight;
 extern crate hex;
 use avrio_crypto::Hashable;
 extern crate avrio_config;
