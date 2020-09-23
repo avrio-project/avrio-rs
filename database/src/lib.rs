@@ -93,11 +93,11 @@ pub fn getData(path: String, key: &str) -> String {
     match db.get(key) {
         Ok(Some(value)) => {
             data = String::from_utf8(value).unwrap_or("".to_owned());
-            trace!("got data from db: {}, data: {}", path, data);
+            trace!("got data from db: {}, data: {}, key {}", path, data, key);
         }
         Ok(None) => {
             data = "-1".to_owned();
-            trace!("got data from db: {}, data: None", path);
+            trace!("got data from db: {}, data: None, key: {}", path, key);
         }
         Err(e) => {
             data = "0".to_owned();

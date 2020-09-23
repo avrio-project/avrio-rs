@@ -434,7 +434,7 @@ impl Block {
 // TODO: finish enact block
 /// Enacts a block. Updates all relavant dbs and files
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    if (block.block_type != BlockType::Recieve) {
+    if block.block_type != BlockType::Recieve && block.header.height != 0 {
         // we only enact recive blocks, ignore send blocks
         return Err("tried to enact a send block".into());
     }
@@ -636,11 +636,12 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     }
                 }
             }
-            let prev_blk_hash = getBlock(&blk.header.chain_key, &blk.header.height - 1).hash;
-            if blk.header.prev_hash != prev_blk_hash && blk.header.prev_hash != "".to_owned() {
+            let prev_blk = getBlock(&blk.header.chain_key, &blk.header.height - 1);
+            trace!("Prev block: {:?}", prev_blk);
+            if blk.header.prev_hash != prev_blk.hash && blk.header.prev_hash != "".to_owned() {
                 debug!(
                     "Expected prev hash to be: {}, got: {}. For block at height: {}",
-                    prev_blk_hash, blk.header.prev_hash, blk.header.height
+                    prev_blk.hash, blk.header.prev_hash, blk.header.height
                 );
                 return Err(blockValidationErrors::invalidPreviousBlockhash);
             } else if let Err(_) = getAccount(&blk.header.chain_key) {
