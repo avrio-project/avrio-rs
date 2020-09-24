@@ -10,6 +10,7 @@ use rust_crypto::{
 use std::error::Error;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use log::trace;
 
 pub fn peek(peer: &mut TcpStream) -> Result<usize, std::io::Error> {
     let mut buf = [0; 1000000];
@@ -95,9 +96,11 @@ pub fn send(
     let s: S;
     let mut k: AesGcm;
     if key.is_some() {
+        let key_unwraped = key.unwrap();
+        trace!("KEY: {:?}, LEN: {}", key_unwraped, key_unwraped.len());
         let mut k = AesGcm::new(
             KeySize::KeySize128,
-            key.unwrap(),
+            key_unwraped,
             &[0],
             p2p_dat.length().to_string().as_bytes(),
         );

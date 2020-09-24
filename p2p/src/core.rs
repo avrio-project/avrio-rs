@@ -24,8 +24,8 @@ pub fn new_connection(addr: &String) -> Result<std::net::TcpStream, Box<dyn std:
     let local_sec = EphemeralSecret::new(&mut local_cspring);
     let local_pub = PublicKey::from(&local_sec);
     let handshake = form_handshake(local_pub.as_bytes());
-    let _ = crate::io::send(handshake, &mut a, 0xa, true, Some("hand_key".as_bytes()))?;
-    let d = crate::io::read(&mut a, Some(100000), Some("hand_key".as_bytes()))?;
+    let _ = crate::io::send(handshake, &mut a, 0xa, true, Some("hand_keyhand_key".as_bytes()))?;
+    let d = crate::io::read(&mut a, Some(100000), Some("hand_keyhand_key".as_bytes()))?;
     if d.message_type != 0xa1 {
         return Err("wrong first response type".into());
     }
