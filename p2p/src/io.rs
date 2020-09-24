@@ -101,7 +101,7 @@ pub fn send(
         let mut k = AesGcm::new(
             KeySize::KeySize128,
             key_unwraped,
-            &[0],
+            &[0; 12],
             p2p_dat.length().to_string().as_bytes(),
         );
         let mut tag = vec![];
@@ -178,7 +178,7 @@ pub fn read(
                     k = AesGcm::new(
                         KeySize::KeySize128,
                         key.unwrap(),
-                        &[0],
+                        &[0; 12],
                         len.to_string().as_bytes(),
                     );
                 } else {
@@ -187,11 +187,11 @@ pub fn read(
                         k = AesGcm::new(
                             KeySize::KeySize128,
                             val.0.as_bytes(),
-                            &[0],
+                            &[0; 12],
                             len.to_string().as_bytes(),
                         );
                     } else {
-                        return Err("No key provded and peer not found".into());
+                        return Err("No key provided and peer not found".into());
                     }
                 }
                 let mut buf = Vec::with_capacity(len);
