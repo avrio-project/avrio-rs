@@ -42,14 +42,17 @@ use avrio_crypto::Wallet;
 
 use text_io::read;
 
-fn connect_seednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
-    let mut conn_count: u8 = 0;
+fn connect_seednodes(
+    seednodes: Vec<SocketAddr>,
+    connected_peers: &mut Vec<TcpStream>,
+) -> Vec<SocketAddr> {
+    let mut conns: Vec<SocketAddr> = vec![];
     for peer in seednodes {
         let error = new_connection(&peer.to_string());
         match error {
             Ok(_) => {
                 info!("Connected to {:?}::{:?}", peer, 11523);
-                conn_count += 1;
+                conns.push(peer);
                 connected_peers.push(error.unwrap());
             }
             _ => warn!(
@@ -58,7 +61,7 @@ fn connect_seednodes(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpSt
             ),
         };
     }
-    return conn_count;
+    return conns;
 }
 
 fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
@@ -259,15 +262,15 @@ fn main() {
     let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
     if pl.len() < 1 {
         let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(35, 230, 157, 42)),
-            56789,
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            56788,
         )];
         for node in seednodes {
             pl.push(node);
         }
     }
     let mut connections: Vec<TcpStream> = vec![];
-    connect_seednodes(pl.clone(), &mut connections);
+    let connected_addrs = connect_seednodes(pl.clone(), &mut connections);
     let connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
     let mut new_peers: Vec<SocketAddr> = vec![];
     for connection in &connections_mut {
@@ -286,7 +289,12 @@ fn main() {
     let set: std::collections::HashSet<_> = pl.drain(..).collect(); // dedup
     pl.extend(set.into_iter());
     for peer in pl {
-        let _ = new_connection(&peer.to_string());
+        if !connected_addrs.contains(&peer) {
+            info!("Connecting to new peer {}", peer);
+            let _ = new_connection(&peer.to_string());
+        } else {
+            debug!("Not connecting to {}; Already connected", peer);
+        }
     }
     let syncneed = avrio_p2p::helper::sync_needed();
 

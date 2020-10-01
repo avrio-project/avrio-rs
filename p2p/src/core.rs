@@ -8,6 +8,7 @@ extern crate x25519_dalek;
 use avrio_config::config;
 use rand_os::OsRng;
 
+use std::convert::TryInto;
 use x25519_dalek::EphemeralSecret;
 use x25519_dalek::PublicKey;
 
@@ -17,21 +18,40 @@ fn from_slice(bytes: &[u8]) -> [u8; 32] {
     array.copy_from_slice(bytes);
     array
 }
+use log::trace;
 
 pub fn new_connection(addr: &String) -> Result<std::net::TcpStream, Box<dyn std::error::Error>> {
+    log::info!("Connecting to {}", addr);
     let mut a = std::net::TcpStream::connect(addr)?;
     let mut local_cspring = OsRng::new().unwrap();
     let local_sec = EphemeralSecret::new(&mut local_cspring);
     let local_pub = PublicKey::from(&local_sec);
     let handshake = form_handshake(local_pub.as_bytes());
-    let _ = crate::io::send(handshake, &mut a, 0xa, true, Some("hand_keyhand_key".as_bytes()))?;
-    let d = crate::io::read(&mut a, Some(100000), Some("hand_keyhand_key".as_bytes()))?;
-    if d.message_type != 0xa1 {
+    trace!("Formed handshake, {}", handshake);
+    let _ = crate::io::send(
+        handshake,
+        &mut a,
+        0xa,
+        true,
+        Some(
+            "hand_keyhand_keyhand_keyhand_key"
+                .as_bytes()
+                .try_into()
+                .unwrap(),
+        ),
+    )?;
+    let d = crate::io::read(
+        &mut a,
+        Some(100000),
+        Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
+    )?;
+    if d.message_type != 0x1a {
         return Err("wrong first response type".into());
     }
     let d_split = d.message.split("*").collect::<Vec<&str>>();
-    if d_split.len() != 4 {
-        return Err("wrong return len".into());
+    if d_split.len() != 5 {
+        trace!("d_split: {}, expected 4", d_split.len());
+        return Err("wrong return len: ".into());
     } else {
         if hex::encode(config().network_id) != d_split[0] {
             return Err("wrong network id".into());
@@ -43,8 +63,13 @@ pub fn new_connection(addr: &String) -> Result<std::net::TcpStream, Box<dyn std:
             let key =
                 local_sec.diffie_hellman(&PublicKey::from(from_slice(&hex::decode(d_split[4])?)));
             let ss = key.as_bytes();
+            trace!("KEY={}, LEN={}", hex::encode(ss), ss.len());
             send("".into(), &mut a, 0xa2, true, Some(ss))?;
-            let p2_read = read(&mut a, Some(10000), Some("hand_res".as_bytes()));
+            let p2_read = read(
+                &mut a,
+                Some(10000),
+                Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
+            );
             if let Ok(data) = p2_read {
                 if data.message_type != 0xa3 {
                     return Err(format!(

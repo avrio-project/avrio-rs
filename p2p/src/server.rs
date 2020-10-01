@@ -14,6 +14,7 @@ use crate::{
     peer::add_peer,
 };
 
+use std::convert::TryInto;
 pub struct P2pServer {
     state: P2pServerState,
     connections: u64,
@@ -99,9 +100,12 @@ impl P2pServer {
                     match stream {
                         Ok(mut stream) => {
                             log::trace!("New incoming stream");
-                            if let Ok(read_msg) =
-                                read(&mut stream, Some(1000), Some("hand_key".as_bytes()))
-                            {
+                            let read_store = read(
+                                &mut stream,
+                                Some(10000),
+                                Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
+                            );
+                            if let Ok(read_msg) = read_store {
                                 let addr = stream.peer_addr().unwrap_or(SocketAddr::new(
                                     IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                                     0,
@@ -113,6 +117,11 @@ impl P2pServer {
                                         let local_pub = PublicKey::from(&local_sec);
                                         let d_split =
                                             read_msg.message.split("*").collect::<Vec<&str>>();
+                                        log::trace!(
+                                            "D_SPLIT: {:?}, len: {}",
+                                            d_split,
+                                            d_split.len()
+                                        );
 
                                         if hex::encode(config().network_id) != d_split[0] {
                                             log::debug!("Peer tried to handshake with wrong network id. Expecting: {}, got: {}. Ignoring...", hex::encode(config().network_id), d_split[0]);
@@ -140,6 +149,12 @@ impl P2pServer {
                                                     &hex::decode(d_split[4]).unwrap_or_default(),
                                                 ),
                                             ));
+                                            log::trace!(
+                                                "KEY={}, LEN={}",
+                                                hex::encode(key.as_bytes()),
+                                                key.as_bytes().len()
+                                            );
+
                                             let handshake =
                                                 crate::core::form_handshake(local_pub.as_bytes());
                                             let _ = crate::io::send(
@@ -147,7 +162,12 @@ impl P2pServer {
                                                 &mut stream,
                                                 0x1a,
                                                 true,
-                                                Some("hand_key".as_bytes()),
+                                                Some(
+                                                    "hand_keyhand_keyhand_keyhand_key"
+                                                        .as_bytes()
+                                                        .try_into()
+                                                        .unwrap(),
+                                                ),
                                             )
                                             .unwrap_or_default();
                                             if let Ok(d) = crate::io::read(
@@ -166,7 +186,12 @@ impl P2pServer {
                                                         &mut stream,
                                                         0xa3,
                                                         true,
-                                                        Some("hand_res".as_bytes()),
+                                                        Some(
+                                                            "hand_keyhand_keyhand_keyhand_key"
+                                                                .as_bytes()
+                                                                .try_into()
+                                                                .unwrap(),
+                                                        ),
                                                     );
                                                     // now we add peer to peers list
                                                     log::info!(
@@ -220,7 +245,12 @@ impl P2pServer {
                                                     &mut stream,
                                                     0xa3,
                                                     true,
-                                                    Some("hand_res".as_bytes()),
+                                                    Some(
+                                                        "hand_keyhand_keyhand_keyhand_key"
+                                                            .as_bytes()
+                                                            .try_into()
+                                                            .unwrap(),
+                                                    ),
                                                 );
                                             }
                                         }
@@ -229,7 +259,10 @@ impl P2pServer {
                                     }
                                 }
                             } else {
-                                log::debug!("Failed to read any data from newly connected peer");
+                                log::debug!(
+                                    "Failed to read any data from newly connected peer, error: {}",
+                                    read_store.unwrap_err()
+                                );
                             }
                         }
 
