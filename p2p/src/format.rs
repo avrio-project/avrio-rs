@@ -1,5 +1,4 @@
 use avrio_crypto::raw_hash;
-use bson;
 use serde::{Deserialize, Serialize};
 
 pub const LEN_DECL_BYTES: usize = 9; // 000 000 000
@@ -25,6 +24,14 @@ pub fn pad_len(length: usize) -> String {
 }
 
 impl P2pData {
+    pub fn new(len: usize, message: String, message_type: u16, checksum: String) -> Self {
+        return Self {
+            len,
+            message,
+            message_type,
+            checksum,
+        };
+    }
     /// # Log
     /// Logs self (on a trace level)
     pub fn log(&self) {
@@ -65,10 +72,10 @@ impl P2pData {
     /// # to_string
     /// Takes a P2pData struct and turns it into a string that can be decoded on the other end of the stream
     pub fn to_string(&self) -> String {
-        let s = match bson::to_bson(&self) {
+        let s = match serde_json::to_string(self) {
             Ok(s) => s.to_string(),
             Err(e) => {
-                debug!("Failed to encode P2pData to bson, gave error: {}", e);
+                debug!("Failed to encode P2pData to json, gave error: {}", e);
                 "error".to_string()
             }
         };
@@ -90,12 +97,12 @@ impl P2pData {
         }
         let ser: String = s[LEN_DECL_BYTES - 1..s.len() - n].to_owned();
         let d: P2pData;
-        match bson::from_bson(bson::to_bson(&ser).unwrap_or_default()) {
+        match serde_json::from_str(&ser) {
             Ok(p) => {
                 d = p;
             }
             Err(e) => {
-                debug!("Decoding bson to p2pdata struct gave error: {}", e);
+                debug!("Decoding json to p2pdata struct gave error: {}", e);
                 d = P2pData::default();
             }
         };

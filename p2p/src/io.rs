@@ -2,6 +2,7 @@ use crate::{
     format::{P2pData, LEN_DECL_BYTES},
     peer::{strip_port, PEERS},
 };
+use log::{debug, trace};
 use rust_crypto::{
     aead::{AeadDecryptor, AeadEncryptor},
     aes::KeySize,
@@ -87,25 +88,33 @@ pub fn send(
     peer: &mut TcpStream,
     msg_type: u16,
     flush: bool,
-    key: Option<&[u8]>,
+    key: Option<&[u8; 32]>,
 ) -> Result<(), Box<dyn Error>> {
-    let p2p_dat = P2pData::gen(msg, msg_type);
-    p2p_dat.log();
-    let data: String = p2p_dat.to_string();
+    //let p2p_dat = P2pData::gen(msg, msg_type);
+    //p2p_dat.log();
+    let data: String = msg;
     let s: S;
     let mut k: AesGcm;
     if key.is_some() {
+        let mut key_unwraped = &[0u8; 32];
+        key_unwraped = key.unwrap();
+        trace!("KEY: {:?}, LEN: {}", key_unwraped, key_unwraped.len());
         let mut k = AesGcm::new(
             KeySize::KeySize128,
-            key.unwrap(),
-            &[0],
-            p2p_dat.length().to_string().as_bytes(),
+            key_unwraped,
+            &[0; 12],
+            &[0; 1], //p2p_dat.length().to_string().as_bytes(),
         );
-        let mut tag = vec![];
-        let mut output = vec![];
+        let mut tag = vec![0; 16];
+        let mut output = vec![0; data.as_bytes().len()];
         let _ = k.encrypt(data.as_bytes(), &mut output, &mut tag);
+        let p2p_dat = P2pData::gen(
+            format!("{}@{}", hex::encode(output), hex::encode(tag)),
+            msg_type,
+        );
+        p2p_dat.log();
         s = S {
-            c: format!("{}@{}", hex::encode(output), hex::encode(tag)),
+            c: p2p_dat.to_string(),
         };
     } else {
         let map = PEERS.lock()?;
@@ -114,18 +123,24 @@ pub fn send(
                 KeySize::KeySize128,
                 val.0.as_bytes(),
                 &[0],
-                p2p_dat.length().to_string().as_bytes(),
+                &[0; 1], //p2p_dat.length().to_string().as_bytes(),
             );
-            let mut tag = vec![];
-            let mut output = vec![];
+            let mut tag = vec![0; 16];
+            let mut output = vec![0; data.as_bytes().len()];
             let _ = k.encrypt(data.as_bytes(), &mut output, &mut tag);
+            let p2p_dat = P2pData::gen(
+                format!("{}@{}", hex::encode(output), hex::encode(tag)),
+                msg_type,
+            );
+            p2p_dat.log();
             s = S {
-                c: format!("{}@{}", hex::encode(output), hex::encode(tag)),
+                c: p2p_dat.to_string(),
             };
         } else {
             return Err("No key provided and peer not found".into());
         }
     }
+    trace!("s={}", s.c);
     return s.send_raw(peer, flush);
 }
 
@@ -160,23 +175,25 @@ pub fn read(
                 return Err("Timed out".into());
             }
         }
-        let mut buf = [0; LEN_DECL_BYTES];
+        let mut buf = [0u8; LEN_DECL_BYTES];
         if let Ok(a) = peer.peek(&mut buf) {
-            if a != 0 {
+            if a == 0 {
             } else {
-                // read exactly 8 bytes whixh is the len of the message
+                trace!("a={}", a);
+                // read exactly 9 bytes whixh is the len of the message
                 peer.read_exact(&mut buf)?;
                 // convert the bytes into a string
                 let len_s = String::from_utf8(buf.to_vec())?;
                 let len_striped: String = len_s.trim_start_matches("0").to_string();
                 let len: usize = len_striped.parse()?;
+                trace!("LEN_S={}", len_s);
                 let mut k: AesGcm;
                 if key.is_some() {
                     k = AesGcm::new(
                         KeySize::KeySize128,
                         key.unwrap(),
-                        &[0],
-                        len.to_string().as_bytes(),
+                        &[0; 12],
+                        &[0; 1], //len.to_string().as_bytes(),
                     );
                 } else {
                     let map = PEERS.lock()?;
@@ -184,34 +201,54 @@ pub fn read(
                         k = AesGcm::new(
                             KeySize::KeySize128,
                             val.0.as_bytes(),
-                            &[0],
+                            &[0; 12],
                             len.to_string().as_bytes(),
                         );
                     } else {
-                        return Err("No key provded and peer not found".into());
+                        return Err("No key provided and peer not found".into());
                     }
                 }
-                let mut buf = Vec::with_capacity(len);
+                let mut buf = vec![0u8; len];
                 peer.read_exact(&mut buf)?;
-                let s: String = String::from_utf8(buf.to_vec())?
+                trace!(
+                    "Read {} bytes into BUF={:?} ({})",
+                    len,
+                    buf,
+                    buf.len() == len
+                );
+                let mut s: String = String::from_utf8(buf.to_vec())?
                     .trim_matches('0')
                     .to_string();
+                let removed_braces = s[..len - 14].to_owned();
+                let as_s = "{".to_string() + &removed_braces + "}";
+                trace!("S={}, AS_S={}, REMOVED_BRACES={}", s, as_s, removed_braces,);
+                let p2p_dat: P2pData = match serde_json::from_str(&removed_braces) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        debug!("Failed to decode P2pData from json, gave error: {}", e);
+                        P2pData::default()
+                    }
+                };
+                p2p_dat.log();
+                s = p2p_dat.message.clone();
                 let s_split: Vec<&str> = s.split("@").collect();
                 if s_split.len() < 1 {
                     return Err("No auth tag".into());
                 } else {
+                    trace!("s_spilt={:?}, LEN={}", s_split, s_split.len());
                     let cf: &[u8] = &hex::decode(s_split[0])?;
                     let tag: &[u8] = &hex::decode(s_split[1])?;
-                    let mut out = vec![];
+                    let mut out = vec![0u8; cf.len()];
                     if !k.decrypt(cf, &mut out, tag) {
                         return Err("failed to decrypt message".into());
                     } else {
-                        return Ok(P2pData::from_string(&format!(
-                            "{}{}{}",
-                            len_s,
+                        trace!("OUT={}", String::from_utf8(out.clone())?);
+                        return Ok(P2pData::new(
+                            len,
                             String::from_utf8(out)?,
-                            len_s
-                        )));
+                            p2p_dat.message_type,
+                            p2p_dat.checksum(),
+                        ));
                     }
                 }
             }

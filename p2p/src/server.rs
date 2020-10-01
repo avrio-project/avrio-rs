@@ -14,6 +14,7 @@ use crate::{
     peer::add_peer,
 };
 
+use std::convert::TryInto;
 pub struct P2pServer {
     state: P2pServerState,
     connections: u64,
@@ -21,6 +22,19 @@ pub struct P2pServer {
     pub port: String,
     pub accept_in: bool,
     tx: Option<std::sync::mpsc::Sender<&'static str>>,
+}
+
+impl Default for P2pServer {
+    fn default() -> Self {
+        Self {
+            state: P2pServerState::Uninitialized,
+            connections: 0,
+            ip: "0.0.0.0".to_string(),
+            port: "56789".to_string(),
+            accept_in: true,
+            tx: None,
+        }
+    }
 }
 #[derive(PartialEq, Debug)]
 enum P2pServerState {
@@ -78,15 +92,20 @@ impl P2pServer {
         }
     }
     pub fn launch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.state != P2pServerState::Uninitialized {
+        if self.state == P2pServerState::Uninitialized {
             let bind_res = std::net::TcpListener::bind(format!("{}:{}", self.ip, self.port));
             if let Ok(listener) = bind_res {
+                log::info!("P2P Server bound to {}:{}", self.ip, self.port);
                 for stream in listener.incoming() {
                     match stream {
                         Ok(mut stream) => {
-                            if let Ok(read_msg) =
-                                read(&mut stream, Some(1000), Some("hand_key".as_bytes()))
-                            {
+                            log::trace!("New incoming stream");
+                            let read_store = read(
+                                &mut stream,
+                                Some(10000),
+                                Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
+                            );
+                            if let Ok(read_msg) = read_store {
                                 let addr = stream.peer_addr().unwrap_or(SocketAddr::new(
                                     IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                                     0,
@@ -98,6 +117,11 @@ impl P2pServer {
                                         let local_pub = PublicKey::from(&local_sec);
                                         let d_split =
                                             read_msg.message.split("*").collect::<Vec<&str>>();
+                                        log::trace!(
+                                            "D_SPLIT: {:?}, len: {}",
+                                            d_split,
+                                            d_split.len()
+                                        );
 
                                         if hex::encode(config().network_id) != d_split[0] {
                                             log::debug!("Peer tried to handshake with wrong network id. Expecting: {}, got: {}. Ignoring...", hex::encode(config().network_id), d_split[0]);
@@ -125,6 +149,12 @@ impl P2pServer {
                                                     &hex::decode(d_split[4]).unwrap_or_default(),
                                                 ),
                                             ));
+                                            log::trace!(
+                                                "KEY={}, LEN={}",
+                                                hex::encode(key.as_bytes()),
+                                                key.as_bytes().len()
+                                            );
+
                                             let handshake =
                                                 crate::core::form_handshake(local_pub.as_bytes());
                                             let _ = crate::io::send(
@@ -132,7 +162,12 @@ impl P2pServer {
                                                 &mut stream,
                                                 0x1a,
                                                 true,
-                                                Some("hand_key".as_bytes()),
+                                                Some(
+                                                    "hand_keyhand_keyhand_keyhand_key"
+                                                        .as_bytes()
+                                                        .try_into()
+                                                        .unwrap(),
+                                                ),
                                             )
                                             .unwrap_or_default();
                                             if let Ok(d) = crate::io::read(
@@ -151,7 +186,12 @@ impl P2pServer {
                                                         &mut stream,
                                                         0xa3,
                                                         true,
-                                                        Some("hand_res".as_bytes()),
+                                                        Some(
+                                                            "hand_keyhand_keyhand_keyhand_key"
+                                                                .as_bytes()
+                                                                .try_into()
+                                                                .unwrap(),
+                                                        ),
                                                     );
                                                     // now we add peer to peers list
                                                     log::info!(
@@ -205,7 +245,12 @@ impl P2pServer {
                                                     &mut stream,
                                                     0xa3,
                                                     true,
-                                                    Some("hand_res".as_bytes()),
+                                                    Some(
+                                                        "hand_keyhand_keyhand_keyhand_key"
+                                                            .as_bytes()
+                                                            .try_into()
+                                                            .unwrap(),
+                                                    ),
                                                 );
                                             }
                                         }
@@ -213,6 +258,11 @@ impl P2pServer {
                                         log::debug!("Got handshake from handshook peer, ignoring");
                                     }
                                 }
+                            } else {
+                                log::debug!(
+                                    "Failed to read any data from newly connected peer, error: {}",
+                                    read_store.unwrap_err()
+                                );
                             }
                         }
 
@@ -227,7 +277,7 @@ impl P2pServer {
                 }
             }
         } else {
-            return Err("allready running".into());
+            return Err("already running".into());
         }
         return Ok(());
     }

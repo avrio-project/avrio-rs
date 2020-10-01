@@ -83,6 +83,7 @@ fn database_present() -> bool {
 }
 
 fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    info!("Creating datadir folder structure");
     create_dir_all(config().db_path + &"/blocks".to_string())?;
     create_dir_all(config().db_path + &"/chains".to_string())?;
     create_dir_all(config().db_path + &"/wallets".to_string())?;
@@ -114,7 +115,7 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
     let mut conf = config();
     let path = conf.db_path.clone() + &"/wallets/".to_owned() + &keypair[0];
     if conf.wallet_password == Config::default().wallet_password {
-        warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword>");
+        warn!("Your wallet password is set to default, please change this password and run avrio daemon with --change-password-from-default <newpassword> (TODO LEO)");
     }
     let mut padded = conf.wallet_password.as_bytes().to_vec();
     while padded.len() != 32 && padded.len() < 33 {
@@ -164,6 +165,7 @@ fn open_wallet(key: String, address: bool) -> Wallet {
         wall = Wallet::new(key, "".to_owned());
     }
     // TODO: use unique nonce
+    // can we just hash the public key with some local data on the computer (maybe mac address)? Or is that insufficent (TODO: find out)
     let mut padded = config().wallet_password.as_bytes().to_vec();
     while padded.len() != 32 && padded.len() < 33 {
         padded.push(b"n"[0]);
@@ -400,21 +402,28 @@ fn main() {
                 process::exit(1);
             }
         };
-        info!("Enacting genesis block");
+        info!(
+            "Enacting genesis block (height={})",
+            genesis_block_clone.header.height
+        );
+        let _ = enact_block(genesis_block_clone.clone()).unwrap();
         let _ = prop_block(&genesis_block_clone).unwrap();
-        info!("Sent block to network");
-        match enact_block(genesis_block_clone) {
-            Ok(_) => {
-                info!("Sucessfully enacted genesis block!");
+        info!("Sent block to network; Generating rec blocks");
+
+        // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+        let mut proccessed_accs: Vec<String> = vec![];
+        for txn in &genesis_block_clone.txns {
+            if !proccessed_accs.contains(&txn.receive_key) {
+                let rec_blk = genesis_block_clone
+                    .form_recieve_block(Some(txn.receive_key.to_owned()))
+                    .unwrap();
+                let _ = check_block(rec_blk.clone()).unwrap();
+                let _ = saveBlock(rec_blk.clone()).unwrap();
+                let _ = prop_block(&rec_blk).unwrap();
+                let _ = enact_block(rec_blk.clone()).unwrap();
+                info!("Propagated recieve block hash={}", rec_blk.hash);
             }
-            Err(e) => {
-                error!(
-                    "Failed to enact genesis block gave error code: {:?} (fatal)!",
-                    e
-                );
-                process::exit(1);
-            }
-        };
+        }
         wall = Wallet::from_private_key(chain_key[1].clone());
     } else {
         info!("Using chain: {}", config().chain_key);
