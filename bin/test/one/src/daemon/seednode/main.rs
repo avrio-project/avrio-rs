@@ -356,6 +356,8 @@ fn main() {
                 process::exit(1);
             }
         }
+        // create the wallet sturct with our priv key
+        wall = Wallet::from_private_key(chain_key[1].clone());
 
         let mut genesis_block = getGenesisBlock(&chain_key[0]);
         if let Err(e) = genesis_block {
@@ -409,7 +411,6 @@ fn main() {
         let _ = enact_block(genesis_block_clone.clone()).unwrap();
         let _ = prop_block(&genesis_block_clone).unwrap();
         info!("Sent block to network; Generating rec blocks");
-
         // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
         let mut proccessed_accs: Vec<String> = vec![];
         for txn in &genesis_block_clone.txns {
@@ -424,7 +425,6 @@ fn main() {
                 info!("Propagated recieve block hash={}", rec_blk.hash);
             }
         }
-        wall = Wallet::from_private_key(chain_key[1].clone());
     } else {
         info!("Using chain: {}", config().chain_key);
         wall = open_wallet(config().chain_key, false);
@@ -542,6 +542,7 @@ fn main() {
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
+            let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
             let mut proccessed_accs: Vec<String> = vec![];
@@ -806,6 +807,7 @@ fn main() {
                             let _ = blk.sign(&wall.private_key);
                             let _ = check_block(blk.clone()).unwrap();
                             let _ = saveBlock(blk.clone()).unwrap();
+                            let _ = enact_send(blk.clone()).unwrap();
                             let _ = prop_block(&blk).unwrap();
                             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
                             let mut proccessed_accs: Vec<String> = vec![];
@@ -916,11 +918,13 @@ fn main() {
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
+            let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
             let mut proccessed_accs: Vec<String> = vec![];
             for txn in &blk.txns {
-                if !proccessed_accs.contains(&txn.receive_key) {
+                if !proccessed_accs.contains(&txn.receive_key) 
+                {
                     let rec_blk = blk
                         .form_recieve_block(Some(txn.receive_key.to_owned()))
                         .unwrap();
@@ -1035,6 +1039,7 @@ fn main() {
                         let _ = blk.sign(&wall.private_key);
                         let _ = check_block(blk.clone()).unwrap();
                         let _ = saveBlock(blk.clone()).unwrap();
+                        let _ = enact_send(blk.clone()).unwrap();
                         let _ = prop_block(&blk).unwrap();
                         // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
                         let mut proccessed_accs: Vec<String> = vec![];
