@@ -419,17 +419,86 @@ impl Block {
         if let Some(key) = chain_key {
             chainKey = key;
         }
-        let our_height: u64 = getData(
-            config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
-            &"blockcount".to_owned(),
-        )
-        .parse()?;
-        blk_clone.header.chain_key = chainKey;
-        blk_clone.header.height = our_height + 1;
-        blk_clone.send_block = Some(self.hash.to_owned());
-        blk_clone.hash();
-        return Ok(blk_clone);
+        if chainKey == self.header.chain_key {
+            blk_clone.header.height += 1;
+            blk_clone.send_block = Some(self.hash.to_owned());
+            blk_clone.header.prev_hash =self.hash.clone();
+            blk_clone.hash();
+            return Ok(blk_clone);
+        } else {
+            let our_height: u64 = getData(
+                config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
+                &"blockcount".to_owned(),
+            )
+            .parse()?;
+            blk_clone.header.chain_key = chainKey;
+            blk_clone.header.height = our_height + 1;
+            blk_clone.send_block = Some(self.hash.to_owned());
+            blk_clone.hash();
+            return Ok(blk_clone);
+        }
     }
+}
+// enacts the relevant stuff for a send block (eg creating inv registry)
+pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
+    let chaindex_db = openDb(
+        config().db_path
+            + &"/chains/".to_owned()
+            + &block.header.chain_key
+            + &"-chainindex".to_owned(),
+    )
+    .unwrap();
+    if getDataDb(&chaindex_db, &block.header.height.to_string()) == "-1" {
+        debug!("block not in invs");
+        let hash = block.hash.clone();
+        use std::sync::Arc;
+        let arc_db = Arc::new(openDb(config().db_path + &"/chaindigest".to_owned()).unwrap());
+        let arc = arc_db.clone();
+        std::thread::spawn(move || {
+            update_chain_digest(&hash, &arc);
+        });
+        setDataDb(&block.hash, &chaindex_db, &"topblockhash");
+        setDataDb(
+            &(block.header.height + 1).to_string(),
+            &chaindex_db,
+            &"blockcount",
+        );
+        trace!("set top block hash for sender");
+        let inv_sender_res = setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
+        trace!("Saved inv for sender: {}", block.header.chain_key);
+        if inv_sender_res != 1 {
+            return Err("failed to save sender inv".into());
+        }
+        let block_count = getDataDb(&arc_db, &"blockcount");
+        if block_count == "-1".to_owned() {
+            setDataDb(&"1".to_owned(), &arc_db, &"blockcount");
+            trace!("set block count, prev: -1 (not set), new: 1");
+        } else {
+            let mut bc: u64 = block_count.parse().unwrap_or_default();
+            bc += 1;
+            setDataDb(&bc.to_string(), &arc_db, &"blockcount");
+            trace!("Updated non-zero block count, new count: {}", bc);
+        }
+        if block.header.height == 0 {
+            if saveData(
+                "".to_owned(),
+                config().db_path + "/chainlist",
+                block.header.chain_key.clone(),
+            ) == 0
+            {
+                return Err("failed to add chain to chainslist".into());
+            } else {
+                let newacc = Account::new(block.header.chain_key.clone());
+                if setAccount(&newacc) != 1 {
+                    return Err("failed to save new account".into());
+                }
+            }
+            if avrio_database::getDataDb(&chaindex_db, &"txncount") == "-1".to_owned() {
+                avrio_database::setDataDb(&"0".to_string(), &chaindex_db, &"txncount");
+            }
+        }
+    }
+        return Ok(());
 }
 // TODO: finish enact block
 /// Enacts a block. Updates all relavant dbs and files
@@ -637,7 +706,11 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 }
             }
             let prev_blk = getBlock(&blk.header.chain_key, &blk.header.height - 1);
-            trace!("Prev block: {:?}", prev_blk);
+            trace!(
+                "Prev block: {:?} for chain {}",
+                prev_blk,
+                blk.header.chain_key
+            );
             if blk.header.prev_hash != prev_blk.hash && blk.header.prev_hash != "".to_owned() {
                 debug!(
                     "Expected prev hash to be: {}, got: {}. For block at height: {}",
@@ -649,7 +722,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 if blk.header.height != 0 {
                     return Err(blockValidationErrors::other);
                 }
-            } else if !blk.validSignature() {
+            } else if !blk.validSignature() && blk.block_type != BlockType::Recieve { // recieve blocks are not formed by the reciecver and so the signature will be invalid
                 return Err(blockValidationErrors::badSignature);
             } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
                 > (SystemTime::now()
