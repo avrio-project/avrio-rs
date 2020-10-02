@@ -307,7 +307,6 @@ impl Certificate {
                 return Err(CertificateErrors::WalletAlreadyRegistered);
             }
         }
-
         if txn.unlock_time - (config().transaction_timestamp_max_offset as u64)
             < (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
