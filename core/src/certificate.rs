@@ -180,7 +180,7 @@ pub fn generate_certificate(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_millis() as u64;
-    let diff_cert = diff; //config().certificateDifficulty;
+    let diff_cert = diff; //config().certificate_difficulty;
     let block_hash = getData(config().db_path + "/transactions.db", &cert.txn_hash);
     let blk = getBlockFromRaw(block_hash); // get the txn to check if it is correct
     let mut txn: Transaction = Default::default();
@@ -225,7 +225,7 @@ impl Certificate {
     pub fn validate(&mut self) -> Result<(), CertificateErrors> {
         let cert = self;
         cert.hash();
-        let diff_cert = config().certificateDifficulty;
+        let diff_cert = config().certificate_difficulty;
         if !cert.check_diff(&diff_cert) {
             return Err(CertificateErrors::DifficultyLow);
         } else if !cert.valid_signature() {
@@ -271,13 +271,13 @@ impl Certificate {
                 return Err(CertificateErrors::WalletAlreadyRegistered);
             }
         }
-        if txn.unlock_time - (config().transactionTimestampMaxOffset as u64)
+        if txn.unlock_time - (config().transaction_timestamp_max_offset as u64)
             < (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64)
                 + (config().fullnode_lock_time * config().target_epoch_length)
-            || txn.unlock_time + (config().transactionTimestampMaxOffset as u64)
+            || txn.unlock_time + (config().transaction_timestamp_max_offset as u64)
                 < (SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")

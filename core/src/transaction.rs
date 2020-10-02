@@ -310,7 +310,7 @@ impl Transaction {
         if self.flag == 'u' && self.amount < config().username_burn_amount {
             return Err(TransactionValidationErrors::InsufficentBurnForUsername);
         }
-        if self.timestamp - (config().transactionTimestampMaxOffset as u64)
+        if self.timestamp - (config().transaction_timestamp_max_offset as u64)
             > SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
