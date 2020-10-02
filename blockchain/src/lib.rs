@@ -405,7 +405,7 @@ impl Block {
         self == OtherBlock
     }
 
-    pub fn form_recieve_block(
+    pub fn form_receive_block(
         &self,
         chain_key: Option<String>,
     ) -> Result<Block, Box<dyn std::error::Error>> {
