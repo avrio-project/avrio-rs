@@ -30,7 +30,7 @@ use avrio_core::{account::to_atomc, transaction::Transaction};
 use avrio_crypto::Wallet;
 use avrio_database::{get_data, get_iterator, get_peerlist, open_database, save_data};
 use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
-use avrio_rpc::start_server;
+use avrio_api::start_server;
 
 fn connect_to_seednodes(
     seednodes: Vec<SocketAddr>,
@@ -271,9 +271,9 @@ fn main() {
     let conf = config();
     conf.create().unwrap();
 
-    info!("Launching RPC server");
+    info!("Launching API server");
 
-    let _rpc_server_handle = thread::spawn(|| {
+    let _api_server_handle = thread::spawn(|| {
         start_server();
     });
 

@@ -1,6 +1,6 @@
 [package]
-name = "avrio_rpc"
-version = "0.1.0"
+name = "avrio_api"
+version = "0.2.0"
 authors = [
     "Arielh25 <areilhurdle@gmail.com>",
     "TheDevMinerTV <tobigames200@gmail.com>"
