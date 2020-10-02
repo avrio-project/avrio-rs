@@ -16,7 +16,7 @@ lazy_static! {
 }
 
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
-/// This is the struct that holds the built in , network params that are set by the core devs and the same for everyone
+/// This is the struct that holds the built in network params that are set by the core devs and the same for everyone
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NetworkConfig {
     pub version_major: u8,
@@ -32,9 +32,9 @@ pub struct NetworkConfig {
     pub max_reward: u32,
     pub min_vote: u8,
     pub probatory_epoch_count: u8,
-    pub certificateDifficulty: u128,
+    pub certificate_difficulty: u128,
     pub fullnode_lock_amount: u64,
-    pub transactionTimestampMaxOffset: u32,
+    pub transaction_timestamp_max_offset: u32,
     pub max_time_to_live: u64,
     pub target_epoch_length: u64,
     pub fullnode_lock_time: u64,
@@ -46,6 +46,7 @@ pub struct NetworkConfig {
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
 }
+
 /// This is what is saved in a file, the stuff the user can change and edit to fit their needs
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ConfigSave {
@@ -67,6 +68,7 @@ pub struct ConfigSave {
     pub wallet_password: String,
     pub time_beetween_sync: u64,
 }
+
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, PartialOrd)]
 pub struct Config {
@@ -98,9 +100,9 @@ pub struct Config {
     pub max_reward: u32,
     pub min_vote: u8,
     pub probatory_epoch_count: u8,
-    pub certificateDifficulty: u128,
+    pub certificate_difficulty: u128,
     pub fullnode_lock_amount: u64,
-    pub transactionTimestampMaxOffset: u32,
+    pub transaction_timestamp_max_offset: u32,
     pub max_time_to_live: u64,
     pub target_epoch_length: u64,
     pub username_burn_amount: u64,
@@ -117,17 +119,21 @@ pub struct Config {
 
 pub fn config_read() -> Config {
     log::trace!("Reading config from disk");
+
     if let Ok(mut file) = File::open("node.conf") {
         let mut data: String = String::from("");
+
         if let Err(_) = file.read_to_string(&mut data) {
-            return Config::default();
+            Config::default()
         } else {
             let conf: ConfigSave = serde_json::from_str(&data).unwrap_or_default();
-            return conf.to_config();
+
+            conf.to_config()
         }
     } else {
         log::trace!("Failed to read from disk");
-        return Config::default();
+
+        Config::default()
     }
 }
 
@@ -137,7 +143,9 @@ pub fn config() -> Config {
 
 fn hash_id(id: u64) -> String {
     let mut hasher = Sha256::new();
+
     hasher.input(format!("{}", id).as_bytes());
+
     return hex::encode(hasher.result());
 }
 
@@ -212,6 +220,7 @@ impl Default for ConfigSave {
 impl ConfigSave {
     pub fn to_config(&self) -> Config {
         let nconf = NetworkConfig::default();
+
         return Config {
             db_path: self.db_path.to_owned(),
             max_connections: self.max_connections,
@@ -233,7 +242,7 @@ impl ConfigSave {
             version_minor: nconf.version_minor,
             coin_name: nconf.coin_name,
             node_drop_off_threshold: nconf.node_drop_off_threshold,
-            certificateDifficulty: nconf.certificateDifficulty,
+            certificate_difficulty: nconf.certificate_difficulty,
             decimal_places: nconf.decimal_places,
             min_intrest: nconf.min_intrest,
             min_vote: nconf.min_vote,
@@ -243,7 +252,7 @@ impl ConfigSave {
             max_reward: nconf.max_reward,
             probatory_epoch_count: nconf.probatory_epoch_count,
             fullnode_lock_amount: nconf.fullnode_lock_amount,
-            transactionTimestampMaxOffset: nconf.transactionTimestampMaxOffset,
+            transaction_timestamp_max_offset: nconf.transaction_timestamp_max_offset,
             max_time_to_live: nconf.max_time_to_live,
             target_epoch_length: nconf.target_epoch_length,
             username_burn_amount: nconf.username_burn_amount,
@@ -259,6 +268,7 @@ impl ConfigSave {
         };
     }
 }
+
 impl Default for Config {
     fn default() -> Config {
         return ConfigSave::default().to_config();
@@ -284,13 +294,13 @@ impl Default for NetworkConfig {
             max_reward: 25000, // 2.5000 AIO
             min_vote: 65,
             probatory_epoch_count: 10,
-            certificateDifficulty: 1000, // TODO find this value
+            certificate_difficulty: 1000, // TODO find this value
             fullnode_lock_amount: 50000,
-            transactionTimestampMaxOffset: 600000, // 10 mins
-            max_time_to_live: 600000,              // millisecconds
-            target_epoch_length: 18000000,         // 5 Hours
-            fullnode_lock_time: 30 * 5,            // epoches (30 days)
-            username_burn_amount: 5000,            // 0.5000 AIO
+            transaction_timestamp_max_offset: 600000, // 10 mins
+            max_time_to_live: 600000,                 // millisecconds
+            target_epoch_length: 18000000,            // 5 Hours
+            fullnode_lock_time: 30 * 5,               // epoches (30 days)
+            username_burn_amount: 5000,               // 0.5000 AIO
             first_block_hash: "0x...".to_string(),
             commitee_size: 15,
             consensus_commitee_size: 21,
@@ -323,18 +333,24 @@ impl Config {
             time_beetween_sync: self.time_beetween_sync,
         }
     }
+
     /// This creates a config file from the provided struct, if the file exists it does the same thing as save()
     pub fn create(self) -> io::Result<()> {
         // create file
         let mut file = File::create("node.conf")?;
+
         file.write_all(serde_json::to_string(&self.to_save()).unwrap().as_bytes())?;
+
         Ok(())
     }
+
     /// This is how you save the config, it is a expensive function on devices with slow storage as it opens and writes to the file
     pub fn save(self) -> io::Result<()> {
         // save to exisiting/ update
         let mut file = File::open("node.conf")?;
+
         file.write_all(serde_json::to_string(&self.to_save()).unwrap().as_bytes())?;
+
         Ok(())
     }
 }

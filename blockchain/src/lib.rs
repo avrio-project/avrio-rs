@@ -135,12 +135,12 @@ impl BlockSignature {
         ) != self.nonce.to_string()
         {
             return false;
-        } else if self.timestamp - (config().transactionTimestampMaxOffset as u64)
+        } else if self.timestamp - (config().transaction_timestamp_max_offset as u64)
             < (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64)
-            || self.timestamp + (config().transactionTimestampMaxOffset as u64)
+            || self.timestamp + (config().transaction_timestamp_max_offset as u64)
                 < (SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
@@ -683,7 +683,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     } else if getBlockFromRaw(blk.hash.clone()) != Block::default() {
                         return Err(blockValidationErrors::blockExists);
                     } else if blk.header.height != 0
-                        && blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
+                        && blk.header.timestamp - (config().transaction_timestamp_max_offset as u64)
                             > (SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .expect("Time went backwards")
@@ -733,7 +733,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             } else if !blk.validSignature() && blk.block_type != BlockType::Recieve {
                 // recieve blocks are not formed by the reciecver and so the signature will be invalid
                 return Err(blockValidationErrors::badSignature);
-            } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
+            } else if blk.header.timestamp - (config().transaction_timestamp_max_offset as u64)
                 > (SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
@@ -742,7 +742,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 debug!("Block: {} too far in futre. Our time: {}, block time: {}, block justifyed time: {}. Delta {}", blk.hash, (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
-            .as_millis() as u64), blk.header.timestamp, blk.header.timestamp - (config().transactionTimestampMaxOffset as u64),
+            .as_millis() as u64), blk.header.timestamp, blk.header.timestamp - (config().transaction_timestamp_max_offset as u64),
             blk.header.timestamp - (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
