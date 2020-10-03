@@ -39,7 +39,7 @@ extern crate simple_logger;
 
 extern crate hex;
 
-use avrio_rpc::start_server;
+use avrio_api::start_server;
 
 extern crate avrio_crypto;
 use avrio_crypto::Wallet;
@@ -243,8 +243,8 @@ fn main() {
     info!("Avrio Seednode Daemon Testnet v1.0.0 (pre-alpha)");
     let conf = config();
     conf.create().unwrap();
-    info!("Launching RPC server");
-    let _rpc_server_handle = thread::spawn(|| {
+    info!("Launching API server");
+    let _api_server_handle = thread::spawn(|| {
         start_server();
     });
     let mut synced: bool = true;
@@ -923,8 +923,7 @@ fn main() {
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
             let mut proccessed_accs: Vec<String> = vec![];
             for txn in &blk.txns {
-                if !proccessed_accs.contains(&txn.receive_key) 
-                {
+                if !proccessed_accs.contains(&txn.receive_key) {
                     let rec_blk = blk
                         .form_receive_block(Some(txn.receive_key.to_owned()))
                         .unwrap();

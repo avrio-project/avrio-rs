@@ -1,7 +1,10 @@
-// Copyright 2020 the avrio core devs
 /*
- This is the first attempt at a CLI avrio wallet.
- It uses the json rpc v1 provided by the avrio dameon.
+    Copyright 2020 the avrio core devs
+
+    bin/test/one/src/wallet/main.rs
+
+    This is the first attempt at a Avrio CLI wallet.
+    It uses the JSON API v1 provided by the Avrio Daemon.
 */
 
 use avrio_config::config;

@@ -122,10 +122,14 @@ impl Transaction {
             trace!("Saving sender acc");
             sendacc.save().unwrap();
             trace!("Get txn count");
-            let txn_count: u64 = avrio_database::get_data_from_database(chain_idex_db, &"txncount").parse()?;
+            let txn_count: u64 =
+                avrio_database::get_data_from_database(chain_idex_db, &"txncount").parse()?;
             trace!("Setting txn count");
-            if avrio_database::set_data_in_database(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
-                != 1
+            if avrio_database::set_data_in_database(
+                &(txn_count + 1).to_string(),
+                chain_idex_db,
+                &"txncount",
+            ) != 1
             {
                 return Err("failed to update send acc nonce".into());
             } else {
@@ -145,10 +149,14 @@ impl Transaction {
             trace!("Saving acc");
             let _ = acc.save();
             trace!("Get txn count");
-            let txn_count: u64 = avrio_database::get_data_from_database(chain_idex_db, &"txncount").parse()?;
+            let txn_count: u64 =
+                avrio_database::get_data_from_database(chain_idex_db, &"txncount").parse()?;
             trace!("Setting txn count");
-            if avrio_database::set_data_in_database(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
-                != 1
+            if avrio_database::set_data_in_database(
+                &(txn_count + 1).to_string(),
+                chain_idex_db,
+                &"txncount",
+            ) != 1
             {
                 return Err("failed to update send acc nonce".into());
             } else {

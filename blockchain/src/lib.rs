@@ -456,28 +456,42 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
             + &"-chainindex".to_owned(),
     )
     .unwrap();
+
     if get_data_from_database(&chaindex_db, &block.header.height.to_string()) == "-1" {
         debug!("block not in invs");
+
         let hash = block.hash.clone();
+
         use std::sync::Arc;
-        let arc_db = Arc::new(open_database(config().db_path + &"/chaindigest".to_owned()).unwrap());
+
+        let arc_db =
+            Arc::new(open_database(config().db_path + &"/chaindigest".to_owned()).unwrap());
         let arc = arc_db.clone();
+
         std::thread::spawn(move || {
             update_chain_digest(&hash, &arc);
         });
+
         set_data_in_database(&block.hash, &chaindex_db, &"topblockhash");
         set_data_in_database(
             &(block.header.height + 1).to_string(),
             &chaindex_db,
             &"blockcount",
         );
+
         trace!("set top block hash for sender");
-        let inv_sender_res = set_data_in_database(&block.hash, &chaindex_db, &block.header.height.to_string());
+
+        let inv_sender_res =
+            set_data_in_database(&block.hash, &chaindex_db, &block.header.height.to_string());
+
         trace!("Saved inv for sender: {}", block.header.chain_key);
+
         if inv_sender_res != 1 {
             return Err("failed to save sender inv".into());
         }
+
         let block_count = get_data_from_database(&arc_db, &"blockcount");
+
         if block_count == "-1".to_owned() {
             set_data_in_database(&"1".to_owned(), &arc_db, &"blockcount");
             trace!("set block count, prev: -1 (not set), new: 1");
@@ -487,6 +501,7 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
             set_data_in_database(&bc.to_string(), &arc_db, &"blockcount");
             trace!("Updated non-zero block count, new count: {}", bc);
         }
+
         if block.header.height == 0 {
             if save_data(
                 "".to_owned(),
@@ -497,11 +512,14 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
                 return Err("failed to add chain to chainslist".into());
             } else {
                 let newacc = Account::new(block.header.chain_key.clone());
+
                 if setAccount(&newacc) != 1 {
                     return Err("failed to save new account".into());
                 }
             }
-            if avrio_database::get_data_from_database(&chaindex_db, &"txncount") == "-1".to_owned() {
+
+            if avrio_database::get_data_from_database(&chaindex_db, &"txncount") == "-1".to_owned()
+            {
                 avrio_database::set_data_in_database(&"0".to_string(), &chaindex_db, &"txncount");
             }
         }
@@ -515,6 +533,7 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         // we only enact recive blocks, ignore send blocks
         return Err("tried to enact a send block".into());
     }
+
     let chaindex_db = open_database(
         config().db_path
             + &"/chains/".to_owned()
@@ -526,7 +545,8 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         debug!("block not in invs");
         let hash = block.hash.clone();
         use std::sync::Arc;
-        let arc_db = Arc::new(open_database(config().db_path + &"/chaindigest".to_owned()).unwrap());
+        let arc_db =
+            Arc::new(open_database(config().db_path + &"/chaindigest".to_owned()).unwrap());
         let arc = arc_db.clone();
         std::thread::spawn(move || {
             update_chain_digest(&hash, &arc);
@@ -538,7 +558,8 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
             &"blockcount",
         );
         trace!("set top block hash for sender");
-        let inv_sender_res = set_data_in_database(&block.hash, &chaindex_db, &block.header.height.to_string());
+        let inv_sender_res =
+            set_data_in_database(&block.hash, &chaindex_db, &block.header.height.to_string());
         trace!("Saved inv for sender: {}", block.header.chain_key);
         if inv_sender_res != 1 {
             return Err("failed to save sender inv".into());
@@ -567,7 +588,8 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
                     return Err("failed to save new account".into());
                 }
             }
-            if avrio_database::get_data_from_database(&chaindex_db, &"txncount") == "-1".to_owned() {
+            if avrio_database::get_data_from_database(&chaindex_db, &"txncount") == "-1".to_owned()
+            {
                 avrio_database::set_data_in_database(&"0".to_string(), &chaindex_db, &"txncount");
             }
         }

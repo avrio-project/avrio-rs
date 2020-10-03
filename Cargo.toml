@@ -6,7 +6,7 @@ members = [
   "database",
   "id",
   "p2p",
-  "rpc",
+  "api",
   "crypto",
   "bin/test/one",
   "node"
