@@ -431,7 +431,7 @@ impl Certificate {
             });
         // ^ wont unwrap if sig is invalid
 
-        true;
+        return true;
     }
 
     pub fn check_diff(&self, diff: &u128) -> bool {
