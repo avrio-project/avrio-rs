@@ -28,9 +28,15 @@ use avrio_blockchain::{
 use avrio_config::{config, Config};
 use avrio_core::{account::to_atomc, transaction::Transaction};
 use avrio_crypto::Wallet;
+<<<<<<< HEAD
 use avrio_database::{getData, getIter, get_peerlist, openDb, saveData};
 use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
 use avrio_rpc::start_server;
+=======
+use avrio_database::{get_data, get_iterator, get_peerlist, open_database, save_data};
+use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
+use avrio_api::start_server;
+>>>>>>> 1c43c10129bbe33f640ceabac657f4108a0bfd2d
 
 fn connect_to_seednodes(
     seednodes: Vec<SocketAddr>,
@@ -76,7 +82,7 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn database_present() -> bool {
-    let get_res = getData(
+    let get_res = get_data(
         config().db_path + &"/chains/masterchainindex".to_owned(),
         &"digest".to_owned(),
     );
@@ -148,8 +154,13 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
             .expect("wallet private key encryption failure!"),
     );
 
+<<<<<<< HEAD
     let _ = saveData(publickey_en, path.clone(), "pubkey".to_owned());
     let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
+=======
+    let _ = save_data(publickey_en, path.clone(), "pubkey".to_owned());
+    let _ = save_data(privatekey_en, path.clone(), "privkey".to_owned());
+>>>>>>> 1c43c10129bbe33f640ceabac657f4108a0bfd2d
 
     info!("Saved wallet to {}", path);
 
@@ -201,7 +212,7 @@ fn open_wallet(key: String, address: bool) -> Wallet {
     let padded_nonce = String::from_utf8(padded_nonce_bytes).unwrap();
     let nonce = GenericArray::from_slice(padded_nonce.as_bytes()); // 96-bits; unique per message
 
-    let ciphertext = hex::decode(getData(
+    let ciphertext = hex::decode(get_data(
         config().db_path + &"/wallets/".to_owned() + &wallet.public_key,
         &"privkey".to_owned(),
     ))
@@ -271,9 +282,10 @@ fn main() {
     let conf = config();
     conf.create().unwrap();
 
-    info!("Launching RPC server");
 
-    let _rpc_server_handle = thread::spawn(|| {
+    info!("Launching API server");
+
+    let _api_server_handle = thread::spawn(|| {
         start_server();
     });
 
@@ -501,7 +513,7 @@ fn main() {
 
     info!(
         "Transaction count for our chain: {}",
-        avrio_database::getData(
+        avrio_database::get_data(
             config().db_path
                 + &"/chains/".to_owned()
                 + &wallet.public_key
@@ -563,7 +575,7 @@ fn main() {
 
             txn.receive_key = receiver_wall.public_key;
 
-            txn.nonce = avrio_database::getData(
+            txn.nonce = avrio_database::get_data(
                 config().db_path
                     + &"/chains/".to_owned()
                     + &txn.sender_key
@@ -576,7 +588,7 @@ fn main() {
             txn.hash();
 
             let _ = txn.sign(&wallet.private_key);
-            let inv_db = openDb(
+            let inv_db = open_database(
                 config().db_path
                     + &"/chains/".to_string()
                     + &wallet.public_key
@@ -584,7 +596,7 @@ fn main() {
             )
             .unwrap();
 
-            let mut inv_iter = getIter(&inv_db);
+            let mut inv_iter = get_iterator(&inv_db);
             let mut highest_so_far: u64 = 0;
 
             inv_iter.seek_to_first();
@@ -724,7 +736,7 @@ fn main() {
             info!("Enter the transaction hash:");
 
             let hash: String = read!("{}\n");
-            let raw_block = getData(config().db_path + &"/transactions".to_owned(), &hash);
+            let raw_block = get_data(config().db_path + &"/transactions".to_owned(), &hash);
 
             if raw_block == "-1".to_owned() {
                 error!("Couldn't find that transaction in the database!");
@@ -824,7 +836,7 @@ fn main() {
                                     gas_price: 100,
                                     max_gas: 100,
                                     gas: 20,
-                                    nonce: avrio_database::getData(
+                                    nonce: avrio_database::get_data(
                                         config().db_path
                                             + &"/chains/".to_owned()
                                             + &wallet.public_key.clone()
@@ -853,7 +865,7 @@ fn main() {
 
                             // TODO: FIX!!
 
-                            let inv_db = openDb(
+                            let inv_db = open_database(
                                 config().db_path
                                     + &"/chains/".to_string()
                                     + &wallet.public_key
@@ -861,7 +873,7 @@ fn main() {
                             )
                             .unwrap();
 
-                            let mut inv_iter = getIter(&inv_db);
+                            let mut inv_iter = get_iterator(&inv_db);
                             let mut highest_so_far: u64 = 0;
 
                             inv_iter.seek_to_first();
@@ -979,7 +991,7 @@ fn main() {
 
             txn.receive_key = wallet.public_key.clone();
 
-            txn.nonce = avrio_database::getData(
+            txn.nonce = avrio_database::get_data(
                 config().db_path
                     + &"/chains/".to_owned()
                     + &txn.sender_key
@@ -993,7 +1005,7 @@ fn main() {
 
             let _ = txn.sign(&wallet.private_key);
 
-            let inv_db = openDb(
+            let inv_db = open_database(
                 config().db_path
                     + &"/chains/".to_string()
                     + &wallet.public_key
@@ -1001,7 +1013,7 @@ fn main() {
             )
             .unwrap();
 
-            let mut inv_iter = getIter(&inv_db);
+            let mut inv_iter = get_iterator(&inv_db);
             let mut highest_so_far: u64 = 0;
 
             inv_iter.seek_to_first();
@@ -1119,7 +1131,7 @@ fn main() {
 
                         txn.receive_key = wallet.public_key.clone();
 
-                        txn.nonce = avrio_database::getData(
+                        txn.nonce = avrio_database::get_data(
                             config().db_path
                                 + &"/chains/".to_owned()
                                 + &txn.sender_key
@@ -1133,7 +1145,7 @@ fn main() {
 
                         let _ = txn.sign(&wallet.private_key);
 
-                        let inv_db = openDb(
+                        let inv_db = open_database(
                             config().db_path
                                 + &"/chains/".to_string()
                                 + &wallet.public_key
@@ -1141,7 +1153,7 @@ fn main() {
                         )
                         .unwrap();
 
-                        let mut inv_iter = getIter(&inv_db);
+                        let mut inv_iter = get_iterator(&inv_db);
                         let mut highest_so_far: u64 = 0;
 
                         inv_iter.seek_to_first();
