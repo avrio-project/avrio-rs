@@ -416,7 +416,7 @@ fn main() {
         for txn in &genesis_block_clone.txns {
             if !proccessed_accs.contains(&txn.receive_key) {
                 let rec_blk = genesis_block_clone
-                    .form_recieve_block(Some(txn.receive_key.to_owned()))
+                    .form_receive_block(Some(txn.receive_key.to_owned()))
                     .unwrap();
                 let _ = check_block(rec_blk.clone()).unwrap();
                 let _ = saveBlock(rec_blk.clone()).unwrap();
@@ -549,7 +549,7 @@ fn main() {
             for txn in &blk.txns {
                 if !proccessed_accs.contains(&txn.receive_key) {
                     let rec_blk = blk
-                        .form_recieve_block(Some(txn.receive_key.to_owned()))
+                        .form_receive_block(Some(txn.receive_key.to_owned()))
                         .unwrap();
                     let _ = check_block(rec_blk.clone()).unwrap();
                     let _ = saveBlock(rec_blk.clone()).unwrap();
@@ -563,7 +563,7 @@ fn main() {
             for txn in &blk.txns {
                 if !proccessed_accs.contains(&txn.receive_key) {
                     let rec_blk = blk
-                        .form_recieve_block(Some(txn.receive_key.to_owned()))
+                        .form_receive_block(Some(txn.receive_key.to_owned()))
                         .unwrap();
                     let _ = check_block(rec_blk.clone()).unwrap();
                     let _ = saveBlock(rec_blk.clone()).unwrap();
@@ -814,7 +814,7 @@ fn main() {
                             for txn in &blk.txns {
                                 if !proccessed_accs.contains(&txn.receive_key) {
                                     let rec_blk = blk
-                                        .form_recieve_block(Some(txn.receive_key.to_owned()))
+                                        .form_receive_block(Some(txn.receive_key.to_owned()))
                                         .unwrap();
                                     let _ = check_block(rec_blk.clone()).unwrap();
                                     let _ = saveBlock(rec_blk.clone()).unwrap();
@@ -926,7 +926,7 @@ fn main() {
                 if !proccessed_accs.contains(&txn.receive_key) 
                 {
                     let rec_blk = blk
-                        .form_recieve_block(Some(txn.receive_key.to_owned()))
+                        .form_receive_block(Some(txn.receive_key.to_owned()))
                         .unwrap();
                     let _ = check_block(rec_blk.clone()).unwrap();
                     let _ = saveBlock(rec_blk.clone()).unwrap();
@@ -1046,7 +1046,7 @@ fn main() {
                         for txn in &blk.txns {
                             if !proccessed_accs.contains(&txn.receive_key) {
                                 let rec_blk = blk
-                                    .form_recieve_block(Some(txn.receive_key.to_owned()))
+                                    .form_receive_block(Some(txn.receive_key.to_owned()))
                                     .unwrap();
                                 let _ = check_block(rec_blk.clone()).unwrap();
                                 let _ = saveBlock(rec_blk.clone()).unwrap();
