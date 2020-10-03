@@ -28,15 +28,9 @@ use avrio_blockchain::{
 use avrio_config::{config, Config};
 use avrio_core::{account::to_atomc, transaction::Transaction};
 use avrio_crypto::Wallet;
-<<<<<<< HEAD
-use avrio_database::{getData, getIter, get_peerlist, openDb, saveData};
-use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
-use avrio_rpc::start_server;
-=======
 use avrio_database::{get_data, get_iterator, get_peerlist, open_database, save_data};
 use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
 use avrio_api::start_server;
->>>>>>> 1c43c10129bbe33f640ceabac657f4108a0bfd2d
 
 fn connect_to_seednodes(
     seednodes: Vec<SocketAddr>,
@@ -154,13 +148,8 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
             .expect("wallet private key encryption failure!"),
     );
 
-<<<<<<< HEAD
-    let _ = saveData(publickey_en, path.clone(), "pubkey".to_owned());
-    let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
-=======
     let _ = save_data(publickey_en, path.clone(), "pubkey".to_owned());
     let _ = save_data(privatekey_en, path.clone(), "privkey".to_owned());
->>>>>>> 1c43c10129bbe33f640ceabac657f4108a0bfd2d
 
     info!("Saved wallet to {}", path);
 
