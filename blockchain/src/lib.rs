@@ -422,10 +422,17 @@ impl Block {
         if chainKey == self.header.chain_key {
             blk_clone.header.height += 1;
             blk_clone.send_block = Some(self.hash.to_owned());
-            blk_clone.header.prev_hash =self.hash.clone();
+            blk_clone.header.prev_hash = self.hash.clone();
             blk_clone.hash();
             return Ok(blk_clone);
         } else {
+            let top_block_hash = getData(
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &self.header.chain_key
+                    + &"-chainindex".to_owned(),
+                "topblockhash",
+            );
             let our_height: u64 = getData(
                 config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
                 &"blockcount".to_owned(),
@@ -434,6 +441,7 @@ impl Block {
             blk_clone.header.chain_key = chainKey;
             blk_clone.header.height = our_height + 1;
             blk_clone.send_block = Some(self.hash.to_owned());
+            blk_clone.header.prev_hash = top_block_hash;
             blk_clone.hash();
             return Ok(blk_clone);
         }
@@ -498,7 +506,7 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-        return Ok(());
+    return Ok(());
 }
 // TODO: finish enact block
 /// Enacts a block. Updates all relavant dbs and files
@@ -722,7 +730,8 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 if blk.header.height != 0 {
                     return Err(blockValidationErrors::other);
                 }
-            } else if !blk.validSignature() && blk.block_type != BlockType::Recieve { // recieve blocks are not formed by the reciecver and so the signature will be invalid
+            } else if !blk.validSignature() && blk.block_type != BlockType::Recieve {
+                // recieve blocks are not formed by the reciecver and so the signature will be invalid
                 return Err(blockValidationErrors::badSignature);
             } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
                 > (SystemTime::now()
