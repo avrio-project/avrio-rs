@@ -8,7 +8,7 @@ use ring::{
 extern crate bs58;
 
 extern crate avrio_database;
-use avrio_database::{getData, saveData};
+use avrio_database::{get_data, save_data};
 
 extern crate avrio_config;
 use avrio_config::config;
@@ -32,7 +32,7 @@ pub fn generate_invite() -> (String, String) {
 
 /// Returns true if the invite is in existance and not spent.
 pub fn unspent(invite: &String) -> bool {
-    if getData(config().db_path + &"/invites".to_owned(), invite) != "u".to_owned() {
+    if get_data(config().db_path + &"/invites".to_owned(), invite) != "u".to_owned() {
         return false;
     } else {
         return true;
@@ -41,7 +41,7 @@ pub fn unspent(invite: &String) -> bool {
 
 /// Returns true if the invite is in existance and not spent.
 pub fn is_spent(invite: &String) -> bool {
-    if getData(config().db_path + &"/invites".to_owned(), invite) != "s".to_owned() {
+    if get_data(config().db_path + &"/invites".to_owned(), invite) != "s".to_owned() {
         return false;
     } else {
         return true;
@@ -52,7 +52,7 @@ pub fn is_spent(invite: &String) -> bool {
 pub fn mark_spent(invite: &String) -> Result<(), ()> {
     if !unspent(invite) {
         return Err(());
-    } else if saveData(
+    } else if save_data(
         "s".to_owned(),
         config().db_path + &"/invites".to_owned(),
         invite.to_owned(),
@@ -66,9 +66,9 @@ pub fn mark_spent(invite: &String) -> Result<(), ()> {
 
 /// Saves the public key into our innvites db (and sets to unspent)
 pub fn new(invite: &String) -> Result<(), ()> {
-    if getData(config().db_path + &"/invites".to_owned(), invite) != "-1".to_owned() {
+    if get_data(config().db_path + &"/invites".to_owned(), invite) != "-1".to_owned() {
         return Err(());
-    } else if saveData(
+    } else if save_data(
         "u".to_owned(),
         config().db_path + &"/invites".to_owned(),
         invite.to_owned(),

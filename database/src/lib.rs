@@ -16,7 +16,7 @@ struct PeerlistSave {
     peers: Vec<String>,
 }
 
-pub fn openDb(path: String) -> Result<rocksdb::DB, Error> {
+pub fn open_database(path: String) -> Result<rocksdb::DB, Error> {
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_skip_stats_update_on_db_open(false);
@@ -25,13 +25,13 @@ pub fn openDb(path: String) -> Result<rocksdb::DB, Error> {
     return DB::open(&opts, path);
 }
 
-pub fn getIter<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
+pub fn get_iterator<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
     return db.raw_iterator();
 }
 
-pub fn saveData(serialized: String, path: String, key: String) -> u8 {
+pub fn save_data(serialized: String, path: String, key: String) -> u8 {
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
-    let db = openDb(path).unwrap_or_else(|e| {
+    let db = open_database(path).unwrap_or_else(|e| {
         error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
     });
@@ -53,8 +53,8 @@ pub fn saveData(serialized: String, path: String, key: String) -> u8 {
 }
 
 pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
-    let peers_db = openDb(config().db_path + &"/peers".to_string()).unwrap();
-    let s = getDataDb(&peers_db, &"white");
+    let peers_db = open_database(config().db_path + &"/peers".to_string()).unwrap();
+    let s = get_data_from_database(&peers_db, &"white");
 
     drop(peers_db);
 
@@ -93,7 +93,7 @@ pub fn save_peerlist(
 
     let s = serde_json::to_string(&as_string)?;
 
-    saveData(
+    save_data(
         s,
         config().db_path + &"/peers".to_string(),
         "white".to_string(),
@@ -102,8 +102,8 @@ pub fn save_peerlist(
     Ok(())
 }
 
-pub fn getData(path: String, key: &str) -> String {
-    let db = openDb(path.clone()).unwrap_or_else(|e| {
+pub fn get_data(path: String, key: &str) -> String {
+    let db = open_database(path.clone()).unwrap_or_else(|e| {
         error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
     });
@@ -133,7 +133,7 @@ pub fn getData(path: String, key: &str) -> String {
     data
 }
 
-pub fn getDataDb(db: &DB, key: &str) -> String {
+pub fn get_data_from_database(db: &DB, key: &str) -> String {
     let data: String;
 
     match db.get(key) {
@@ -163,7 +163,7 @@ pub fn getDataDb(db: &DB, key: &str) -> String {
     return data;
 }
 
-pub fn setDataDb(value: &String, db: &DB, key: &str) -> u8 {
+pub fn set_data_in_database(value: &String, db: &DB, key: &str) -> u8 {
     if let Err(e) = db.put(key, value) {
         error!(
             "Failed to save data (db) to db: {}, gave error: {}",

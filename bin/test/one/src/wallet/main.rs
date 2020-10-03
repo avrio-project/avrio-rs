@@ -112,7 +112,7 @@ fn open_wallet() -> bool {
     }
     let padded_string = String::from_utf8(padded).unwrap();
     let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
-    let ciphertext = getData(file_path, &"pubkey".to_owned());
+    let ciphertext = get_data(file_path, &"pubkey".to_owned());
     let pubkey = String::from_utf8(
         hex::decode(aead.decrypt(nonce, ciphertext.as_ref()).unwrap_or({
             error!("Failed to decrypt wallet, likley incorect password");
@@ -126,7 +126,7 @@ fn open_wallet() -> bool {
     let aead = Aes256Gcm::new(key);
     // TODO: use unique nonce
     let nonce = GenericArray::from_slice(b"unique nonce"); // 96-bits; unique per message
-    let ciphertext = getData(file_path, &"privkey".to_owned());
+    let ciphertext = get_data(file_path, &"privkey".to_owned());
     let privkey = String::from_utf8(
         hex::decode(aead.decrypt(nonce, ciphertext.as_ref()).unwrap_or({
             error!("Failed to decrypt wallet, likley incorect password");
