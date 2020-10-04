@@ -1,5 +1,6 @@
 # Avrio
 <b> Master branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-rs.svg?branch=master) Development branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-rs.svg?branch=development) </b>
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/bc49fd1ca3a04c3cbc427074042293d2)](https://www.codacy.com/gh/avrio-project/avrio-rs/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=avrio-project/avrio-rs&amp;utm_campaign=Badge_Grade)
 
 This is the rust implementation of Avrio. It is currently not ready for usage. If you wish to join the Avrio network, please use our [cryptonight based implementation](https://github.com/avrio-project/avrio).
 
