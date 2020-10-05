@@ -404,7 +404,8 @@ impl Block {
     pub fn isOtherBlock(&self, OtherBlock: &Block) -> bool {
         self == OtherBlock
     }
-
+    // TODO FIX:
+    // i need to add a recieve_block_nonce feild to the block data that can be used so that the recieve blocks are not the same (and they all have diffrent hashes)
     pub fn form_receive_block(
         &self,
         chain_key: Option<String>,
@@ -418,6 +419,13 @@ impl Block {
         let mut chainKey: String = config().chain_key;
         if let Some(key) = chain_key {
             chainKey = key;
+        }
+        let mut txn_iter = 0;
+        for txn in blk_clone.clone().txns {
+            txn_iter +1;
+            if (txn.receive_key != chainKey) {
+                blk_clone.txns.remove(txn_iter);
+            }
         }
         if chainKey == self.header.chain_key {
             blk_clone.header.height += 1;
