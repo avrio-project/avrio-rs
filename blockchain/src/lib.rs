@@ -404,8 +404,7 @@ impl Block {
     pub fn isOtherBlock(&self, OtherBlock: &Block) -> bool {
         self == OtherBlock
     }
-    // TODO FIX:
-    // i need to add a recieve_block_nonce feild to the block data that can be used so that the recieve blocks are not the same (and they all have diffrent hashes)
+    
     pub fn form_receive_block(
         &self,
         chain_key: Option<String>,
