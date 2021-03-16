@@ -5,8 +5,6 @@
 This is the offical implemention of the avrio protocol. It is written in rust. It's protocol is subject to frequent change and as such no documention exists (however it is in the works) It is currently not ready for usage. If you wish to join the Avrio network, please use our [cryptonight based implementation](https://github.com/avrio-project/avrio). For more details please join our [discord](https://discord.gg/4aGKGmm)
 
 ## Table of Contents
-- [Avrio](#avrio)
-  - [Table of Contents](#table-of-contents)
   - [How to compile](#how-to-compile)
     - [Build optimization](#build-optimization)
     - [Linux](#linux)
