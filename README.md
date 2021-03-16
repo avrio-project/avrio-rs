@@ -2,8 +2,21 @@
 <b> Master branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-rs.svg?branch=master) Development branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-rs.svg?branch=development) </b>
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/bc49fd1ca3a04c3cbc427074042293d2)](https://www.codacy.com/gh/avrio-project/avrio-rs/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=avrio-project/avrio-rs&amp;utm_campaign=Badge_Grade)
 
-This is the rust implementation of Avrio. It is currently not ready for usage. If you wish to join the Avrio network, please use our [cryptonight based implementation](https://github.com/avrio-project/avrio).
+This is the offical implemention of the avrio protocol. It is written in rust. It's protocol is subject to frequent change and as such no documention exists (however it is in the works) It is currently not ready for usage. If you wish to join the Avrio network, please use our [cryptonight based implementation](https://github.com/avrio-project/avrio). For more details please join our [discord](https://discord.gg/4aGKGmm)
 
+## Table of Contents
+- [Avrio](#avrio)
+  - [Table of Contents](#table-of-contents)
+  - [How to compile](#how-to-compile)
+    - [Build optimization](#build-optimization)
+    - [Linux](#linux)
+      - [Prerequisites](#prerequisites)
+        - [Ubuntu](#ubuntu)
+        - [Generic Linux](#generic-linux)
+  - [File structure](#file-structure)
+  - [Contributing](#contributing)
+  - [Contributors](#contributors)
+  
 ## How to compile
 
 ### Build optimization
@@ -75,5 +88,11 @@ e.g.
 ```avrio_p2p = { path: "extern/p2p" }```
 The executables can be found in the bin folder, the testnet executables are in bin/testnet.
 
-## Pull requests
+## Contributing
 Pull requests are welcomed. If you can help with the code, please fork the repo, make your changes to the forked repo and then open a PR into the development branch. Please <b>NEVER</b> open a PR into the master branch. Any PRs into the master branch without prior authorization will be closed.
+
+## Contributors
+A huge thank you to everyone who has controbuted to the avrio codebase:
+- [Leo Cornelius (Developer, protocol) ](https://github.com/LeoCornelius)
+- [TheDevMinerTV (Developer) ](https://github.com/TheDevMinerTV)
+- [KruciferX (Spellcheck, protocol)](https://github.com/kruciferx)
