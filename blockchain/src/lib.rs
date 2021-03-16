@@ -124,7 +124,7 @@ impl BlockSignature {
         if &get_data(
             config().db_path + "/fn-certificates",
             &self.signer_public_key,
-        ) == "-1"
+        ) == "-1" // check the fullnode who signed this block is registered. TODO (for sharding v1): move to using a vector of tuples(publickey, signature) and check each fullnode fully (was part of that epoch, was a validator node for the commitee handling the shard, etc)
         {
             return false;
         } else if self.hash != self.hash_return() {
@@ -404,7 +404,7 @@ impl Block {
     pub fn isOtherBlock(&self, OtherBlock: &Block) -> bool {
         self == OtherBlock
     }
-    
+    /// Takes in a send block and creates and returns a recive block
     pub fn form_receive_block(
         &self,
         chain_key: Option<String>,
@@ -421,7 +421,7 @@ impl Block {
         }
         let mut txn_iter = 0;
         for txn in blk_clone.clone().txns {
-            txn_iter +1;
+            txn_iter + 1;
             if (txn.receive_key != chainKey) {
                 blk_clone.txns.remove(txn_iter);
             }
@@ -454,7 +454,7 @@ impl Block {
         }
     }
 }
-// enacts the relevant stuff for a send block (eg creating inv registry)
+/// enacts the relevant stuff for a send block (eg creating inv registry)
 pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
     let chaindex_db = open_database(
         config().db_path
@@ -534,7 +534,10 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
     return Ok(());
 }
 // TODO: finish enact block
-/// Enacts a block. Updates all relavant dbs and files
+/// Enacts a recieve block. Updates all relavant dbs and files
+/// You should not enact a send block (this will return an error).
+/// In presharding networks (eg now) use enact_send then form_receive_block and enact the outputed recieve block
+/// Make sure the send block is propegated BEFORE the recieve block (to reduce processing latency)
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
     if block.block_type != BlockType::Recieve && block.header.height != 0 {
         // we only enact recive blocks, ignore send blocks
@@ -649,13 +652,14 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
 
 /// Checks if a block is valid returns a blockValidationErrors
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {
-    let got_block = getBlockFromRaw(blk.hash.clone());
-    if got_block == blk {
+    let got_block = getBlockFromRaw(blk.hash.clone()); // try to read this block from disk, if it is saved it is assumed to already have been vaildated and hence is not revalidated
+    if got_block == blk { // we have this block stored as a raw file (its valid)
         return Ok(());
-    } else if got_block == Block::default() {
-        if blk.header.network != config().network_id {
+    } else if got_block == Block::default() { // we dont have this block in raw block storage files; validate it
+        if blk.header.network != config().network_id { // check this block originated from the same network as us
             return Err(blockValidationErrors::networkMissmatch);
-        } else if blk.hash != blk.hash_return() {
+        } else if blk.hash != blk.hash_return() { // hash the block and compare it to the claimed hash of the block. 
+            trace!("Hash missmatch block: {}, computed hash: {}", blk.hash, blk.hash_return()
             return Err(blockValidationErrors::invalidBlockhash);
         }
         if get_data(config().db_path + "/checkpoints", &blk.hash) != "-1".to_owned() {
@@ -663,12 +667,13 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             return Ok(());
         }
         if blk.header.height == 0 {
-            // This is a genesis block (the first block)
+            // This is a genesis block (the first block of a chain)
             // First we will check if there is a entry for this chain in the genesis blocks db
             let genesis: Block;
             let mut is_in_db = false;
             match getGenesisBlock(&blk.header.chain_key) {
                 Ok(b) => {
+                    // this is in our genesis block db and so is a swap block (pregenerated to swap coins from the old network)
                     trace!("found genesis block in db");
                     genesis = b;
                     is_in_db = true;
@@ -697,11 +702,11 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 return Err(blockValidationErrors::genesisBlockMissmatch);
             } else {
                 if is_in_db == true {
-                    // if it is in the db it is guarenteed to be valid, we do not need to validate the block
+                    // if it is in the genesis block db it is guarenteed to be valid (as its pregenerated), we do not need to validate the block
                     return Ok(());
                 } else {
                     // if it isn't it needs to be validated like any other block
-                    if &blk.header.prev_hash != "00000000000" {
+                    if &blk.header.prev_hash != "00000000000" { // genesis blocks should always reference "00000000000" as a previous hash (as there is none)
                         return Err(blockValidationErrors::invalidPreviousBlockhash);
                     } else if let Ok(acc) = getAccount(&blk.header.chain_key) {
                         // this account already exists, you can't have two genesis blocks
@@ -710,22 +715,26 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     } else if !blk.validSignature() {
                         return Err(blockValidationErrors::badSignature);
                     } else if getBlockFromRaw(blk.hash.clone()) != Block::default() {
+                        // this block already exists; this will return if the block is enacted and saved before running this function on a genesis block. So dont. :)
                         return Err(blockValidationErrors::blockExists);
-                    } else if blk.header.height != 0
+                    } else if blk.header.height != 0 // genesis blocks are exempt from broadcast delta limmits
                         && blk.header.timestamp - (config().transaction_timestamp_max_offset as u64)
                             > (SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .expect("Time went backwards")
                                 .as_millis() as u64)
                     {
+                        // this block is too far in the future
                         return Err(blockValidationErrors::timestampInvalid);
                     } else if blk.header.height != 0
                         && getBlockFromRaw(blk.header.prev_hash).header.timestamp
                             > blk.header.timestamp
                     {
+                        // this block is older than its parent (prev block hash)
                         debug!("Block: {} timestamp under previous timestamp", blk.hash);
                         return Err(blockValidationErrors::timestampInvalid);
                     }
+                    // if you got here the block is valid, yay!
                     return Ok(());
                 }
             }
@@ -734,21 +743,25 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             if blk.confimed == true
                 && blk.node_signatures.len() < (2 / 3 * config().commitee_size) as usize
             {
+                // if the block is marked as confirmed (SHARDING NETWORK VERSIONS+ ONLY) there must be at least 2/3 of a comitee of signatures
+                // TODO: We are now planning on using retroactive comitee size calculation. In short, the comitee size will change dependent on the 
+                // number of fullnodes (each epoch). Account for this and read the stored data of the epoch this block was in (or get it if its the current epoch)
+                // we also need to account for delegate nodes which wont sign
                 return Err(blockValidationErrors::tooLittleSignatures);
             } else {
-                for signature in blk.clone().node_signatures {
+                for signature in blk.clone().node_signatures { // check each verifyer signature, a delegate node will not include a invalid verifyer signature so this should not happen without mallicious intervention
                     if !signature.valid() {
                         return Err(blockValidationErrors::badNodeSignature);
                     }
                 }
             }
-            let prev_blk = getBlock(&blk.header.chain_key, &blk.header.height - 1);
+            let prev_blk = getBlock(&blk.header.chain_key, &blk.header.height - 1); // get the top block of the chain, this SHOULD be the block mentioned in prev block hash
             trace!(
                 "Prev block: {:?} for chain {}",
                 prev_blk,
                 blk.header.chain_key
             );
-            if blk.header.prev_hash != prev_blk.hash && blk.header.prev_hash != "".to_owned() {
+            if blk.header.prev_hash != prev_blk.hash && blk.header.prev_hash != "".to_owned() { // the last block in this chain does not equal the previous hash of this block
                 debug!(
                     "Expected prev hash to be: {}, got: {}. For block at height: {}",
                     prev_blk.hash, blk.header.prev_hash, blk.header.height
@@ -767,7 +780,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
                     .as_millis() as u64)
-            {
+            { // the block is too far in future
                 debug!("Block: {} too far in futre. Our time: {}, block time: {}, block justifyed time: {}. Delta {}", blk.hash, (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
@@ -782,20 +795,21 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             {
                 return Err(blockValidationErrors::timestampInvalid);
             }
-            for txn in blk.txns {
+            for txn in blk.txns { // check each txn in the block is valid
                 if let Err(e) = txn.valid() {
                     return Err(blockValidationErrors::invalidTransaction(e));
-                } else {
-                    return Ok(());
-                }
+                } /*else { removed as this will return prematurley and result in only the first txn being validated
+                    return Ok(()); 
+                }*/
             }
-            return Ok(());
+            return Ok(()); // if you got here there are no issues
         }
     } else {
-        return Err(blockValidationErrors::blockExists);
+        return Err(blockValidationErrors::blockExists); // this block already exists
     }
 }
 
+//todo write commentaion/docs for tests
 pub mod genesis;
 #[cfg(test)]
 mod tests {
