@@ -17,8 +17,7 @@ pub fn per_epoch_limit(nodes: u64) -> u64 {
     return (1 / 3) * (nodes / 2);
 }
 
-/// Generates the public pivate key pair for a new invite, returns a tupethread::spawn(move || {
-/// (publickey, privatekey)
+/// Generates the public private key pair for a new invite, returns a tupe (publickey, privatekey)
 pub fn generate_invite() -> (String, String) {
     let rngc = randc::SystemRandom::new();
     let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
@@ -39,7 +38,8 @@ pub fn unspent(invite: &String) -> bool {
     }
 }
 
-/// Returns true if the invite is in existance and not spent.
+/// Returns true if the invite is in existance and spent.
+// TODO: Phase out, duplicate of unspent() above
 pub fn is_spent(invite: &String) -> bool {
     if get_data(config().db_path + &"/invites".to_owned(), invite) != "s".to_owned() {
         return false;
