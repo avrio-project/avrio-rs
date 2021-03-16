@@ -70,7 +70,7 @@ pub struct Block {
     pub hash: String,
     pub signature: String,
     pub confimed: bool,
-    pub node_signatures: Vec<BlockSignature>, // a block must be signed by at least 2/3*c nodes to be valid (ensures at least one honest node has signed it)
+    pub node_signatures: Vec<BlockSignature>, // a block must be signed by at least 2/3 of the commitee's verifyer nodes to be valid (ensures at least one honest node has signed it)
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
