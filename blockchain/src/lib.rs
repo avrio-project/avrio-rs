@@ -659,7 +659,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
         if blk.header.network != config().network_id { // check this block originated from the same network as us
             return Err(blockValidationErrors::networkMissmatch);
         } else if blk.hash != blk.hash_return() { // hash the block and compare it to the claimed hash of the block. 
-            trace!("Hash missmatch block: {}, computed hash: {}", blk.hash, blk.hash_return()
+            trace!("Hash missmatch block: {}, computed hash: {}", blk.hash, blk.hash_return())
             return Err(blockValidationErrors::invalidBlockhash);
         }
         if get_data(config().db_path + "/checkpoints", &blk.hash) != "-1".to_owned() {
