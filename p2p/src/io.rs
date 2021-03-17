@@ -119,10 +119,11 @@ pub fn send(
     } else {
         let map = PEERS.lock()?;
         if let Some(val) = map.get(&strip_port(&peer.peer_addr()?)) {
+            trace!("Sending message, key: {:?}, LEN: {}",hex::decode(&val.0), hex::decode(&val.0).unwrap_or_default().len());
             k = AesGcm::new(
                 KeySize::KeySize128,
-                val.0.as_bytes(),
-                &[0],
+                &hex::decode(&val.0).unwrap_or_default(), // keys are stored encoded as hex, not utf8 strings
+                &[0, 12],
                 &[0; 1], //p2p_dat.length().to_string().as_bytes(),
             );
             let mut tag = vec![0; 16];
@@ -200,9 +201,9 @@ pub fn read(
                     if let Some(val) = map.get(&strip_port(&peer.peer_addr()?)) {
                         k = AesGcm::new(
                             KeySize::KeySize128,
-                            val.0.as_bytes(),
+                            &hex::decode(&val.0).unwrap_or_default(),
                             &[0; 12],
-                            len.to_string().as_bytes(),
+                            &[0;1], //len.to_string().as_bytes(),
                         );
                     } else {
                         return Err("No key provided and peer not found".into());
