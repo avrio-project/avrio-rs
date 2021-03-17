@@ -138,7 +138,7 @@ pub fn launch_handle_client(
                             0x1b | 0x1c => {
                                 // send the peer our chain digest
                                 log::trace!("Sending chain digest to peer");
-                                let chain_digest = avrio_database::getData(
+                                let chain_digest = avrio_database::get_data(
                                     avrio_config::config().db_path + &"/chainsdigest",
                                     "master",
                                 );

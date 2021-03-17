@@ -21,6 +21,8 @@ use ring::{
 // avrio config, for getting the address prefix
 extern crate avrio_config;
 
+static max_addr_dec: &str =
+    "115792089237316195423570985008687907853269984665640564039457584007913129639935";
 pub struct Keypair {
     pub public_key: Publickey,
     pub private_key: Privatekey,
@@ -182,6 +184,15 @@ impl Hashable for Publickey {
     }
 }
 
+pub fn commitee_from_address(address: &String) -> u64 {
+    let decoded: Vec<u8> = bs58::decode(address).into_vec().unwrap_or(vec![0, 6, 9, 0]);
+    if decoded == vec![0, 6, 9, 0] {
+        return 0;
+    }
+
+    return 0;
+}
+
 pub fn valid_address(address: &String) -> bool {
     let decoded: Vec<u8> = bs58::decode(address).into_vec().unwrap_or(vec![0, 6, 9, 0]);
     if decoded == vec![0, 6, 9, 0] {
@@ -286,6 +297,10 @@ impl Wallet {
 #[cfg(test)]
 mod tests {
     pub use crate::*;
+    pub use csv::Writer;
+    use std::error::Error;
+    use std::io;
+    use std::process;
     #[test]
     fn test_address_prefix() {
         for _ in 0..1000 {
@@ -303,5 +318,65 @@ mod tests {
             wallet_init.private_key = "".into();
             assert_eq!(Wallet::from_address(addr), wallet_init);
         }
+    }
+    #[test]
+    fn max_addr() {
+        // Max JEKNVnkbo3jma5nREBBJCDoXFVeKkD56V3xKrvRmWxFG (dec: 115792089237316195423570985008687907853269984665640564039457584007913129639935)
+        // Min 11111111111111111111111111111111 (dec 0)
+        let max = [u8::MAX; 32].as_ref();
+        let min = [u8::MIN; 32].as_ref();
+        let rngc = randc::SystemRandom::new();
+        let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
+        let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
+        println!("{}", key_pair.public_key().as_ref().len());
+        println!(
+            "Max: {}, Min: {}",
+            bs58::encode(max).into_string(),
+            bs58::encode(min).into_string()
+        );
+    }
+    use std::collections::HashMap;
+    #[test]
+    fn culmulative_addr_freq() -> Result<(), Box<dyn Error>> {
+        let mut freq = HashMap::new();
+        freq.insert("0".to_string(), "0".to_string());
+        for i in 0..u8::MAX {
+            for n in 0..32 {
+                let mut arr = [0; 32];
+                if (n == 0) {
+                    arr[0] = i;
+                } else {
+                    for n in 0..n {
+                        arr[n] = i;
+                    }
+                }
+
+                let mut out = "".to_owned();
+                let mut out_num: u64 = 0;
+                for o in arr.iter() {
+                    out_num += u64::from(o.to_owned())
+                }
+                out = out_num.to_string();
+
+                let mut curr: u64 = match freq.get(&out) {
+                    Some(val) => val.parse::<u64>().unwrap_or_default(),
+                    None => 0,
+                };
+                freq.insert(out, (curr + 1).to_string());
+            }
+        }
+
+        let mut wtr = Writer::from_path("culmulative_addr_freq.csv")?;
+        wtr.write_record(&["value", "freq"])?;
+        let mut cou: u128 = 0;
+        for (val, freq) in &freq {
+            cou += 1;
+            
+            wtr.write_record(&[val, freq])?;
+            println!("{},{}", val, freq);
+        }
+        println!("COU: {}", cou);
+        wtr.flush()?;
+        Ok(())
     }
 }

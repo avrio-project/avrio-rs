@@ -70,7 +70,7 @@ pub struct Block {
     pub hash: String,
     pub signature: String,
     pub confimed: bool,
-    pub node_signatures: Vec<BlockSignature>, // a block must be signed by at least 2/3*c nodes to be valid (ensures at least one honest node has signed it)
+    pub node_signatures: Vec<BlockSignature>, // a block must be signed by at least 2/3 of the commitee's verifyer nodes to be valid (ensures at least one honest node has signed it)
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
@@ -109,7 +109,7 @@ impl Default for BlockType {
 impl BlockSignature {
     pub fn enact(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         // we are presuming the vote is valid - if it is not this is going to mess stuff up!
-        if saveData(
+        if save_data(
             self.nonce.to_string(),
             config().db_path + "/fn-certificates",
             self.signer_public_key.clone(),
@@ -121,26 +121,26 @@ impl BlockSignature {
         }
     }
     pub fn valid(&self) -> bool {
-        if &getData(
+        if &get_data(
             config().db_path + "/fn-certificates",
             &self.signer_public_key,
-        ) == "-1"
+        ) == "-1" // check the fullnode who signed this block is registered. TODO (for sharding v1): move to using a vector of tuples(publickey, signature) and check each fullnode fully (was part of that epoch, was a validator node for the commitee handling the shard, etc)
         {
             return false;
         } else if self.hash != self.hash_return() {
             return false;
-        } else if getData(
+        } else if get_data(
             config().db_path + "/chains/" + &self.signer_public_key + "-chainindex",
             "sigcount",
         ) != self.nonce.to_string()
         {
             return false;
-        } else if self.timestamp - (config().transactionTimestampMaxOffset as u64)
+        } else if self.timestamp - (config().transaction_timestamp_max_offset as u64)
             < (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64)
-            || self.timestamp + (config().transactionTimestampMaxOffset as u64)
+            || self.timestamp + (config().transaction_timestamp_max_offset as u64)
                 < (SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
@@ -222,15 +222,15 @@ impl BlockSignature {
 pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
     trace!(target: "blockchain::chain_digest","Generating merkle root from scratch");
     let _roots: Vec<String> = vec![];
-    if let Ok(db) = openDb(config().db_path + "/chainlist") {
+    if let Ok(db) = open_database(config().db_path + "/chainlist") {
         let mut iter = db.raw_iterator();
         iter.seek_to_first();
-        let cd_db = openDb(config().db_path + &"/chaindigest".to_owned()).unwrap();
+        let cd_db = open_database(config().db_path + &"/chaindigest".to_owned()).unwrap();
         while iter.valid() {
             if let Some(chain) = iter.key() {
                 if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
                     if let Ok(blkdb) =
-                        openDb(config().db_path + "/chains/" + &chain_string + "-chainindex")
+                        open_database(config().db_path + "/chains/" + &chain_string + "-chainindex")
                     {
                         let mut blkiter = blkdb.raw_iterator();
                         blkiter.seek_to_first();
@@ -252,12 +252,12 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
             iter.next();
         }
     }
-    return Ok(getData(config().db_path + &"/chainsdigest", "master"));
+    return Ok(get_data(config().db_path + &"/chainsdigest", "master"));
 }
 
 pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String {
     trace!(target: "blockchain::chain_digest","Updating chain digest with block hash: {}", new_blk_hash);
-    let curr = getDataDb(cd_db, "master");
+    let curr = get_data_from_database(cd_db, "master");
     let root: String;
     if &curr == "-1" {
         trace!(target: "blockchain::chain_digest","chain digest not set");
@@ -266,7 +266,7 @@ pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String
         trace!(target: "blockchain::chain_digest","Updating set chain digest. Curr: {}", curr);
         root = avrio_crypto::raw_lyra(&(curr + new_blk_hash));
     }
-    let _ = setDataDb(&root, &cd_db, &"master");
+    let _ = set_data_in_database(&root, &cd_db, &"master");
     trace!(target: "blockchain::chain_digest","Set chain digest to: {}.", root);
     drop(cd_db);
     return root;
@@ -274,7 +274,7 @@ pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String
 
 /// returns the block when you know the chain and the height
 pub fn getBlock(chainkey: &String, height: u64) -> Block {
-    let hash = getData(
+    let hash = get_data(
         config().db_path + "/chains/" + chainkey + "-chainindex",
         &height.to_string(),
     );
@@ -404,8 +404,8 @@ impl Block {
     pub fn isOtherBlock(&self, OtherBlock: &Block) -> bool {
         self == OtherBlock
     }
-
-    pub fn form_recieve_block(
+    /// Takes in a send block and creates and returns a recive block
+    pub fn form_receive_block(
         &self,
         chain_key: Option<String>,
     ) -> Result<Block, Box<dyn std::error::Error>> {
@@ -419,65 +419,173 @@ impl Block {
         if let Some(key) = chain_key {
             chainKey = key;
         }
-        let our_height: u64 = getData(
-            config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
-            &"blockcount".to_owned(),
-        )
-        .parse()?;
-        blk_clone.header.chain_key = chainKey;
-        blk_clone.header.height = our_height + 1;
-        blk_clone.send_block = Some(self.hash.to_owned());
-        blk_clone.hash();
-        return Ok(blk_clone);
+        let mut txn_iter = 0;
+        for txn in blk_clone.clone().txns {
+            txn_iter + 1;
+            if (txn.receive_key != chainKey) {
+                blk_clone.txns.remove(txn_iter);
+            }
+        }
+        if chainKey == self.header.chain_key {
+            blk_clone.header.height += 1;
+            blk_clone.send_block = Some(self.hash.to_owned());
+            blk_clone.header.prev_hash = self.hash.clone();
+            blk_clone.hash();
+            return Ok(blk_clone);
+        } else {
+            let top_block_hash = get_data(
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &self.header.chain_key
+                    + &"-chainindex".to_owned(),
+                "topblockhash",
+            );
+            let our_height: u64 = get_data(
+                config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
+                &"blockcount".to_owned(),
+            )
+            .parse()?;
+            blk_clone.header.chain_key = chainKey;
+            blk_clone.header.height = our_height + 1;
+            blk_clone.send_block = Some(self.hash.to_owned());
+            blk_clone.header.prev_hash = top_block_hash;
+            blk_clone.hash();
+            return Ok(blk_clone);
+        }
     }
 }
-// TODO: finish enact block
-/// Enacts a block. Updates all relavant dbs and files
-pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    if block.block_type != BlockType::Recieve && block.header.height != 0 {
-        // we only enact recive blocks, ignore send blocks
-        return Err("tried to enact a send block".into());
-    }
-    let chaindex_db = openDb(
+/// enacts the relevant stuff for a send block (eg creating inv registry)
+pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
+    let chaindex_db = open_database(
         config().db_path
             + &"/chains/".to_owned()
             + &block.header.chain_key
             + &"-chainindex".to_owned(),
     )
     .unwrap();
-    if getDataDb(&chaindex_db, &block.header.height.to_string()) == "-1" {
+
+    if get_data_from_database(&chaindex_db, &block.header.height.to_string()) == "-1" {
+        debug!("block not in invs");
+
+        let hash = block.hash.clone();
+
+        use std::sync::Arc;
+
+        let arc_db =
+            Arc::new(open_database(config().db_path + &"/chaindigest".to_owned()).unwrap());
+        let arc = arc_db.clone();
+
+        std::thread::spawn(move || {
+            update_chain_digest(&hash, &arc);
+        });
+
+        set_data_in_database(&block.hash, &chaindex_db, &"topblockhash");
+        set_data_in_database(
+            &(block.header.height + 1).to_string(),
+            &chaindex_db,
+            &"blockcount",
+        );
+
+        trace!("set top block hash for sender");
+
+        let inv_sender_res =
+            set_data_in_database(&block.hash, &chaindex_db, &block.header.height.to_string());
+
+        trace!("Saved inv for sender: {}", block.header.chain_key);
+
+        if inv_sender_res != 1 {
+            return Err("failed to save sender inv".into());
+        }
+
+        let block_count = get_data_from_database(&arc_db, &"blockcount");
+
+        if block_count == "-1".to_owned() {
+            set_data_in_database(&"1".to_owned(), &arc_db, &"blockcount");
+            trace!("set block count, prev: -1 (not set), new: 1");
+        } else {
+            let mut bc: u64 = block_count.parse().unwrap_or_default();
+            bc += 1;
+            set_data_in_database(&bc.to_string(), &arc_db, &"blockcount");
+            trace!("Updated non-zero block count, new count: {}", bc);
+        }
+
+        if block.header.height == 0 {
+            if save_data(
+                "".to_owned(),
+                config().db_path + "/chainlist",
+                block.header.chain_key.clone(),
+            ) == 0
+            {
+                return Err("failed to add chain to chainslist".into());
+            } else {
+                let newacc = Account::new(block.header.chain_key.clone());
+
+                if setAccount(&newacc) != 1 {
+                    return Err("failed to save new account".into());
+                }
+            }
+
+            if avrio_database::get_data_from_database(&chaindex_db, &"txncount") == "-1".to_owned()
+            {
+                avrio_database::set_data_in_database(&"0".to_string(), &chaindex_db, &"txncount");
+            }
+        }
+    }
+    return Ok(());
+}
+// TODO: finish enact block
+/// Enacts a recieve block. Updates all relavant dbs and files
+/// You should not enact a send block (this will return an error).
+/// In presharding networks (eg now) use enact_send then form_receive_block and enact the outputed recieve block
+/// Make sure the send block is propegated BEFORE the recieve block (to reduce processing latency)
+pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    if block.block_type != BlockType::Recieve && block.header.height != 0 {
+        // we only enact recive blocks, ignore send blocks
+        return Err("tried to enact a send block".into());
+    }
+
+    let chaindex_db = open_database(
+        config().db_path
+            + &"/chains/".to_owned()
+            + &block.header.chain_key
+            + &"-chainindex".to_owned(),
+    )
+    .unwrap();
+    if get_data_from_database(&chaindex_db, &block.header.height.to_string()) == "-1" {
         debug!("block not in invs");
         let hash = block.hash.clone();
         use std::sync::Arc;
-        let arc_db = Arc::new(openDb(config().db_path + &"/chaindigest".to_owned()).unwrap());
+        let arc_db =
+            Arc::new(open_database(config().db_path + &"/chaindigest".to_owned()).unwrap());
         let arc = arc_db.clone();
         std::thread::spawn(move || {
             update_chain_digest(&hash, &arc);
         });
-        setDataDb(&block.hash, &chaindex_db, &"topblockhash");
-        setDataDb(
+        set_data_in_database(&block.hash, &chaindex_db, &"topblockhash");
+        set_data_in_database(
             &(block.header.height + 1).to_string(),
             &chaindex_db,
             &"blockcount",
         );
         trace!("set top block hash for sender");
-        let inv_sender_res = setDataDb(&block.hash, &chaindex_db, &block.header.height.to_string());
+        let inv_sender_res =
+            set_data_in_database(&block.hash, &chaindex_db, &block.header.height.to_string());
         trace!("Saved inv for sender: {}", block.header.chain_key);
         if inv_sender_res != 1 {
             return Err("failed to save sender inv".into());
         }
-        let block_count = getDataDb(&arc_db, &"blockcount");
+        let block_count = get_data_from_database(&arc_db, &"blockcount");
         if block_count == "-1".to_owned() {
-            setDataDb(&"1".to_owned(), &arc_db, &"blockcount");
+            set_data_in_database(&"1".to_owned(), &arc_db, &"blockcount");
             trace!("set block count, prev: -1 (not set), new: 1");
         } else {
             let mut bc: u64 = block_count.parse().unwrap_or_default();
             bc += 1;
-            setDataDb(&bc.to_string(), &arc_db, &"blockcount");
+            set_data_in_database(&bc.to_string(), &arc_db, &"blockcount");
             trace!("Updated non-zero block count, new count: {}", bc);
         }
         if block.header.height == 0 {
-            if saveData(
+            if save_data(
                 "".to_owned(),
                 config().db_path + "/chainlist",
                 block.header.chain_key.clone(),
@@ -490,21 +598,22 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
                     return Err("failed to save new account".into());
                 }
             }
-            if avrio_database::getDataDb(&chaindex_db, &"txncount") == "-1".to_owned() {
-                avrio_database::setDataDb(&"0".to_string(), &chaindex_db, &"txncount");
+            if avrio_database::get_data_from_database(&chaindex_db, &"txncount") == "-1".to_owned()
+            {
+                avrio_database::set_data_in_database(&"0".to_string(), &chaindex_db, &"txncount");
             }
         }
-        let txn_db = openDb(config().db_path + &"/transactions".to_owned()).unwrap();
+        let txn_db = open_database(config().db_path + &"/transactions".to_owned()).unwrap();
         for txn in block.txns {
             trace!("enacting txn with hash: {}", txn.hash);
             txn.enact(&chaindex_db)?;
             trace!("Enacted txn. Saving txn to txindex db (db_name  = transactions)");
-            if setDataDb(&block.hash, &txn_db, &txn.hash) != 1 {
+            if set_data_in_database(&block.hash, &txn_db, &txn.hash) != 1 {
                 return Err("failed to save txn in transactions db".into());
             }
             trace!("Saving invs");
             if txn.sender_key != txn.receive_key && txn.sender_key != block.header.chain_key {
-                let rec_db = openDb(
+                let rec_db = open_database(
                     config().db_path
                         + &"/chains/".to_owned()
                         + &txn.receive_key
@@ -512,23 +621,23 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
                 )
                 .unwrap();
                 let inv_receiver_res =
-                    setDataDb(&block.hash, &rec_db, &block.header.height.to_string());
+                    set_data_in_database(&block.hash, &rec_db, &block.header.height.to_string());
                 if inv_receiver_res != 1 {
                     return Err("failed to save reciver inv".into());
                 }
-                let curr_block_count: String = getDataDb(&rec_db, &"blockcount");
+                let curr_block_count: String = get_data_from_database(&rec_db, &"blockcount");
                 if curr_block_count == "-1" {
-                    setDataDb(&"0".to_owned(), &rec_db, &"blockcount");
+                    set_data_in_database(&"0".to_owned(), &rec_db, &"blockcount");
                 } else {
                     let curr_block_count_val: u64 = curr_block_count.parse().unwrap_or_default();
-                    setDataDb(
+                    set_data_in_database(
                         &(curr_block_count_val + 1).to_string(),
                         &rec_db,
                         &"blockcount",
                     );
                 }
 
-                setDataDb(&block.hash, &rec_db, &"topblockhash");
+                set_data_in_database(&block.hash, &rec_db, &"topblockhash");
                 trace!("set top block hash for reciever");
                 drop(rec_db);
             }
@@ -543,26 +652,28 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
 
 /// Checks if a block is valid returns a blockValidationErrors
 pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors> {
-    let got_block = getBlockFromRaw(blk.hash.clone());
-    if got_block == blk {
+    let got_block = getBlockFromRaw(blk.hash.clone()); // try to read this block from disk, if it is saved it is assumed to already have been vaildated and hence is not revalidated
+    if got_block == blk { // we have this block stored as a raw file (its valid)
         return Ok(());
-    } else if got_block == Block::default() {
-        if blk.header.network != config().network_id {
+    } else if got_block == Block::default() { // we dont have this block in raw block storage files; validate it
+        if blk.header.network != config().network_id { // check this block originated from the same network as us
             return Err(blockValidationErrors::networkMissmatch);
-        } else if blk.hash != blk.hash_return() {
+        } else if blk.hash != blk.hash_return() { // hash the block and compare it to the claimed hash of the block. 
+            trace!("Hash missmatch block: {}, computed hash: {}", blk.hash, blk.hash_return());
             return Err(blockValidationErrors::invalidBlockhash);
         }
-        if getData(config().db_path + "/checkpoints", &blk.hash) != "-1".to_owned() {
+        if get_data(config().db_path + "/checkpoints", &blk.hash) != "-1".to_owned() {
             // we have this block in our checkpoints db and we know the hash is correct and therefore the block is valid
             return Ok(());
         }
         if blk.header.height == 0 {
-            // This is a genesis block (the first block)
+            // This is a genesis block (the first block of a chain)
             // First we will check if there is a entry for this chain in the genesis blocks db
             let genesis: Block;
             let mut is_in_db = false;
             match getGenesisBlock(&blk.header.chain_key) {
                 Ok(b) => {
+                    // this is in our genesis block db and so is a swap block (pregenerated to swap coins from the old network)
                     trace!("found genesis block in db");
                     genesis = b;
                     is_in_db = true;
@@ -591,11 +702,11 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 return Err(blockValidationErrors::genesisBlockMissmatch);
             } else {
                 if is_in_db == true {
-                    // if it is in the db it is guarenteed to be valid, we do not need to validate the block
+                    // if it is in the genesis block db it is guarenteed to be valid (as its pregenerated), we do not need to validate the block
                     return Ok(());
                 } else {
                     // if it isn't it needs to be validated like any other block
-                    if &blk.header.prev_hash != "00000000000" {
+                    if &blk.header.prev_hash != "00000000000" { // genesis blocks should always reference "00000000000" as a previous hash (as there is none)
                         return Err(blockValidationErrors::invalidPreviousBlockhash);
                     } else if let Ok(acc) = getAccount(&blk.header.chain_key) {
                         // this account already exists, you can't have two genesis blocks
@@ -604,22 +715,26 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     } else if !blk.validSignature() {
                         return Err(blockValidationErrors::badSignature);
                     } else if getBlockFromRaw(blk.hash.clone()) != Block::default() {
+                        // this block already exists; this will return if the block is enacted and saved before running this function on a genesis block. So dont. :)
                         return Err(blockValidationErrors::blockExists);
-                    } else if blk.header.height != 0
-                        && blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
+                    } else if blk.header.height != 0 // genesis blocks are exempt from broadcast delta limmits
+                        && blk.header.timestamp - (config().transaction_timestamp_max_offset as u64)
                             > (SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .expect("Time went backwards")
                                 .as_millis() as u64)
                     {
+                        // this block is too far in the future
                         return Err(blockValidationErrors::timestampInvalid);
                     } else if blk.header.height != 0
                         && getBlockFromRaw(blk.header.prev_hash).header.timestamp
                             > blk.header.timestamp
                     {
+                        // this block is older than its parent (prev block hash)
                         debug!("Block: {} timestamp under previous timestamp", blk.hash);
                         return Err(blockValidationErrors::timestampInvalid);
                     }
+                    // if you got here the block is valid, yay!
                     return Ok(());
                 }
             }
@@ -628,17 +743,26 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             if blk.confimed == true
                 && blk.node_signatures.len() < (2 / 3 * config().commitee_size) as usize
             {
+                // if the block is marked as confirmed (SHARDING NETWORK VERSIONS+ ONLY) there must be at least 2/3 of a comitee of signatures
+                // TODO: We are now planning on using retroactive comitee size calculation. In short, the comitee size will change dependent on the 
+                // number of fullnodes (each epoch). Account for this and read the stored data of the epoch this block was in (or get it if its the current epoch)
+                // we also need to account for delegate nodes which wont sign
                 return Err(blockValidationErrors::tooLittleSignatures);
             } else {
-                for signature in blk.clone().node_signatures {
+                for signature in blk.clone().node_signatures { // check each verifyer signature, a delegate node will not include a invalid verifyer signature so this should not happen without mallicious intervention
                     if !signature.valid() {
                         return Err(blockValidationErrors::badNodeSignature);
                     }
                 }
             }
-            let prev_blk = getBlock(&blk.header.chain_key, &blk.header.height - 1);
-            trace!("Prev block: {:?}", prev_blk);
-            if blk.header.prev_hash != prev_blk.hash && blk.header.prev_hash != "".to_owned() {
+
+            let prev_blk = getBlock(&blk.header.chain_key, &blk.header.height - 1); // get the top block of the chain, this SHOULD be the block mentioned in prev block hash
+            trace!(
+                "Prev block: {:?} for chain {}",
+                prev_blk,
+                blk.header.chain_key
+            );
+            if blk.header.prev_hash != prev_blk.hash && blk.header.prev_hash != "".to_owned() { // the last block in this chain does not equal the previous hash of this block
                 debug!(
                     "Expected prev hash to be: {}, got: {}. For block at height: {}",
                     prev_blk.hash, blk.header.prev_hash, blk.header.height
@@ -649,18 +773,19 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                 if blk.header.height != 0 {
                     return Err(blockValidationErrors::other);
                 }
-            } else if !blk.validSignature() {
+            } else if !blk.validSignature() && blk.block_type != BlockType::Recieve {
+                // recieve blocks are not formed by the reciecver and so the signature will be invalid
                 return Err(blockValidationErrors::badSignature);
-            } else if blk.header.timestamp - (config().transactionTimestampMaxOffset as u64)
+            } else if blk.header.timestamp - (config().transaction_timestamp_max_offset as u64)
                 > (SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
                     .as_millis() as u64)
-            {
+            { // the block is too far in future
                 debug!("Block: {} too far in futre. Our time: {}, block time: {}, block justifyed time: {}. Delta {}", blk.hash, (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
-            .as_millis() as u64), blk.header.timestamp, blk.header.timestamp - (config().transactionTimestampMaxOffset as u64),
+            .as_millis() as u64), blk.header.timestamp, blk.header.timestamp - (config().transaction_timestamp_max_offset as u64),
             blk.header.timestamp - (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
@@ -671,20 +796,21 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             {
                 return Err(blockValidationErrors::timestampInvalid);
             }
-            for txn in blk.txns {
+            for txn in blk.txns { // check each txn in the block is valid
                 if let Err(e) = txn.valid() {
                     return Err(blockValidationErrors::invalidTransaction(e));
-                } else {
-                    return Ok(());
-                }
+                } /*else { removed as this will return prematurley and result in only the first txn being validated
+                    return Ok(()); 
+                }*/
             }
-            return Ok(());
+            return Ok(()); // if you got here there are no issues
         }
     } else {
-        return Err(blockValidationErrors::blockExists);
+        return Err(blockValidationErrors::blockExists); // this block already exists
     }
 }
 
+//todo write commentaion/docs for tests
 pub mod genesis;
 #[cfg(test)]
 mod tests {
