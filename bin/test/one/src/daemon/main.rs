@@ -32,7 +32,10 @@ use avrio_database::{get_data, get_iterator, get_peerlist, open_database, save_d
 use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
 use avrio_api::start_server;
 
-fn connect_to_seednodes(
+
+
+
+fn connect_seednodes(
     seednodes: Vec<SocketAddr>,
     connected_peers: &mut Vec<TcpStream>,
 ) -> Vec<SocketAddr> {
@@ -44,7 +47,6 @@ fn connect_to_seednodes(
         match error {
             Ok(_) => {
                 info!("Connected to {:?}::{:?}", peer, 11523);
-
                 conns.push(peer);
                 connected_peers.push(error.unwrap());
             }
@@ -56,7 +58,8 @@ fn connect_to_seednodes(
         };
     }
 
-    conns
+    return conns;
+
 }
 
 fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
@@ -320,7 +323,9 @@ fn main() {
     }
 
     let mut connections: Vec<TcpStream> = vec![];
-    let connected_addrs = connect_to_seednodes(pl.clone(), &mut connections);
+
+    let connected_addrs = connect_seednodes(pl.clone(), &mut connections);
+
     let connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
     let mut new_peers: Vec<SocketAddr> = vec![];
 

@@ -755,6 +755,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
                     }
                 }
             }
+
             let prev_blk = getBlock(&blk.header.chain_key, &blk.header.height - 1); // get the top block of the chain, this SHOULD be the block mentioned in prev block hash
             trace!(
                 "Prev block: {:?} for chain {}",
