@@ -67,10 +67,13 @@ pub fn prop_block(blk: &Block) -> Result<u64, Box<dyn std::error::Error>> {
     for peer in get_peers_addr()?.iter_mut() {
         debug!("Sending block to peer: {:?}", peer);
         let mut peer_stream = lock(peer, 1000)?;
-        if let Ok(_) = send_block_struct(blk, &mut peer_stream) {
+        let send_res = send_block_struct(blk, &mut peer_stream);
+        if let Ok(_) = send_res {
             i += 1;
+        } else {
+            trace!("error sending block to peer {}, error={}", peer_stream.peer_addr()?, send_res.unwrap_err());
         }
-        unlock_peer(peer_stream);
+        let _ = unlock_peer(peer_stream)?;
     }
     trace!("Sent block {} to {} peers", blk.hash, i);
     return Ok(i);
@@ -456,7 +459,7 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
     if block.hash == Block::default().hash {
         return Err("tried to send default block".into());
     } else {
-        let block_ser: String = bson::to_bson(block)?.to_string(); // serilise the block into bson
+        let block_ser: String = serde_json::to_string(block)?; // serilise the block into bson
 
         if let Err(e) = send(block_ser, peer, 0x0a, true, None) {
             return Err(e.into());
