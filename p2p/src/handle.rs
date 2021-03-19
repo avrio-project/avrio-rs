@@ -83,7 +83,6 @@ pub fn launch_handle_client(
     let _handler: std::thread::JoinHandle<Result<(), &'static str>> = std::thread::spawn(
         move || loop {
             if let Ok(msg) = rx.try_recv() {
-                log::error!("mesg");
                 if msg == "pause" {
                     log::trace!("Pausing stream for peer");
                     loop {
@@ -99,13 +98,11 @@ pub fn launch_handle_client(
             }
             if let Ok(a) = peek(&mut stream) {
                 if let Ok(msg) = rx.try_recv() {
-                    log::error!("mesg");
                     if msg == "pause" {
                         log::trace!("Pausing stream for peer");
                         loop {
                             if let Ok(msg) = rx.try_recv() {
                                 if msg == "run" {
-                                    log::error!("mesg RES");
                                     log::trace!("Resuming stream for peer");
                                     break;
                                 }
@@ -113,9 +110,7 @@ pub fn launch_handle_client(
                         }
                     }
                 }
-                log::error!("HANDLE PEAKED");
                 if a != 0 {
-                    log::error!("Reading retard");
                     let read_data = read(&mut stream, Some(1000), None);
                     if let Ok(read_msg) = read_data {
                         read_msg.log();
