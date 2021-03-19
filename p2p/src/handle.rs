@@ -9,6 +9,8 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use lazy_static::lazy_static;
 use std::net::TcpStream;
 use std::sync::Mutex;
+use avrio_database::{get_data, open_database};
+use avrio_config::config;
 extern crate rand_os;
 extern crate x25519_dalek;
 
@@ -238,6 +240,38 @@ pub fn launch_handle_client(
                                     }
                                 }
                             }
+                            0x60 => {
+                                log::trace!(
+                                    "Peer: {} has requested our chains list",
+                                    stream.peer_addr().expect("Could not get addr for peer")
+                                );
+                    
+                                if let Ok(db) = open_database(config().db_path + &"/chainlist".to_owned()) {
+                                    let mut iter = db.raw_iterator();
+                                    iter.seek_to_first();
+                                    let mut chains: Vec<String> = vec![];
+                    
+                                    while iter.valid() {
+                                        if let Some(key_utf8) = iter.key() {
+                                            if let Ok(key) = String::from_utf8(key_utf8.to_vec()) {
+                                                chains.push(key);
+                                            }
+                                        }
+                                        iter.next();
+                                    }
+                    
+                                    log::trace!("Our chain list: {:#?}", chains);
+                                    let s = serde_json::to_string(&chains).unwrap_or_default();
+                    
+                                    if s == String::default() {
+                                        log::trace!("Failed to ser list");
+                                    } else if let Err(e) = send(s, &mut stream, 0x61, true, None) {
+                                        log::debug!("Failed to send chain list to peer, gave error: {}", e);
+
+                                    }
+                                }
+                            }
+                            
                             0x1a => log::debug!("Got handshake from handshook peer, ignoring"),
                             0xcd => log::error!("Read chain digest response. This means something has not locked properly. Will likley cause failed sync"),
                             _ => {
