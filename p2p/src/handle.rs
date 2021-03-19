@@ -11,6 +11,7 @@ use std::net::TcpStream;
 use std::sync::Mutex;
 use avrio_database::{get_data, open_database};
 use avrio_config::config;
+use avrio_blockchain::{getBlockFromRaw, getBlock, Block};
 extern crate rand_os;
 extern crate x25519_dalek;
 
@@ -286,6 +287,62 @@ pub fn launch_handle_client(
                                     let _ = send("0".into(), &mut stream, 0x46, true, None);
                                 } else {
                                     let _ = send(bc, &mut stream, 0x46, true, None);
+                                }
+                    
+                            }
+                            0x6f => {
+                                let (hash, chain): (String, String) =
+                                    serde_json::from_str(&read_msg.message).unwrap_or_default();
+                    
+                                if chain == String::default() || hash == String::default() {
+                                    log::debug!(
+                                        "Got malformed getblocksabovehash hash request (invalid body: {})",
+                                        read_msg.message
+                                    );
+                                } else {
+                                    let block_from: Block;
+                    
+                                    if hash == "0" {
+                                        log::trace!("Getting genesis block for chain: {}", chain);
+                                        block_from = getBlock(&chain, 0);
+                                        log::trace!("Block from: {:#?}", block_from);
+                                    } else {
+                                        block_from = getBlockFromRaw(hash.clone());
+                                    }
+                    
+                                    if block_from == Default::default() {
+                                        log::debug!("Cant find block (context getblocksabovehash)");
+                                    } else {
+                                        let mut got: u64 = block_from.header.height;
+                                        let mut prev: Block = block_from.clone();
+                                        let mut blks: Vec<Block> = vec![];
+                    
+                                        while prev != Default::default() {
+                                            if prev == block_from && hash == "0" {
+                                                blks.push(prev);
+                                            } else if prev != block_from {
+                                                blks.push(prev);
+                                            }
+                    
+                                            got += 1;
+                                            log::trace!("Sent block at height: {}", got);
+                                            prev = getBlock(&chain, got);
+                                        }
+                    
+                                        if let Ok(_) = send(
+                                            serde_json::to_string(&blks).unwrap_or_default(),
+                                            &mut stream,
+                                            0x0a,
+                                            true,
+                                            None
+                                        ) {
+                                            log::trace!(
+                                                "Sent all blocks (amount: {}) for chain: {} to peer",
+                                                got,
+                                                chain
+                                            );
+                                        }
+                                    }
                                 }
                     
                             }
