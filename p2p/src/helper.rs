@@ -5,7 +5,8 @@ use crate::{
     utils::*,
 };
 use avrio_blockchain::{
-    check_block, enact_block, generate_merkle_root_all, getBlock, getBlockFromRaw, saveBlock, Block,
+    check_block, enact_block, enact_send, generate_merkle_root_all, getBlock, getBlockFromRaw,
+    saveBlock, Block, BlockType,
 };
 use avrio_config::config;
 use avrio_database::{get_data, save_data};
@@ -383,7 +384,11 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
                         invalid_blocks += 1;
                     } else {
                         saveBlock(block.clone())?;
-                        enact_block(block)?;
+                        if block.block_type == BlockType::Send {
+                            enact_send(block)?;
+                        } else {
+                            enact_block(block)?;
+                        }
                         synced_blocks += 1;
                     }
                     if synced_blocks % print_synced_every == 0 {
