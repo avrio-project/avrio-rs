@@ -271,7 +271,24 @@ pub fn launch_handle_client(
                                     }
                                 }
                             }
-                            
+                            0x45 => {
+                                // send block count
+                                let bc = get_data(
+                                    config().db_path
+                                        + &"/chains/".to_owned()
+                                        + &read_msg.message
+                                        + &"-chainindex".to_owned(),
+                                    &"blockcount".to_owned(),
+                                );
+                                log::trace!("Blockcount={} for chain={}", bc, read_msg.message);
+
+                                if bc == "-1".to_owned() {
+                                    let _ = send("0".into(), &mut stream, 0x46, true, None);
+                                } else {
+                                    let _ = send(bc, &mut stream, 0x46, true, None);
+                                }
+                    
+                            }
                             0x1a => log::debug!("Got handshake from handshook peer, ignoring"),
                             0xcd => log::error!("Read chain digest response. This means something has not locked properly. Will likley cause failed sync"),
                             _ => {
