@@ -12,8 +12,10 @@ use std::error::Error;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
+const MAX_PEAK_BUFFER_SIZE: usize = 1000000; // 1 Mb, if the message is longer than this you cannot peak it. can be increased but should not need to be 
+
 pub fn peek(peer: &mut TcpStream) -> Result<usize, std::io::Error> {
-    let mut buf = [0; 1000000];
+    let mut buf = [0; MAX_PEAK_BUFFER_SIZE]; // create a buffer of MAX_BUFFER_SIZE 0s to peak into
     return peer.peek(&mut buf);
 }
 
@@ -34,7 +36,7 @@ pub trait Sendable {
     /// Does not panic but can return a Error
     ///
     /// # Blocking
-    /// This function will not block and makes no assumptions about the sate of the peer;
+    /// This function will not block and makes no assumptions about the state of the peer;
     /// Just because this returns Ok(()) does not mean the peer is connected or has seen the message
     fn send_raw(&self, peer: &mut TcpStream, flush: bool) -> Result<(), Box<dyn Error>> {
         let en = self.encode()?;
@@ -95,44 +97,46 @@ pub fn send(
     let data: String = msg;
     let s: S;
     let mut k: AesGcm;
-    if key.is_some() {
+    if key.is_some() { // did the function get called with a custom key?
         let mut key_unwraped = &[0u8; 32];
         key_unwraped = key.unwrap();
         trace!("KEY: {:?}, LEN: {}", key_unwraped, key_unwraped.len());
-        let mut k = AesGcm::new(
+        let mut k = AesGcm::new( // create a new decoder (AesGcm) object using passed key
             KeySize::KeySize128,
             key_unwraped,
             &[0; 12],
             &[0; 1], //p2p_dat.length().to_string().as_bytes(),
         );
+        // vectors for AES GCM components
         let mut tag = vec![0; 16];
         let mut output = vec![0; data.as_bytes().len()];
-        let _ = k.encrypt(data.as_bytes(), &mut output, &mut tag);
+        let _ = k.encrypt(data.as_bytes(), &mut output, &mut tag); // encrypt the data
         let p2p_dat = P2pData::gen(
             format!("{}@{}", hex::encode(output), hex::encode(tag)),
             msg_type,
         );
         p2p_dat.log();
-        s = S {
+        s = S { // turn encrypted data into a wrapper object (for sendable trait)
             c: p2p_dat.to_string(),
         };
-    } else {
-        let map = PEERS.lock()?;
+    } else { // use key in PEERS lazy staitic
+        let map = PEERS.lock()?; // gets a mutex "lock" on the PEERS lazy static. Prevents data races accross diffrent threads. Can lock up.
         if let Some(val) = map.get(&strip_port(&peer.peer_addr()?)) {
             trace!("Sending message, key: {:?}, LEN: {}",hex::decode(&val.0), hex::decode(&val.0).unwrap_or_default().len());
             let nonce = &[0; 12];
             trace!("NONCE: {:?}, LEN: {}", nonce, nonce.len());
-            k = AesGcm::new(
+            k = AesGcm::new( // create a new decoder (AesGcm) object using stored key
                 KeySize::KeySize128,
                 &hex::decode(&val.0).unwrap_or_default(), // keys are stored encoded as hex, not utf8 strings
                 nonce,
-                &[0; 1], //p2p_dat.length().to_string().as_bytes(),
+                &[0; 1], //TODO: use adaptive nonce (eg p2p_dat.length().to_string().as_bytes())
             );
+            // variables for encryption output
             let mut tag = vec![0; 16];
             let mut output = vec![0; data.as_bytes().len()];
             let _ = k.encrypt(data.as_bytes(), &mut output, &mut tag);
             let p2p_dat = P2pData::gen(
-                format!("{}@{}", hex::encode(output), hex::encode(tag)),
+                format!("{}@{}", hex::encode(output), hex::encode(tag)), // create the P2P data struct with the encrypted data
                 msg_type,
             );
             p2p_dat.log();
@@ -144,7 +148,7 @@ pub fn send(
         }
     }
     trace!("s={}", s.c);
-    return s.send_raw(peer, flush);
+    return s.send_raw(peer, flush); // send the string form of the formed P2P data struct. 
 }
 
 /// # Read
@@ -169,63 +173,66 @@ pub fn read(
 ) -> Result<P2pData, Box<dyn Error>> {
     let start = std::time::SystemTime::now();
     loop {
-        if timeout.is_some() {
+        if timeout.is_some() { 
             if std::time::SystemTime::now()
                 .duration_since(start)?
-                .as_millis() as u64
+                .as_millis() as u64 // get time, im MS, since the calling of the function. If it is over timeout, return Err
                 > timeout.unwrap()
             {
                 return Err("Timed out".into());
             }
         }
-        let mut buf = [0u8; LEN_DECL_BYTES];
-        if let Ok(a) = peer.peek(&mut buf) {
+        let mut buf = [0u8; LEN_DECL_BYTES]; // create a buffer to store the LEN BYTES tag which is preappended to every message (which tells us the size of the incoming message)
+        if let Ok(a) = peer.peek(&mut buf) { // peek to see if there is LEN_DECL_BYTES or more of data ready for us
             if a == 0 {
             } else {
                 trace!("a={}", a);
-                // read exactly 9 bytes whixh is the len of the message
+                // read exactly LEN_DECL_BYTES into buf
                 peer.read_exact(&mut buf)?;
-                // convert the bytes into a string
-                let len_s = String::from_utf8(buf.to_vec())?;
-                let len_striped: String = len_s.trim_start_matches("0").to_string();
-                let len: usize = len_striped.parse()?;
+                // convert the LEN_DECL_BYTES bytes into a string
+                trace!("Read exactly {} bytes into LEN BYTES buffer", a);
+                let len_s = String::from_utf8(buf.to_vec())?; // turn read bytes into a UTF-8 string
+                let len_striped: String = len_s.trim_start_matches("0").to_string(); // trims 0 which pad the LEN BYTES number to make it always LEN_DECL_BYTES long
+                let len: usize = len_striped.parse()?; // turn string (eg 129) into a usize (unsized int)
                 trace!("LEN_S={}", len_s);
                 let mut k: AesGcm;
-                if key.is_some() {
-                    k = AesGcm::new(
+                if key.is_some() { // if we were passed a custom key use that
+                    k = AesGcm::new( // create a decoder object from cusstom passed key 
                         KeySize::KeySize128,
-                        key.unwrap(),
-                        &[0; 12],
-                        &[0; 1], //len.to_string().as_bytes(),
+                        key.unwrap(), // Key must be 16 or 32 bytes
+                        &[0; 12], // nonce must be 96 bits, or 12 bytes
+                        &[0; 1], // AAD
                     );
-                } else {
-                    let map = PEERS.lock()?;
-                    if let Some(val) = map.get(&strip_port(&peer.peer_addr()?)) {
-                        k = AesGcm::new(
+                } else { // if not get it from the PEERS lazy static
+                    debug!("Awaiting lock on PEERS mutex");
+                    let map = PEERS.lock()?; // get a mutex lock on PEERS lazy static
+                    debug!("Gained lock on PEERS mutex");
+                    if let Some(val) = map.get(&strip_port(&peer.peer_addr()?)) { // get the peer's wrapper object from the PEERS lazy static
+                        k = AesGcm::new( // create a decoder object from the stored key
                             KeySize::KeySize128,
-                            &hex::decode(&val.0).unwrap_or_default(),
-                            &[0; 12],
-                            &[0;1], //len.to_string().as_bytes(),
+                            &hex::decode(&val.0).unwrap_or_default(), // Key must be 16 or 32 bytes
+                            &[0; 12], // nonce must be 96 bits, or 12 bytes
+                            &[0;1], // AAD
                         );
                     } else {
-                        return Err("No key provided and peer not found".into());
+                        return Err("No key provided and peer not found".into()); // per was not found in lazy static and no custom key was passed; return Err
                     }
                 }
-                let mut buf = vec![0u8; len];
-                peer.read_exact(&mut buf)?;
+                let mut buf = vec![0u8; len]; // create a new buffer with the number of bytes specified by LEN BYTES tag
+                peer.read_exact(&mut buf)?; // read exactly LEN BYTES tag into buf, this is our main message
                 trace!(
                     "Read {} bytes into BUF={:?} ({})",
                     len,
                     buf,
                     buf.len() == len
                 );
-                let mut s: String = String::from_utf8(buf.to_vec())?
-                    .trim_matches('0')
-                    .to_string();
-                let removed_braces = s[..len - 14].to_owned();
-                let as_s = "{".to_string() + &removed_braces + "}";
+                let mut s: String = String::from_utf8(buf.to_vec())? // turn buf into string
+                    .trim_matches('0') // trim 'floating' 0s caused by noisy read
+                    .to_string(); // turn outputed &str into String (realloactes, expensive)
+                let removed_braces = s[..len - 14].to_owned(); // remove everything outside the braces
+                let as_s = "{".to_string() + &removed_braces + "}"; // reads braces (to reform the json string)
                 trace!("S={}, AS_S={}, REMOVED_BRACES={}", s, as_s, removed_braces,);
-                let p2p_dat: P2pData = match serde_json::from_str(&removed_braces) {
+                let p2p_dat: P2pData = match serde_json::from_str(&removed_braces) { // use serde to turn the json string into a P2P data struct
                     Ok(s) => s,
                     Err(e) => {
                         debug!("Failed to decode P2pData from json, gave error: {}", e);
@@ -233,20 +240,20 @@ pub fn read(
                     }
                 };
                 p2p_dat.log();
-                s = p2p_dat.message.clone();
-                let s_split: Vec<&str> = s.split("@").collect();
-                if s_split.len() < 1 {
+                s = p2p_dat.message.clone(); // the message being sent, can be block data, peerlist etc depnsing on the p2p_dat.type
+                let s_split: Vec<&str> = s.split("@").collect(); // split the AES_GCM encoded string by the delimmiter token ("@")
+                if s_split.len() < 1 { // there should be 2 values: tag and message (eg len > 1)
                     return Err("No auth tag".into());
                 } else {
                     trace!("s_spilt={:?}, LEN={}", s_split, s_split.len());
-                    let cf: &[u8] = &hex::decode(s_split[0])?;
-                    let tag: &[u8] = &hex::decode(s_split[1])?;
-                    let mut out = vec![0u8; cf.len()];
-                    if !k.decrypt(cf, &mut out, tag) {
+                    let cf: &[u8] = &hex::decode(s_split[0])?; // turn the message segment into a vector of bytes
+                    let tag: &[u8] = &hex::decode(s_split[1])?; // turn the tag segment into a vector of bytes
+                    let mut out = vec![0u8; cf.len()]; // the output length will always == encrypted message (cf).len(); preallocate vector to store this
+                    if !k.decrypt(cf, &mut out, tag) { // try to decrypt the message using previously created decoder object
                         return Err("failed to decrypt message".into());
                     } else {
                         trace!("OUT={}", String::from_utf8(out.clone())?);
-                        return Ok(P2pData::new(
+                        return Ok(P2pData::new( // create a p2p object containing: out - teh decoded message, the message type, the checksum, then len and return it
                             len,
                             String::from_utf8(out)?,
                             p2p_dat.message_type,
