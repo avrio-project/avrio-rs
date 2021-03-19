@@ -139,7 +139,7 @@ pub fn launch_handle_client(
                                 // send the peer our chain digest
                                 log::trace!("Sending chain digest to peer");
                                 let chain_digest = avrio_database::get_data(
-                                    avrio_config::config().db_path + &"/chainsdigest",
+                                    avrio_config::config().db_path + &"/chaindigest",
                                     "master",
                                 );
                                 let _ = send(chain_digest, &mut stream, 0xcd, true, None);
