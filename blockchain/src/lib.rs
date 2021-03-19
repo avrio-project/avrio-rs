@@ -437,7 +437,7 @@ impl Block {
             let top_block_hash = get_data(
                 config().db_path
                     + &"/chains/".to_owned()
-                    + &self.header.chain_key
+                    + &chainKey
                     + &"-chainindex".to_owned(),
                 "topblockhash",
             );
