@@ -42,7 +42,7 @@ pub trait Sendable {
         let en = self.encode()?;
         let buf = en.as_bytes();
         peer.write(&buf)?;
-        if flush {
+        if true { // TEMP FIX, always flush stream                  flush {
             peer.flush()?;
         }
         return Ok(());
