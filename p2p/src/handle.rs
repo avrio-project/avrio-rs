@@ -206,8 +206,13 @@ pub fn launch_handle_client(
                                                 None,
                                             );
                                         } else {
-                                            if let Err(e) =
-                                                avrio_blockchain::enact_block(block.clone())
+                                            let enact_err_holder;
+                                            if block.block_type == avrio_blockchain::BlockType::Send {
+                                                enact_err_holder = avrio_blockchain::enact_send(block.clone());
+                                            } else {
+                                                enact_err_holder = avrio_blockchain::enact_block(block.clone());
+                                            }
+                                            if let Err(e) = enact_err_holder
                                             {
                                                 log::error!("Enacting block gave error: {}", e);
                                                 log::warn!("This could cause undefined behavour. Please consider restarting with --re-enact-from {}", block.header.prev_hash);
