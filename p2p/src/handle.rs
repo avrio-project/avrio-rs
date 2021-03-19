@@ -82,12 +82,15 @@ pub fn launch_handle_client(
     let mut stream = stream.try_clone()?;
     let _handler: std::thread::JoinHandle<Result<(), &'static str>> = std::thread::spawn(
         move || loop {
-            std::thread::sleep(std::time::Duration::from_millis(50));
             if let Ok(msg) = rx.try_recv() {
+                log::error!("mesg");
                 if msg == "pause" {
+                    log::trace!("Pausing stream for peer");
                     loop {
                         if let Ok(msg) = rx.try_recv() {
                             if msg == "run" {
+                                log::error!("mesg RES");
+                                log::trace!("Resuming stream for peer");
                                 break;
                             }
                         }
@@ -95,7 +98,24 @@ pub fn launch_handle_client(
                 }
             }
             if let Ok(a) = peek(&mut stream) {
+                if let Ok(msg) = rx.try_recv() {
+                    log::error!("mesg");
+                    if msg == "pause" {
+                        log::trace!("Pausing stream for peer");
+                        loop {
+                            if let Ok(msg) = rx.try_recv() {
+                                if msg == "run" {
+                                    log::error!("mesg RES");
+                                    log::trace!("Resuming stream for peer");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                log::error!("HANDLE PEAKED");
                 if a != 0 {
+                    log::error!("Reading retard");
                     let read_data = read(&mut stream, Some(1000), None);
                     if let Ok(read_msg) = read_data {
                         read_msg.log();
@@ -154,9 +174,11 @@ pub fn launch_handle_client(
                             0x0a => {
                                 // the peer just sent us a block,
                                 // validate it, save it an enact it
+                                log::trace!("Got block from peer");
                                 let block: avrio_blockchain::Block =
                                     serde_json::from_str(&read_msg.message).unwrap_or_default();
                                 if block.is_default() {
+                                    log::trace!("Could not decode block");
                                     let _ = send("dsf".to_owned(), &mut stream, 0x0c, true, None);
                                 } else {
                                     if let Err(e) = avrio_blockchain::check_block(block.clone()) {
@@ -223,6 +245,7 @@ pub fn launch_handle_client(
                                 }
                             }
                             0x1a => log::debug!("Got handshake from handshook peer, ignoring"),
+                            0xcd => log::error!("Read chain digest response. This means something has not locked properly. Will likley cause failed sync"),
                             _ => {
                                 log::debug!("Got unsupported message type: \"0x{:x}\", please check for updates", read_msg.message_type);
                                 ();

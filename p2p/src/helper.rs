@@ -1,7 +1,7 @@
 use crate::{
     format::P2pData,
     io::{read, send},
-    peer::{get_peers, lock, locked, unlock_peer},
+    peer::{get_peers_addr, lock, locked, unlock_peer},
     utils::*,
 };
 use avrio_blockchain::{
@@ -17,6 +17,7 @@ use std::error::Error;
 use std::net::TcpStream;
 use std::thread;
 
+/// TODO: implment this
 pub fn get_peerlist_from_peer(
     _peer: &mut TcpStream,
 ) -> Result<Vec<std::net::SocketAddr>, Box<dyn Error>> {
@@ -25,14 +26,20 @@ pub fn get_peerlist_from_peer(
 
 pub fn sync_needed() -> Result<bool, Box<dyn Error>> {
     let mut chain_digests: Vec<String> = vec![];
-    for mut peer in get_peers().unwrap_or_default() {
+    for peer in get_peers_addr().unwrap_or_default() {
+        // ask every connected peer for their chain digest
         trace!("Getting chain digest for peer: {:?}", peer);
-        chain_digests.push(get_chain_digest_string(&mut peer, true));
+        let mut peer_stream = lock(&peer, 1000)?;
+        chain_digests.push(get_chain_digest_string(&mut peer_stream, true));
+        unlock_peer(peer_stream)?;
     }
     if chain_digests.len() == 0 {
-        trace!("No streams in list");
-        return Ok(true);
+        // if we get no chain digests
+        trace!("Got not chain digests");
+        return Ok(true); // should we not return an error or at least false?
     } else {
+        // we got at least one chain digest
+        // find the most common chain digest
         let mode: String = get_mode(chain_digests.clone());
         let ours = get_data(config().db_path + &"/chaindigest".to_owned(), &"master");
         debug!(
@@ -40,8 +47,10 @@ pub fn sync_needed() -> Result<bool, Box<dyn Error>> {
             chain_digests, mode, ours
         );
         if ours == mode {
+            // we have the most common chain digest, we are 'up-to date'
             return Ok(false);
         } else {
+            //  we are not on the most common chain digest, sync with any peers with that digest
             return Ok(true);
         }
     }
@@ -54,31 +63,34 @@ pub fn sync_needed() -> Result<bool, Box<dyn Error>> {
 /// Once proof of node is in place it will send it only to the relevant comitee.
 pub fn prop_block(blk: &Block) -> Result<u64, Box<dyn std::error::Error>> {
     let mut i: u64 = 0;
-    for peer in get_peers()?.iter_mut() {
+    for peer in get_peers_addr()?.iter_mut() {
         debug!("Sending block to peer: {:?}", peer);
-        if let Ok(_) = send_block_struct(blk, peer) {
+        let mut peer_stream = lock(peer, 1000)?;
+        if let Ok(_) = send_block_struct(blk, &mut peer_stream) {
             i += 1;
         }
+        unlock_peer(peer_stream);
     }
-
+    trace!("Sent block {} to {} peers", blk.hash, i);
     return Ok(i);
 }
 
 /// This is a cover all sync function that will sync all chains and covers getting the top index and syncing from there
 /// for more controll over your sync you should call the sync_chain function which will sync only the chain specifyed.
-/// pl is a vector of mutable refrences of TcpStreams (Vec<&mut TcpStream>), thi function finds the most common chain digest
+/// pl is a vector of mutable refrences of TcpStreams (Vec<&mut TcpStream>), this function finds the most common chain digest
 /// and then chooses the fasted peer with that chain digest and uses it. After it thinks it has finished syncing it will choose
 /// a random peer and check random blocks are the same. If you wish to use the sync function with only one peer pass a vector
 /// containing only that peer. Please note this means it will not be able to verify that it has not missed blocks afterwards if
 /// the peer is malicously withholding them. For this reason only do this if you trust the peer or will be checking the blockchain
 /// with a diferent peer afterwards.
 pub fn sync() -> Result<u64, String> {
-    let mut pl = get_peers().unwrap_or_default();
+    let mut pl = get_peers_addr().unwrap_or_default(); // list of all socket addrs
+    std::thread::sleep(std::time::Duration::from_millis(500)); // wait 0.5 (500ms) seccond to ensure handler thread is paused
     if pl.len() < 1 {
         return Err("Must have at least one peer to sync from".into());
     }
 
-    let _peers: Vec<TcpStream> = vec![];
+    let mut _peers: Vec<TcpStream> = vec![];
     let _pc: u32 = 0;
     let _i: usize = 0;
     let mut chain_digests: Vec<ChainDigestPeer> = vec![];
@@ -86,15 +98,19 @@ pub fn sync() -> Result<u64, String> {
     for peer in pl.iter_mut() {
         //let _ = lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
 
-        if let Ok(mut peer_new) = peer.try_clone() {
+        if let Ok(mut peer_new) = lock(peer, 1000) {
+            let mut cloned_peer = peer_new.try_clone().unwrap();
+            _peers.push(peer_new);
             let handle = thread::Builder::new()
                 .name("getChainDigest".to_string())
                 .spawn(move || {
-                    let chain_digest = get_chain_digest(&mut peer_new, false);
+                    std::thread::sleep(std::time::Duration::from_millis(1000)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
+                    log::trace!("Get chain digest waited 100ms, proceeding");
+                    let chain_digest = get_chain_digest(&mut cloned_peer, false);
 
                     if chain_digest.digest == " " {
                         return ChainDigestPeer {
-                            peer: Some(peer_new),
+                            peer: Some(cloned_peer),
                             digest: " ".to_string(),
                         };
                     } else {
@@ -127,23 +143,24 @@ pub fn sync() -> Result<u64, String> {
             }
         }
     }
-
-    let mut peer_to_use_unwraped: TcpStream = peer_to_use.unwrap().try_clone().unwrap();
+    drop(chain_digests);
+    let mut peer_to_use_unwraped: TcpStream = peer_to_use.unwrap();
 
     // Now unlock all peers we are not going to be using
-    for peer in pl.iter_mut() {
-        if peer.peer_addr().unwrap() != peer_to_use_unwraped.peer_addr().unwrap() {
-            //let _ = unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
+    let peer_to_use_addr = peer_to_use_unwraped.peer_addr().unwrap();
+    for peer in _peers.iter_mut() {
+        if &peer.peer_addr().unwrap() != &peer_to_use_addr {
+            // Clone the peer var to get a Stream object (rather than a mutable refrence), pass that to unlock_peer then
+            // after this loop drop the _peers list to destroy all the og streams
+            unlock_peer(peer.try_clone().unwrap());
         }
     }
-
-    //lock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
+    drop(_peers); // destroy all remaining streams
 
     let try_ack = syncack_peer(&mut peer_to_use_unwraped, false);
     if let Err(e) = try_ack {
         error!("Got error: {} when sync acking peer. Releasing lock", e);
-        //unlock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
-
+        unlock_peer(peer_to_use_unwraped);
         // TODO sync ack the next fastest peer until we have peer (1)
         return Err("rejected sync ack".into());
     } else {
@@ -206,7 +223,7 @@ pub fn sync() -> Result<u64, String> {
     info!("Synced all chains, checking chain digest with peers");
 
     if get_data(config().db_path + &"/chaindigest", "master") != mode_hash {
-        error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data ir and resync");
+        error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
         error!(
             "Our CD: {}, expected: {}",
             get_data(config().db_path + &"/chaindigest", "master"),
@@ -216,7 +233,7 @@ pub fn sync() -> Result<u64, String> {
         return sync();
     } else {
         info!("Finalised syncing, releasing lock on peer");
-        //let _ = unlock_peer(&peer_to_use_unwraped.peer_addr().unwrap().to_string()).unwrap();
+        unlock_peer(peer_to_use_unwraped);
     }
 
     return Ok(1);
@@ -434,7 +451,7 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
     if block.hash == Block::default().hash {
         return Err("tried to send default block".into());
     } else {
-        let block_ser: String = bson::to_bson(block)?.to_string();
+        let block_ser: String = bson::to_bson(block)?.to_string(); // serilise the block into bson
 
         if let Err(e) = send(block_ser, peer, 0x0a, true, None) {
             return Err(e.into());
@@ -541,7 +558,6 @@ fn send_chain_digest(peer: &mut TcpStream) {
 }
 
 fn get_chain_digest_string(peer: &mut TcpStream, unlock: bool) -> String {
-    //lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
     let _ = send("".to_owned(), peer, 0x1c, true, None);
     let res = loop {
         let read = read(peer, Some(10000), None).unwrap_or_else(|e| {
@@ -549,22 +565,17 @@ fn get_chain_digest_string(peer: &mut TcpStream, unlock: bool) -> String {
             P2pData::default()
         });
 
-        // let peer_n = peer.try_clone();
         break read.message;
     };
-
-    if unlock == true {
-        debug!("Releasing lock on peer");
-        //unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
-    }
 
     return res;
 }
 
 /// this asks the peer for their chain digest
 fn get_chain_digest(peer: &mut TcpStream, unlock: bool) -> ChainDigestPeer {
-    //lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
-
+    while !locked(&peer.peer_addr().unwrap()).unwrap() {
+        log::trace!("NOT LOCKED GCD");
+    }
     let _ = send("".to_owned(), peer, 0x1c, true, None);
 
     let res = loop {
@@ -587,11 +598,6 @@ fn get_chain_digest(peer: &mut TcpStream, unlock: bool) -> ChainDigestPeer {
             };
         }
     };
-
-    if unlock == true {
-        debug!("Releasing lock on peer");
-        //unlock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
-    }
 
     return res;
 }

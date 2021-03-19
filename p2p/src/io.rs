@@ -182,16 +182,16 @@ pub fn read(
                 return Err("Timed out".into());
             }
         }
-        let mut buf = [0u8; LEN_DECL_BYTES]; // create a buffer to store the LEN BYTES tag which is preappended to every message (which tells us the size of the incoming message)
-        if let Ok(a) = peer.peek(&mut buf) { // peek to see if there is LEN_DECL_BYTES or more of data ready for us
+        let mut lenbuf = [0u8; LEN_DECL_BYTES]; // create a buffer to store the LEN BYTES tag which is preappended to every message (which tells us the size of the incoming message)
+        if let Ok(a) = peer.peek(&mut lenbuf) { // peek to see if there is LEN_DECL_BYTES or more of data ready for us
             if a == 0 {
             } else {
                 trace!("a={}", a);
                 // read exactly LEN_DECL_BYTES into buf
-                peer.read_exact(&mut buf)?;
+                peer.read_exact(&mut lenbuf)?;
                 // convert the LEN_DECL_BYTES bytes into a string
                 trace!("Read exactly {} bytes into LEN BYTES buffer", a);
-                let len_s = String::from_utf8(buf.to_vec())?; // turn read bytes into a UTF-8 string
+                let len_s = String::from_utf8(lenbuf.to_vec())?; // turn read bytes into a UTF-8 string
                 let len_striped: String = len_s.trim_start_matches("0").to_string(); // trims 0 which pad the LEN BYTES number to make it always LEN_DECL_BYTES long
                 let len: usize = len_striped.parse()?; // turn string (eg 129) into a usize (unsized int)
                 trace!("LEN_S={}", len_s);
@@ -215,10 +215,11 @@ pub fn read(
                             &[0;1], // AAD
                         );
                     } else {
-                        return Err("No key provided and peer not found".into()); // per was not found in lazy static and no custom key was passed; return Err
+                        return Err("No key provided and peer not found".into()); // peer was not found in lazy static and no custom key was passed; return Err
                     }
                 }
                 let mut buf = vec![0u8; len]; // create a new buffer with the number of bytes specified by LEN BYTES tag
+                trace!("Reading {} bytes into main buffer", len);
                 peer.read_exact(&mut buf)?; // read exactly LEN BYTES tag into buf, this is our main message
                 trace!(
                     "Read {} bytes into BUF={:?} ({})",
