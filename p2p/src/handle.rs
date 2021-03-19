@@ -88,7 +88,6 @@ pub fn launch_handle_client(
                     loop {
                         if let Ok(msg) = rx.try_recv() {
                             if msg == "run" {
-                                log::error!("mesg RES");
                                 log::trace!("Resuming stream for peer");
                                 break;
                             }
