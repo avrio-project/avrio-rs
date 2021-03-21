@@ -289,17 +289,10 @@ pub fn form_chain_digest(
         trace!("Chain digest: starting chain={}", chain);
         // get the genesis block
         let genesis = getBlock(&chain, 0);
-        // get the first non genesis block (height=1, will be the recieve block for the genesis block)s
-        let block_one = getBlock(&chain, 1);
-        let mut curr_height: u64 = 2;
-        // hash them together to get the first temp_leaf node
-        let mut temp_leaf: String = "".to_owned();
-        if block_one.is_default() {
-            temp_leaf = avrio_crypto::raw_lyra(&avrio_crypto::raw_lyra(&genesis.hash));
-        } else {
-            temp_leaf =
-                avrio_crypto::raw_lyra(&(avrio_crypto::raw_lyra(&genesis.hash) + &block_one.hash));
-        }
+        // hash the hash
+        let mut temp_leaf = avrio_crypto::raw_lyra(&avrio_crypto::raw_lyra(&genesis.hash));
+        // set curr_height to 1
+        let mut curr_height: u64 = 1;
         loop {
             // loop through, increasing curr_height by one each time. Get block with height curr_height and hash its hash with the previous temp_leaf node. Once the block we read at curr_height
             // is Default (eg there is no block at that height), break from the loop
