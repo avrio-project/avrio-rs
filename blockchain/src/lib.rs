@@ -359,7 +359,15 @@ pub fn form_state_digest(
             if let Ok(chain_digest_string) = String::from_utf8(chain_digest.to_vec()) {
                 if let Some(chain_key) = iter.key() {
                     if let Ok(chain_key_string) = String::from_utf8(chain_key.to_vec()) {
-                        _roots.push((chain_key_string, chain_digest_string));
+                        if chain_key_string != "master" && chain_key_string != "blockcount" {
+                            _roots.push((chain_key_string, chain_digest_string));
+                        } else {
+                            log::trace!(
+                                "found {}:{} (key, value) in chaindigest database, ignoring",
+                                chain_key_string,
+                                chain_digest_string
+                            );
+                        }
                     }
                 }
                 //chains_list.push(chain_string);
@@ -385,7 +393,7 @@ pub fn form_state_digest(
             // TODO: can we put _roots in a cow (std::borrow::Cow) to prevent cloning? (micro-optimisation)
             // check that digest_string is not the first two (which we already hashed)
             if &digest_string == cd_one || &digest_string == cd_two {
-            } else if chain_string != "master" && chain_string != "blockcount"  {
+            } else {
                 // hash digest_string with temp_leaf
                 log::trace!(
                     "Chain digest: chain={}, chain_digest={}, current_tempory_leaf={}",
@@ -394,8 +402,6 @@ pub fn form_state_digest(
                     temp_leaf
                 );
                 temp_leaf = avrio_crypto::raw_lyra(&(digest_string + &temp_leaf));
-            } else {
-                log::trace!("found {}:{} (key, value) in chaindigest database, ignoring", chain_string, digest_string);
             }
         }
         // we have gone through every digest and hashed them together, now we save to disk
