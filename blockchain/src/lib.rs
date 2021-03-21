@@ -352,7 +352,7 @@ pub fn form_state_digest(
     let mut _roots: Vec<(String, String)> = vec![]; // 0: chain_key, 1: chain_digest
     let mut iter = cd_db.raw_iterator();
     iter.seek_to_first();
-    let mut chains_list: Vec<String> = Vec::new();
+    let _chains_list: Vec<String> = Vec::new();
     while iter.valid() {
         if let Some(chain_digest) = iter.value() {
             if let Ok(chain_digest_string) = String::from_utf8(chain_digest.to_vec()) {
@@ -541,7 +541,7 @@ impl Block {
         &self,
         chain_key: Option<String>,
     ) -> Result<Block, Box<dyn std::error::Error>> {
-        if (self.block_type == BlockType::Recieve) {
+        if self.block_type == BlockType::Recieve {
             return Err("Block is recive block already".into());
         }
         // else we can get on with forming the rec block for this block
@@ -551,10 +551,10 @@ impl Block {
         if let Some(key) = chain_key {
             chainKey = key;
         }
-        let mut txn_iter = 0;
+        let txn_iter = 0;
         for txn in blk_clone.clone().txns {
             txn_iter + 1;
-            if (txn.receive_key != chainKey) {
+            if txn.receive_key != chainKey {
                 blk_clone.txns.remove(txn_iter);
             }
         }
