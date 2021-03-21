@@ -219,9 +219,9 @@ impl BlockSignature {
         return res;
     }
 }
-
+/*
 pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
-    trace!(target: "blockchain::chain_digest","Generating merkle root from scratch");
+    trace!(target: "blockchain::chain_digest","Generating state digest from scratch");
     let _roots: Vec<String> = vec![];
     if let Ok(db) = open_database(config().db_path + "/chainlist") {
         let mut iter = db.raw_iterator();
@@ -259,10 +259,11 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
     }
     return Ok(get_data(config().db_path + &"/chainsdigest", "master"));
 }
+*/
 
-pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String {
-    trace!(target: "blockchain::chain_digest","Updating chain digest with block hash: {}", new_blk_hash);
-    let curr = get_data_from_database(cd_db, "master");
+pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB, chain: &String) -> String {
+    trace!(target: "blockchain::chain_digest","Updating chain digest for chain={}, hash={}", chain, new_blk_hash);
+    let curr = get_data_from_database(cd_db, chain);
     let root: String;
     if &curr == "-1" {
         trace!(target: "blockchain::chain_digest","chain digest not set");
@@ -271,9 +272,8 @@ pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String
         trace!(target: "blockchain::chain_digest","Updating set chain digest. Curr: {}", curr);
         root = avrio_crypto::raw_lyra(&(curr + new_blk_hash));
     }
-    let _ = set_data_in_database(&root, &cd_db, &"master");
-    trace!(target: "blockchain::chain_digest","Set chain digest to: {}.", root);
-    drop(cd_db);
+    let _ = set_data_in_database(&root, &cd_db, chain);
+    trace!(target: "blockchain::chain_digest","Chain digest for chain={} updated to {}", chain, root);
     return root;
 }
 
@@ -293,7 +293,8 @@ pub fn form_chain_digest(
         let block_one = getBlock(&chain, 1);
         let mut curr_height: u64 = 2;
         // hash them together to get the first temp_leaf node
-        let mut temp_leaf = avrio_crypto::raw_lyra(&(genesis.hash + &block_one.hash));
+        let mut temp_leaf =
+            avrio_crypto::raw_lyra(&(avrio_crypto::raw_lyra(&genesis.hash) + &block_one.hash));
         loop {
             // loop through, increasing curr_height by one each time. Get block with height curr_height and hash its hash with the previous temp_leaf node. Once the block we read at curr_height
             // is Default (eg there is no block at that height), break from the loop
@@ -609,8 +610,10 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(open_database(config().db_path + &"/chaindigest".to_owned()).unwrap());
         let arc = arc_db.clone();
 
+        let chain_key_copy = block.header.chain_key.to_owned();
         std::thread::spawn(move || {
-            update_chain_digest(&hash, &arc);
+            update_chain_digest(&hash, &arc, &chain_key_copy);
+            form_state_digest(&arc);
         });
 
         set_data_in_database(&block.hash, &chaindex_db, &"topblockhash");
@@ -692,8 +695,10 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         let arc_db =
             Arc::new(open_database(config().db_path + &"/chaindigest".to_owned()).unwrap());
         let arc = arc_db.clone();
+        let chain_key_copy = block.header.chain_key.to_owned();
         std::thread::spawn(move || {
-            update_chain_digest(&hash, &arc);
+            update_chain_digest(&hash, &arc, &chain_key_copy);
+            form_state_digest(&arc);
         });
         set_data_in_database(&block.hash, &chaindex_db, &"topblockhash");
         set_data_in_database(
