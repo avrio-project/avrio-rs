@@ -12,8 +12,8 @@ pub mod v1;
 
 #[macro_use]
 extern crate rocket;
-extern crate avrio_p2p;
 extern crate avrio_core;
+extern crate avrio_p2p;
 extern crate proc_macro;
 
 use rocket::config::{Config, Environment, LoggingLevel};

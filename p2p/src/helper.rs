@@ -71,7 +71,11 @@ pub fn prop_block(blk: &Block) -> Result<u64, Box<dyn std::error::Error>> {
         if let Ok(_) = send_res {
             i += 1;
         } else {
-            trace!("error sending block to peer {}, error={}", peer_stream.peer_addr()?, send_res.unwrap_err());
+            trace!(
+                "error sending block to peer {}, error={}",
+                peer_stream.peer_addr()?,
+                send_res.unwrap_err()
+            );
         }
         let _ = unlock_peer(peer_stream)?;
     }

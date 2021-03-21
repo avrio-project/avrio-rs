@@ -45,7 +45,7 @@ impl Hashable for Vote {
 }
 impl Vote {
     /// Handles the creation of votes. Takes in assessed parameters and outputs a Vote class ready for hashing, signing etc
-    pub fn calculate(prt: u64, ttl: u64, tvt: u64, tvc: u32, attl: u64) -> u8 {  
+    pub fn calculate(prt: u64, ttl: u64, tvt: u64, tvc: u32, attl: u64) -> u8 {
         let config = config();
         let mut vote: u8 = 0;
         let mttl = config.max_time_to_live;
@@ -76,7 +76,7 @@ impl Vote {
         return vote;
     }
 
-    /// hashes this object and sets the hash value to the computed hash. 
+    /// hashes this object and sets the hash value to the computed hash.
     pub fn hash(&mut self) {
         self.hash = self.hash_item();
     }
@@ -152,7 +152,8 @@ impl Vote {
         );
         let mut res: bool = true;
         peer_public_key
-            .verify( // verify signature
+            .verify(
+                // verify signature
                 msg,
                 bs58::decode(self.signature.to_owned()) // decode signature from base58
                     .into_vec()

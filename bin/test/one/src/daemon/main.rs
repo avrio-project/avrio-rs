@@ -21,6 +21,7 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use text_io::read;
 
+use avrio_api::start_server;
 use avrio_blockchain::{
     genesis::{generateGenesisBlock, genesisBlockErrors, genesis_blocks, getGenesisBlock},
     *,
@@ -30,10 +31,6 @@ use avrio_core::{account::to_atomc, transaction::Transaction};
 use avrio_crypto::Wallet;
 use avrio_database::{get_data, get_iterator, get_peerlist, open_database, save_data};
 use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
-use avrio_api::start_server;
-
-
-
 
 fn connect_seednodes(
     seednodes: Vec<SocketAddr>,
@@ -59,7 +56,6 @@ fn connect_seednodes(
     }
 
     return conns;
-
 }
 
 fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
@@ -274,7 +270,6 @@ fn main() {
     let conf = config();
     conf.create().unwrap();
 
-
     info!("Launching API server");
 
     let _api_server_handle = thread::spawn(|| {
@@ -312,8 +307,9 @@ fn main() {
     let mut pl: Vec<SocketAddr> = get_peerlist().unwrap_or_default();
 
     if pl.len() < 1 {
-        let seednodes: Vec<SocketAddr> = vec![SocketAddr::new( // TODO: use config, not hardcoded seednodes
-            IpAddr::V4(Ipv4Addr::new( 5,189,172,54)),
+        let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
+            // TODO: use config, not hardcoded seednodes
+            IpAddr::V4(Ipv4Addr::new(5, 189, 172, 54)),
             56789,
         )];
 
@@ -1219,7 +1215,8 @@ fn main() {
                         }
 
                         // all done
-                        let our_account = avrio_core::account::getAccount(&wallet.public_key).unwrap();
+                        let our_account =
+                            avrio_core::account::getAccount(&wallet.public_key).unwrap();
 
                         info!(
                             "Transaction sent! Txn hash: {}, Our new balance: {} AIO",

@@ -6,12 +6,12 @@ use crate::{
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+use avrio_blockchain::{getBlock, getBlockFromRaw, Block};
+use avrio_config::config;
+use avrio_database::{get_data, open_database};
 use lazy_static::lazy_static;
 use std::net::TcpStream;
 use std::sync::Mutex;
-use avrio_database::{get_data, open_database};
-use avrio_config::config;
-use avrio_blockchain::{getBlockFromRaw, getBlock, Block};
 extern crate rand_os;
 extern crate x25519_dalek;
 

@@ -371,7 +371,7 @@ mod tests {
         let mut cou: u128 = 0;
         for (val, freq) in &freq {
             cou += 1;
-            
+
             wtr.write_record(&[val, freq])?;
             println!("{},{}", val, freq);
         }

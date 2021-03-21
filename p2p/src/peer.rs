@@ -54,7 +54,6 @@ pub fn get_peers_addr() -> Result<Vec<SocketAddr>, Box<dyn Error>> {
     return Ok(peers);
 }
 
-
 /// # in_peers
 /// returns a resut value conatining a bool value.
 /// If the peer is in either INCOMING or OUTGOING it will be true
@@ -122,10 +121,10 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
         if let Some(tx) = x.2.clone() {
             log::trace!("Telling handler stream for peer {} to pause", peer);
             tx.send("pause".to_string())?;
-         //   std::thread::sleep(std::time::Duration::from_millis(1000)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
-          //  log::trace!("Waited 350ms, proceeding")
+            //   std::thread::sleep(std::time::Duration::from_millis(1000)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
+            //  log::trace!("Waited 350ms, proceeding")
         } else {
-            return Err("peer has no handler stream".into()); 
+            return Err("peer has no handler stream".into());
         }
         for p in get_peers()? {
             if strip_port(

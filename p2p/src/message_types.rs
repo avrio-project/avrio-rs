@@ -15,7 +15,7 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x0a, "Block");
     message_types.insert(0x0b, "Block Acknowledged");
     message_types.insert(0x0c, "Block Reject"); // message will contain a code explaining why the block was rejected
-    // 4 part handshake
+                                                // 4 part handshake
     message_types.insert(0x0a, "Handshake Init");
     message_types.insert(0xa1, "Handshake Init Response");
     message_types.insert(0xa2, "Handshake Test Key");
