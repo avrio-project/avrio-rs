@@ -228,19 +228,17 @@ pub fn sync() -> Result<u64, String> {
     }
 
     info!("Synced all chains, checking chain digest with peers");
-
-    if get_data(config().db_path + &"/chaindigest", "master") != mode_hash {
+    let cd = avrio_blockchain::form_state_digest(
+        &avrio_database::open_database(config().db_path + &"/chaindigest").unwrap(),
+    ).unwrap(); //  recalculate our state digest
+    if cd != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
-        error!(
-            "Our CD: {}, expected: {}",
-            get_data(config().db_path + &"/chaindigest", "master"),
-            mode_hash
-        );
+        error!("Our CD: {}, expected: {}", cd, mode_hash);
 
-        return sync();
+        return sync(); // this should sync again, why is it not?
     } else {
         info!("Finalised syncing, releasing lock on peer");
-        unlock_peer(peer_to_use_unwraped);
+        let _ = unlock_peer(peer_to_use_unwraped).unwrap();
     }
 
     return Ok(1);
@@ -551,9 +549,10 @@ pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box
 /// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
 /// it is calculated with the generateChainDigest function which is auto called every time we get a new block
 fn send_chain_digest(peer: &mut TcpStream) {
-    let cd_db = avrio_database::open_database(config().db_path + &"/chaindigest".to_owned()).expect("Failed to open chains digest db");
+    let cd_db = avrio_database::open_database(config().db_path + &"/chaindigest".to_owned())
+        .expect("Failed to open chains digest db");
     let chains_digest = avrio_database::get_data_from_database(&cd_db, &"master");
-   // let chains_digest = get_data(config().db_path + &"/chaindigest".to_owned(), &"master");
+    // let chains_digest = get_data(config().db_path + &"/chaindigest".to_owned(), &"master");
 
     trace!("sending our chain digest: {}", chains_digest);
 
@@ -572,7 +571,8 @@ fn send_chain_digest(peer: &mut TcpStream) {
 
 fn get_chain_digest_string(peer: &mut TcpStream, _unlock: bool) -> String {
     let _ = send("".to_owned(), peer, 0x1c, true, None);
-    let res = loop { // todo: why is this a loop? 
+    let res = loop {
+        // todo: why is this a loop?
         let read = read(peer, Some(10000), None).unwrap_or_else(|e| {
             error!("Failed to read p2pdata: {}", e);
             P2pData::default()
