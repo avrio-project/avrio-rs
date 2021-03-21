@@ -293,7 +293,7 @@ pub fn form_chain_digest(
         let block_one = getBlock(&chain, 1);
         let mut curr_height: u64 = 2;
         // hash them together to get the first temp_leaf node
-        let mut temp_leaf;
+        let mut temp_leaf: String = "".to_owned();
         if block_one.is_default() {
             let temp_leaf = avrio_crypto::raw_lyra(&avrio_crypto::raw_lyra(&genesis.hash));
         } else {
@@ -307,13 +307,13 @@ pub fn form_chain_digest(
             if temp_block.is_default() {
                 break; // we have exceeded the last block, break/return from loop
             } else {
-                temp_leaf = avrio_crypto::raw_lyra(&(temp_leaf + &temp_block.hash));
+                temp_leaf = avrio_crypto::raw_lyra(&format!("{}{}", temp_leaf, temp_block.hash));
                 trace!(
                     "Chain digest: chain={}, block={}, height={}, new temp_leaf={}",
                     chain,
                     temp_block.hash,
                     curr_height,
-                    temp_leaf
+                    &temp_leaf
                 );
                 curr_height += 1;
             }
