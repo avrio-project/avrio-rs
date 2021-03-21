@@ -38,7 +38,7 @@ pub trait Sendable {
     /// # Blocking
     /// This function will not block and makes no assumptions about the state of the peer;
     /// Just because this returns Ok(()) does not mean the peer is connected or has seen the message
-    fn send_raw(&self, peer: &mut TcpStream, flush: bool) -> Result<(), Box<dyn Error>> {
+    fn send_raw(&self, peer: &mut TcpStream, _flush: bool) -> Result<(), Box<dyn Error>> {
         let en = self.encode()?;
         let buf = en.as_bytes();
         peer.write(&buf)?;
