@@ -230,7 +230,8 @@ pub fn sync() -> Result<u64, String> {
     info!("Synced all chains, checking chain digest with peers");
     let cd = avrio_blockchain::form_state_digest(
         &avrio_database::open_database(config().db_path + &"/chaindigest").unwrap(),
-    ).unwrap(); //  recalculate our state digest
+    )
+    .unwrap(); //  recalculate our state digest
     if cd != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
         error!("Our CD: {}, expected: {}", cd, mode_hash);
@@ -452,7 +453,16 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
             return Err(e.into());
         }
     }
-
+    // now we are done recalculate the chain digest for this chain
+    debug!(
+        "Recalculating chain digest for synced chain={}, result={:#?}",
+        chain,
+        avrio_blockchain::form_chain_digest(
+            &avrio_database::open_database(config().db_path + &"/chaindigest").unwrap(),
+            vec![chain.to_owned()]
+        )
+        .unwrap()
+    );
     return Ok(amount_to_sync);
 }
 
