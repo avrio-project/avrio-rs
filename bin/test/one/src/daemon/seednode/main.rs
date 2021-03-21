@@ -427,8 +427,6 @@ fn main() {
                 info!("Propagated recieve block hash={}", rec_blk.hash);
             }
         }
-
-       // wall = Wallet::from_private_key(chain_key[1].clone());
     } else {
         info!("Using chain: {}", config().chain_key);
         wall = open_wallet(config().chain_key, false);
