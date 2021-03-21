@@ -391,7 +391,7 @@ pub fn form_state_digest(
         }
         // we have gone through every digest and hashed them together, now we save to disk
     } else {
-        temp_leaf = avrio_crypto::raw_lyra(&"");
+        temp_leaf = avrio_crypto::raw_lyra(&"".to_owned());
     }
     log::debug!(
         "Finished state digest calculation, old={}, new={}, time_to_complete={}",
