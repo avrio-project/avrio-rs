@@ -299,8 +299,8 @@ mod tests {
     pub use crate::*;
     pub use csv::Writer;
     use std::error::Error;
-    use std::io;
-    use std::process;
+    
+    
     #[test]
     fn test_address_prefix() {
         for _ in 0..1000 {
@@ -343,7 +343,7 @@ mod tests {
         for i in 0..u8::MAX {
             for n in 0..32 {
                 let mut arr = [0; 32];
-                if (n == 0) {
+                if n == 0 {
                     arr[0] = i;
                 } else {
                     for n in 0..n {
@@ -358,7 +358,7 @@ mod tests {
                 }
                 out = out_num.to_string();
 
-                let mut curr: u64 = match freq.get(&out) {
+                let curr: u64 = match freq.get(&out) {
                     Some(val) => val.parse::<u64>().unwrap_or_default(),
                     None => 0,
                 };
