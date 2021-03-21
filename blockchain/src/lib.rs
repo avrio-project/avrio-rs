@@ -283,7 +283,7 @@ pub fn form_chain_digest(
     cd_db: &rocksdb::DB,
     chains: Vec<String>,
 ) -> std::result::Result<Vec<String>, Box<dyn std::error::Error>> {
-    // TODO: do we need to return a Result<vec, err>? Cant we just return vec as there is no unwrapping?
+    // TODO: do we need to return a Result<vec, err>? Cant we just return vec as there is no unwrapping needing to be done that could be replaced with the ? operator (and hence no chance of errors)?
     let mut output: Vec<String> = vec![];
     for chain in chains {
         trace!("Chain digest: starting chain={}", chain);
@@ -293,8 +293,13 @@ pub fn form_chain_digest(
         let block_one = getBlock(&chain, 1);
         let mut curr_height: u64 = 2;
         // hash them together to get the first temp_leaf node
-        let mut temp_leaf =
-            avrio_crypto::raw_lyra(&(avrio_crypto::raw_lyra(&genesis.hash) + &block_one.hash));
+        let mut temp_leaf;
+        if block_one.is_default() {
+            let temp_leaf = avrio_crypto::raw_lyra(&avrio_crypto::raw_lyra(&genesis.hash));
+        } else {
+            let temp_leaf =
+                avrio_crypto::raw_lyra(&(avrio_crypto::raw_lyra(&genesis.hash) + &block_one.hash));
+        }
         loop {
             // loop through, increasing curr_height by one each time. Get block with height curr_height and hash its hash with the previous temp_leaf node. Once the block we read at curr_height
             // is Default (eg there is no block at that height), break from the loop
