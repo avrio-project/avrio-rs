@@ -367,10 +367,17 @@ pub fn form_state_digest(
         }
         iter.next();
     }
+    let _rootsps = _roots.clone();
     _roots.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase())); // sort to aplabetical order (based on chain key)
+    log::trace!(
+        "Roots presort={:#?}, roots post sort={:#?}",
+        _rootsps,
+        _roots
+    );
+    drop(_rootsps);
     let mut temp_leaf: String;
     // create the first leaf
-    if (_roots.len() != 0) {
+    if _roots.len() != 0 {
         temp_leaf = avrio_crypto::raw_lyra(&(_roots[0].1.to_owned() + &_roots[1].1)); // Hash the first two chain digests together to make the first leaf
         let cd_one = &_roots[0].1;
         let cd_two = &_roots[1].1;
@@ -378,7 +385,7 @@ pub fn form_state_digest(
             // TODO: can we put _roots in a cow (std::borrow::Cow) to prevent cloning? (micro-optimisation)
             // check that digest_string is not the first two (which we already hashed)
             if &digest_string == cd_one || &digest_string == cd_two {
-            } else {
+            } else if chain_string.len() == 44 {
                 // hash digest_string with temp_leaf
                 log::trace!(
                     "Chain digest: chain={}, chain_digest={}, current_tempory_leaf={}",
@@ -387,6 +394,8 @@ pub fn form_state_digest(
                     temp_leaf
                 );
                 temp_leaf = avrio_crypto::raw_lyra(&(digest_string + &temp_leaf));
+            } else {
+                log::trace!("found {}:{} (key, value) in chaindigest database, len() != 44 ignoring", chain_string, digest_string);
             }
         }
         // we have gone through every digest and hashed them together, now we save to disk
