@@ -385,7 +385,9 @@ pub fn form_state_digest(
     drop(_rootsps);
     let mut temp_leaf: String;
     // create the first leaf
-    if _roots.len() != 0 {
+    if _roots.len() == 1 {
+        temp_leaf = avrio_crypto::raw_lyra(&_roots[0].1.to_owned());
+    } else if _roots.len() != 0 {
         temp_leaf = avrio_crypto::raw_lyra(&(_roots[0].1.to_owned() + &_roots[1].1)); // Hash the first two chain digests together to make the first leaf
         let cd_one = &_roots[0].1;
         let cd_two = &_roots[1].1;
@@ -405,8 +407,6 @@ pub fn form_state_digest(
             }
         }
         // we have gone through every digest and hashed them together, now we save to disk
-    } else if _roots.len() == 1 {
-        temp_leaf = avrio_crypto::raw_lyra(&_roots[0].1.to_owned());
     } else {
         temp_leaf = avrio_crypto::raw_lyra(&"".to_owned());
     }
