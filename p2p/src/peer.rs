@@ -13,8 +13,10 @@ lazy_static! {
         Mutex::new(HashMap::new());
 }
 
-/// # get_peers
-/// Returns a Result enum conating a vector of every connections tcp stream (inbound and outbound)
+#[deprecated(
+    since = "0",
+    note = "Please use the get peer addr function and call lock() on the ones you need"
+)]
 pub fn get_peers() -> Result<Vec<TcpStream>, Box<dyn Error>> {
     let mut peers: Vec<TcpStream> = vec![];
     let val = INCOMING.lock()?;
@@ -32,6 +34,26 @@ pub fn get_peers() -> Result<Vec<TcpStream>, Box<dyn Error>> {
 
     return Ok(peers);
 }
+
+/// Returns a result, vector of the SocketAddrs of the peers we are connected to
+pub fn get_peers_addr() -> Result<Vec<SocketAddr>, Box<dyn Error>> {
+    let mut peers: Vec<SocketAddr> = vec![];
+    let val = INCOMING.lock()?;
+    let iter = val.iter();
+
+    for peer in iter {
+        peers.push(peer.peer_addr()?)
+    }
+    let val = OUTGOING.lock()?;
+    let iter = val.iter();
+
+    for peer in iter {
+        peers.push(peer.peer_addr()?)
+    }
+
+    return Ok(peers);
+}
+
 
 /// # in_peers
 /// returns a resut value conatining a bool value.
@@ -98,9 +120,12 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
         x.1 = true;
         //tell the handler stream to pause
         if let Some(tx) = x.2.clone() {
+            log::trace!("Telling handler stream for peer {} to pause", peer);
             tx.send("pause".to_string())?;
+         //   std::thread::sleep(std::time::Duration::from_millis(1000)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
+          //  log::trace!("Waited 350ms, proceeding")
         } else {
-            return Err("peer has no handler stream".into());
+            return Err("peer has no handler stream".into()); 
         }
         for p in get_peers()? {
             if strip_port(
@@ -108,6 +133,8 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
                     .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
             ) == strip_port(peer)
             {
+                std::thread::sleep(std::time::Duration::from_millis(350)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
+                log::trace!("Waited 350ms, proceeding");
                 return Ok(p);
             }
         }

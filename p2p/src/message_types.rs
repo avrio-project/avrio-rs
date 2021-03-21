@@ -14,7 +14,7 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x05, "Send Block");
     message_types.insert(0x0a, "Block");
     message_types.insert(0x0b, "Block Acknowledged");
-    message_types.insert(0x0c, "Block Reject");
+    message_types.insert(0x0c, "Block Reject"); // message will contain a code explaining why the block was rejected
     // 4 part handshake
     message_types.insert(0x0a, "Handshake Init");
     message_types.insert(0xa1, "Handshake Init Response");
@@ -22,16 +22,16 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0xa3, "Handshake Confirm Key Test");
 
     // chain digests
-    message_types.insert(0x1b, "Send Chain Digest (ask)");
-    message_types.insert(0x1c, "Send Chain Digest (ask)");
+    message_types.insert(0x1b, "Send Chain Digest (ask)"); // - why are there two? Backward combatability? TODO: remove one
+    message_types.insert(0x1c, "Send Chain Digest (ask)"); //
     message_types.insert(0xcd, "Send Chain Digest (response)");
-    message_types.insert(0x45, "Send Block Count");
-    message_types.insert(0x46, "Got Block Count");
-    message_types.insert(0x60, "Get Chain List");
-    message_types.insert(0x61, "Got Chain List");
+    message_types.insert(0x45, "Get Block Count (ask)");
+    message_types.insert(0x46, "Get Block Count (response)");
+    message_types.insert(0x60, "Get Chain List (ask)");
+    message_types.insert(0x61, "Get Chain List (response)");
     message_types.insert(0x6f, "Get Block Above Hash");
-    message_types.insert(0x99, "Get Peer List");
-    message_types.insert(0x9f, "Got Peer List");
+    message_types.insert(0x99, "Get Peer List (ask)");
+    message_types.insert(0x9f, "Get Peer List (response)");
     message_types.insert(0xff, "Shutdown");
 
     return message_types;

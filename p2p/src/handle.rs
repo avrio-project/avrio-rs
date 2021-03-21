@@ -9,6 +9,9 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use lazy_static::lazy_static;
 use std::net::TcpStream;
 use std::sync::Mutex;
+use avrio_database::{get_data, open_database};
+use avrio_config::config;
+use avrio_blockchain::{getBlockFromRaw, getBlock, Block};
 extern crate rand_os;
 extern crate x25519_dalek;
 
@@ -82,12 +85,13 @@ pub fn launch_handle_client(
     let mut stream = stream.try_clone()?;
     let _handler: std::thread::JoinHandle<Result<(), &'static str>> = std::thread::spawn(
         move || loop {
-            std::thread::sleep(std::time::Duration::from_millis(50));
             if let Ok(msg) = rx.try_recv() {
                 if msg == "pause" {
+                    log::trace!("Pausing stream for peer");
                     loop {
                         if let Ok(msg) = rx.try_recv() {
                             if msg == "run" {
+                                log::trace!("Resuming stream for peer");
                                 break;
                             }
                         }
@@ -95,6 +99,19 @@ pub fn launch_handle_client(
                 }
             }
             if let Ok(a) = peek(&mut stream) {
+                if let Ok(msg) = rx.try_recv() {
+                    if msg == "pause" {
+                        log::trace!("Pausing stream for peer");
+                        loop {
+                            if let Ok(msg) = rx.try_recv() {
+                                if msg == "run" {
+                                    log::trace!("Resuming stream for peer");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
                 if a != 0 {
                     let read_data = read(&mut stream, Some(1000), None);
                     if let Ok(read_msg) = read_data {
@@ -139,7 +156,7 @@ pub fn launch_handle_client(
                                 // send the peer our chain digest
                                 log::trace!("Sending chain digest to peer");
                                 let chain_digest = avrio_database::get_data(
-                                    avrio_config::config().db_path + &"/chainsdigest",
+                                    avrio_config::config().db_path + &"/chaindigest",
                                     "master",
                                 );
                                 let _ = send(chain_digest, &mut stream, 0xcd, true, None);
@@ -154,9 +171,11 @@ pub fn launch_handle_client(
                             0x0a => {
                                 // the peer just sent us a block,
                                 // validate it, save it an enact it
+                                log::trace!("Got block from peer");
                                 let block: avrio_blockchain::Block =
                                     serde_json::from_str(&read_msg.message).unwrap_or_default();
                                 if block.is_default() {
+                                    log::trace!("Could not decode block");
                                     let _ = send("dsf".to_owned(), &mut stream, 0x0c, true, None);
                                 } else {
                                     if let Err(e) = avrio_blockchain::check_block(block.clone()) {
@@ -187,8 +206,13 @@ pub fn launch_handle_client(
                                                 None,
                                             );
                                         } else {
-                                            if let Err(e) =
-                                                avrio_blockchain::enact_block(block.clone())
+                                            let enact_err_holder;
+                                            if block.block_type == avrio_blockchain::BlockType::Send {
+                                                enact_err_holder = avrio_blockchain::enact_send(block.clone());
+                                            } else {
+                                                enact_err_holder = avrio_blockchain::enact_block(block.clone());
+                                            }
+                                            if let Err(e) = enact_err_holder
                                             {
                                                 log::error!("Enacting block gave error: {}", e);
                                                 log::warn!("This could cause undefined behavour. Please consider restarting with --re-enact-from {}", block.header.prev_hash);
@@ -222,7 +246,113 @@ pub fn launch_handle_client(
                                     }
                                 }
                             }
+                            0x60 => {
+                                log::trace!(
+                                    "Peer: {} has requested our chains list",
+                                    stream.peer_addr().expect("Could not get addr for peer")
+                                );
+                    
+                                if let Ok(db) = open_database(config().db_path + &"/chainlist".to_owned()) {
+                                    let mut iter = db.raw_iterator();
+                                    iter.seek_to_first();
+                                    let mut chains: Vec<String> = vec![];
+                    
+                                    while iter.valid() {
+                                        if let Some(key_utf8) = iter.key() {
+                                            if let Ok(key) = String::from_utf8(key_utf8.to_vec()) {
+                                                chains.push(key);
+                                            }
+                                        }
+                                        iter.next();
+                                    }
+                    
+                                    log::trace!("Our chain list: {:#?}", chains);
+                                    let s = serde_json::to_string(&chains).unwrap_or_default();
+                    
+                                    if s == String::default() {
+                                        log::trace!("Failed to ser list");
+                                    } else if let Err(e) = send(s, &mut stream, 0x61, true, None) {
+                                        log::debug!("Failed to send chain list to peer, gave error: {}", e);
+
+                                    }
+                                }
+                            }
+                            0x45 => {
+                                // send block count
+                                let bc = get_data(
+                                    config().db_path
+                                        + &"/chains/".to_owned()
+                                        + &read_msg.message
+                                        + &"-chainindex".to_owned(),
+                                    &"blockcount".to_owned(),
+                                );
+                                log::trace!("Blockcount={} for chain={}", bc, read_msg.message);
+
+                                if bc == "-1".to_owned() {
+                                    let _ = send("0".into(), &mut stream, 0x46, true, None);
+                                } else {
+                                    let _ = send(bc, &mut stream, 0x46, true, None);
+                                }
+                    
+                            }
+                            0x6f => {
+                                let (hash, chain): (String, String) =
+                                    serde_json::from_str(&read_msg.message).unwrap_or_default();
+                    
+                                if chain == String::default() || hash == String::default() {
+                                    log::debug!(
+                                        "Got malformed getblocksabovehash hash request (invalid body: {})",
+                                        read_msg.message
+                                    );
+                                } else {
+                                    let block_from: Block;
+                    
+                                    if hash == "0" {
+                                        log::trace!("Getting genesis block for chain: {}", chain);
+                                        block_from = getBlock(&chain, 0);
+                                        log::trace!("Block from: {:#?}", block_from);
+                                    } else {
+                                        block_from = getBlockFromRaw(hash.clone());
+                                    }
+                    
+                                    if block_from == Default::default() {
+                                        log::debug!("Cant find block (context getblocksabovehash)");
+                                    } else {
+                                        let mut got: u64 = block_from.header.height;
+                                        let mut prev: Block = block_from.clone();
+                                        let mut blks: Vec<Block> = vec![];
+                    
+                                        while prev != Default::default() {
+                                            if prev == block_from && hash == "0" {
+                                                blks.push(prev);
+                                            } else if prev != block_from {
+                                                blks.push(prev);
+                                            }
+                    
+                                            got += 1;
+                                            log::trace!("Sent block at height: {}", got);
+                                            prev = getBlock(&chain, got);
+                                        }
+                    
+                                        if let Ok(_) = send(
+                                            serde_json::to_string(&blks).unwrap_or_default(),
+                                            &mut stream,
+                                            0x0a,
+                                            true,
+                                            None
+                                        ) {
+                                            log::trace!(
+                                                "Sent all blocks (amount: {}) for chain: {} to peer",
+                                                got,
+                                                chain
+                                            );
+                                        }
+                                    }
+                                }
+                    
+                            }
                             0x1a => log::debug!("Got handshake from handshook peer, ignoring"),
+                            0xcd => log::error!("Read chain digest response. This means something has not locked properly. Will likley cause failed sync"),
                             _ => {
                                 log::debug!("Got unsupported message type: \"0x{:x}\", please check for updates", read_msg.message_type);
                                 ();
