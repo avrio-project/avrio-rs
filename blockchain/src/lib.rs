@@ -295,9 +295,9 @@ pub fn form_chain_digest(
         // hash them together to get the first temp_leaf node
         let mut temp_leaf: String = "".to_owned();
         if block_one.is_default() {
-            let temp_leaf = avrio_crypto::raw_lyra(&avrio_crypto::raw_lyra(&genesis.hash));
+            temp_leaf = avrio_crypto::raw_lyra(&avrio_crypto::raw_lyra(&genesis.hash));
         } else {
-            let temp_leaf =
+            temp_leaf =
                 avrio_crypto::raw_lyra(&(avrio_crypto::raw_lyra(&genesis.hash) + &block_one.hash));
         }
         loop {
