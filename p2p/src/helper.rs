@@ -453,7 +453,7 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
             return Err(e.into());
         }
     }
-    // now we are done recalculate the chain digest for this chain
+    /* now we are done recalculate the chain digest for this chain
     debug!(
         "Recalculating chain digest for synced chain={}, result={:#?}",
         chain,
@@ -462,7 +462,7 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
             vec![chain.to_owned()]
         )
         .unwrap()
-    );
+    );*/
     return Ok(amount_to_sync);
 }
 
