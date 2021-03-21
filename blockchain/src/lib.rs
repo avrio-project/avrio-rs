@@ -227,30 +227,34 @@ pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::er
         let mut iter = db.raw_iterator();
         iter.seek_to_first();
         let cd_db = open_database(config().db_path + &"/chaindigest".to_owned()).unwrap();
+        let mut chains_list: Vec<String> = Vec::new();
         while iter.valid() {
             if let Some(chain) = iter.key() {
                 if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
-                    if let Ok(blkdb) =
-                        open_database(config().db_path + "/chains/" + &chain_string + "-chainindex")
-                    {
-                        let mut blkiter = blkdb.raw_iterator();
-                        blkiter.seek_to_first();
-                        while blkiter.valid() {
-                            if let Some(blk) = iter.value() {
-                                let s: String = String::from_utf8(blk.to_vec())?;
-                                if let Ok(_) =
-                                    String::from_utf8(iter.key().unwrap_or_default().to_vec())?
-                                        .parse::<u64>()
-                                {
-                                    trace!(target: "blockchain::chain_digest","Chain digest: {}", update_chain_digest(&s, &cd_db));
-                                }
-                            }
-                            blkiter.next();
-                        }
-                    }
+                    chains_list.push(chain_string);
                 }
             }
             iter.next();
+        }
+        chains_list.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        for chain_string in chains_list {
+            if let Ok(blkdb) =
+                open_database(config().db_path + "/chains/" + &chain_string + "-chainindex")
+            {
+                let mut blkiter = blkdb.raw_iterator();
+                blkiter.seek_to_first();
+                while blkiter.valid() {
+                    if let Some(blk) = iter.value() {
+                        let s: String = String::from_utf8(blk.to_vec())?;
+                        if let Ok(_) = String::from_utf8(iter.key().unwrap_or_default().to_vec())?
+                            .parse::<u64>()
+                        {
+                            trace!(target: "blockchain::chain_digest","Chain digest: {}", update_chain_digest(&s, &cd_db));
+                        }
+                    }
+                    blkiter.next();
+                }
+            }
         }
     }
     return Ok(get_data(config().db_path + &"/chainsdigest", "master"));
@@ -273,6 +277,128 @@ pub fn update_chain_digest(new_blk_hash: &String, cd_db: &rocksdb::DB) -> String
     return root;
 }
 
+/// takes a DB object of the chains digest (chaindigest) db and a vector of chain_keys (as strings) and calculates the chain digest for each chain.
+/// It then sets the value of chain digest (for each chain) in the db, and returns it in the vector of strings
+pub fn form_chain_digest(
+    cd_db: &rocksdb::DB,
+    chains: Vec<String>,
+) -> std::result::Result<Vec<String>, Box<dyn std::error::Error>> {
+    // TODO: do we need to return a Result<vec, err>? Cant we just return vec as there is no unwrapping?
+    let mut output: Vec<String> = vec![];
+    for chain in chains {
+        trace!("Chain digest: starting chain={}", chain);
+        // get the genesis block
+        let genesis = getBlock(&chain, 0);
+        // get the first non genesis block (height=1, will be the recieve block for the genesis block)s
+        let block_one = getBlock(&chain, 1);
+        let mut curr_height: u64 = 2;
+        // hash them together to get the first temp_leaf node
+        let mut temp_leaf = avrio_crypto::raw_lyra(&(genesis.hash + &block_one.hash));
+        loop {
+            // loop through, increasing curr_height by one each time. Get block with height curr_height and hash its hash with the previous temp_leaf node. Once the block we read at curr_height
+            // is Default (eg there is no block at that height), break from the loop
+            let temp_block = getBlock(&chain, curr_height);
+            if temp_block.is_default() {
+                break; // we have exceeded the last block, break/return from loop
+            } else {
+                temp_leaf = avrio_crypto::raw_lyra(&(temp_leaf + &temp_block.hash));
+                trace!(
+                    "Chain digest: chain={}, block={}, height={}, new temp_leaf={}",
+                    chain,
+                    temp_block.hash,
+                    curr_height,
+                    temp_leaf
+                );
+                curr_height += 1;
+            }
+        }
+        // we are finished, update the chain_digest on disk and add it to the output vector
+        avrio_database::set_data_in_database(&temp_leaf, cd_db, &chain);
+        output.push(temp_leaf);
+        trace!(
+            "Chain digest: Finished chain={}, new output={:?}",
+            chain,
+            output
+        );
+    }
+    // return the output vector
+    return Ok(output);
+}
+
+/// Calculates the 'overall' digest of the DAG.
+/// Pass it a database object of the chaindigest database. This database should contain all the chains chain digests (with the key being the publickey)
+/// as well as 'master' (as a key) being the state digest.
+/// Run form_chain_digest(chain) (with chain being the publickey of the chain you want, or * for every chain) first which will form a chain digest
+/// from scratch (or update_chain_digest(chain, new_block_hash, cd_db)). This function will return the new state digest as a string as well as update it in the database
+///
+pub fn form_state_digest(
+    cd_db: &rocksdb::DB,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    debug!("Updating state digest");
+    let start = std::time::Instant::now();
+    let current_state_digest = get_data_from_database(cd_db, "master"); // get the current state digest, for refrence
+    if &current_state_digest == "-1" {
+        trace!("State digest not set");
+    } else {
+        trace!("Updating set state digest. Curr: {}", current_state_digest);
+    }
+    // we now recursivley loop through cd_db and add every value (other than master) to a vector
+    // now we have every chain digest in a vector we sort it alphabeticly
+    // now the vector of chain digests is sorted alphabeticly we recursivley hash them
+    // like so: (TODO: use a merkle tree not a recursive hash chain)
+    // leaf_one = hash(chain_digest_one + chain_digest_two)
+    // leaf_two = hash(leaf_one + chain_digest_three)
+    // leaf[n] = hash(leaf[n-1] + chain_digest[n+1])
+    let mut _roots: Vec<(String, String)> = vec![]; // 0: chain_key, 1: chain_digest
+    let mut iter = cd_db.raw_iterator();
+    iter.seek_to_first();
+    let mut chains_list: Vec<String> = Vec::new();
+    while iter.valid() {
+        if let Some(chain_digest) = iter.value() {
+            if let Ok(chain_digest_string) = String::from_utf8(chain_digest.to_vec()) {
+                if let Some(chain_key) = iter.key() {
+                    if let Ok(chain_key_string) = String::from_utf8(chain_key.to_vec()) {
+                        _roots.push((chain_key_string, chain_digest_string));
+                    }
+                }
+                //chains_list.push(chain_string);
+            }
+        }
+        iter.next();
+    }
+    _roots.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase())); // sort to aplabetical order (based on chain key)
+    let mut temp_leaf: String;
+    // create the first leaf
+    temp_leaf = avrio_crypto::raw_lyra(&(_roots[0].1.to_owned() + &_roots[1].1)); // Hash the first two chain digests together to make the first leaf
+    let cd_one = &_roots[0].1;
+    let cd_two = &_roots[1].1;
+    for (chain_string, digest_string) in _roots.clone() {
+        // TODO: can we put _roots in a cow (std::borrow::Cow) to prevent cloning? (micro-optimisation)
+        // check that digest_string is not the first two (which we already hashed)
+        if &digest_string == cd_one || &digest_string == cd_two {
+        } else {
+            // hash digest_string with temp_leaf
+            log::trace!(
+                "Chain digest: chain={}, chain_digest={}, current_tempory_leaf={}",
+                chain_string,
+                digest_string,
+                temp_leaf
+            );
+            temp_leaf = avrio_crypto::raw_lyra(&(digest_string + &temp_leaf));
+        }
+    }
+    // we have gone through every digest and hashed them together, now we save to disk
+
+    log::debug!(
+        "Finished state digest calculation, old={}, new={}, time_to_complete={}",
+        current_state_digest,
+        temp_leaf,
+        start.elapsed().as_millis()
+    );
+    avrio_database::set_data_in_database(&temp_leaf, cd_db, &"master");
+    return Ok(temp_leaf.into());
+}
+
 /// returns the block when you know the chain and the height
 pub fn getBlock(chainkey: &String, height: u64) -> Block {
     let hash = get_data(
@@ -291,13 +417,16 @@ pub fn getBlock(chainkey: &String, height: u64) -> Block {
 /// returns the block when you only know the hash by opeining the raw blk-HASH.dat file (where hash == the block hash)
 pub fn getBlockFromRaw(hash: String) -> Block {
     let try_open = File::open(config().db_path + &"/blocks/blk-".to_owned() + &hash + ".dat");
-    if let Ok(mut file) = try_open
-    {
+    if let Ok(mut file) = try_open {
         let mut contents = String::new();
         file.read_to_string(&mut contents);
         return serde_json::from_str(&contents).unwrap_or_default();
     } else {
-        trace!("Opening raw block file (hash={}) failed. Reason={}", hash, try_open.unwrap_err());
+        trace!(
+            "Opening raw block file (hash={}) failed. Reason={}",
+            hash,
+            try_open.unwrap_err()
+        );
         return Block::default();
     }
 }
@@ -437,10 +566,7 @@ impl Block {
             return Ok(blk_clone);
         } else {
             let top_block_hash = get_data(
-                config().db_path
-                    + &"/chains/".to_owned()
-                    + &chainKey
-                    + &"-chainindex".to_owned(),
+                config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
                 "topblockhash",
             );
             let our_height: u64;
