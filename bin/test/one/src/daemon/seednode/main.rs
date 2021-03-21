@@ -413,7 +413,7 @@ fn main() {
         info!("Sent block to network; Generating rec blocks");
 
         // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
-        let mut proccessed_accs: Vec<String> = vec![];
+        let proccessed_accs: Vec<String> = vec![];
         for txn in &genesis_block_clone.txns {
             if !proccessed_accs.contains(&txn.receive_key) {
                 let rec_blk = genesis_block_clone
@@ -811,7 +811,7 @@ fn main() {
                             let _ = enact_send(blk.clone()).unwrap();
                             let _ = prop_block(&blk).unwrap();
                             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
-                            let mut proccessed_accs: Vec<String> = vec![];
+                            let proccessed_accs: Vec<String> = vec![];
                             for txn in &blk.txns {
                                 if !proccessed_accs.contains(&txn.receive_key) {
                                     let rec_blk = blk
@@ -922,7 +922,7 @@ fn main() {
             let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
-            let mut proccessed_accs: Vec<String> = vec![];
+            let proccessed_accs: Vec<String> = vec![];
             for txn in &blk.txns {
                 if !proccessed_accs.contains(&txn.receive_key) {
                     let rec_blk = blk
