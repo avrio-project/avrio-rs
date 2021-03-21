@@ -5,11 +5,10 @@ use crate::{
     utils::*,
 };
 use avrio_blockchain::{
-    check_block, enact_block, enact_send, generate_merkle_root_all,
-    saveBlock, Block, BlockType,
+    check_block, enact_block, enact_send, form_state_digest, saveBlock, Block, BlockType,
 };
 use avrio_config::config;
-use avrio_database::{get_data};
+use avrio_database::get_data;
 
 //use bson;
 use log::*;
@@ -552,13 +551,15 @@ pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box
 /// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
 /// it is calculated with the generateChainDigest function which is auto called every time we get a new block
 fn send_chain_digest(peer: &mut TcpStream) {
-    let chains_digest = get_data(config().db_path + &"/chaindigest".to_owned(), &"master");
+    let cd_db = avrio_database::open_database(config().db_path + &"/chaindigest".to_owned()).expect("Failed to open chains digest db");
+    let chains_digest = avrio_database::get_data_from_database(&cd_db, &"master");
+   // let chains_digest = get_data(config().db_path + &"/chaindigest".to_owned(), &"master");
 
     trace!("sending our chain digest: {}", chains_digest);
 
     if chains_digest == "-1".to_owned() || chains_digest == "0".to_owned() {
         let _ = send(
-            generate_merkle_root_all().unwrap_or("".to_owned()),
+            form_state_digest(&cd_db).unwrap_or("".to_owned()),
             peer,
             0x01,
             true,
@@ -571,7 +572,7 @@ fn send_chain_digest(peer: &mut TcpStream) {
 
 fn get_chain_digest_string(peer: &mut TcpStream, _unlock: bool) -> String {
     let _ = send("".to_owned(), peer, 0x1c, true, None);
-    let res = loop {
+    let res = loop { // todo: why is this a loop? 
         let read = read(peer, Some(10000), None).unwrap_or_else(|e| {
             error!("Failed to read p2pdata: {}", e);
             P2pData::default()
@@ -642,4 +643,4 @@ pub struct GetBlocks {
     pub hash: String,
 }
 
-// -- End ync assist functions and structures-- //
+// -- End sync assist functions and structures-- //
