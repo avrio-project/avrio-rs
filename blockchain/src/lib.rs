@@ -370,26 +370,29 @@ pub fn form_state_digest(
     _roots.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase())); // sort to aplabetical order (based on chain key)
     let mut temp_leaf: String;
     // create the first leaf
-    temp_leaf = avrio_crypto::raw_lyra(&(_roots[0].1.to_owned() + &_roots[1].1)); // Hash the first two chain digests together to make the first leaf
-    let cd_one = &_roots[0].1;
-    let cd_two = &_roots[1].1;
-    for (chain_string, digest_string) in _roots.clone() {
-        // TODO: can we put _roots in a cow (std::borrow::Cow) to prevent cloning? (micro-optimisation)
-        // check that digest_string is not the first two (which we already hashed)
-        if &digest_string == cd_one || &digest_string == cd_two {
-        } else {
-            // hash digest_string with temp_leaf
-            log::trace!(
-                "Chain digest: chain={}, chain_digest={}, current_tempory_leaf={}",
-                chain_string,
-                digest_string,
-                temp_leaf
-            );
-            temp_leaf = avrio_crypto::raw_lyra(&(digest_string + &temp_leaf));
+    if (_roots.len() != 0) {
+        temp_leaf = avrio_crypto::raw_lyra(&(_roots[0].1.to_owned() + &_roots[1].1)); // Hash the first two chain digests together to make the first leaf
+        let cd_one = &_roots[0].1;
+        let cd_two = &_roots[1].1;
+        for (chain_string, digest_string) in _roots.clone() {
+            // TODO: can we put _roots in a cow (std::borrow::Cow) to prevent cloning? (micro-optimisation)
+            // check that digest_string is not the first two (which we already hashed)
+            if &digest_string == cd_one || &digest_string == cd_two {
+            } else {
+                // hash digest_string with temp_leaf
+                log::trace!(
+                    "Chain digest: chain={}, chain_digest={}, current_tempory_leaf={}",
+                    chain_string,
+                    digest_string,
+                    temp_leaf
+                );
+                temp_leaf = avrio_crypto::raw_lyra(&(digest_string + &temp_leaf));
+            }
         }
+        // we have gone through every digest and hashed them together, now we save to disk
+    } else {
+        temp_leaf = avrio_crypto::raw_lyra(&"");
     }
-    // we have gone through every digest and hashed them together, now we save to disk
-
     log::debug!(
         "Finished state digest calculation, old={}, new={}, time_to_complete={}",
         current_state_digest,
