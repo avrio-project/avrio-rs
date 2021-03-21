@@ -285,7 +285,7 @@ fn main() {
     if config().chain_key == "".to_owned() {
         generate_chains().unwrap();
 
-        let chain_digest: String = generate_merkle_root_all().unwrap_or_default();
+        let chain_digest: String = avrio_blockchain::form_state_digest(&open_database(config().db_path + &"/chaindigest".to_owned()).unwrap()).unwrap_or_default();
 
         info!("Chain digest: {}", chain_digest);
     }

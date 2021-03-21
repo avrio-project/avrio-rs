@@ -255,7 +255,10 @@ fn main() {
     info!("Avrio Seednode Daemon successfully launched");
     if config().chain_key == "".to_owned() {
         generate_chains().unwrap();
-        let chainsdigest: String = generate_merkle_root_all().unwrap_or_default();
+        let chainsdigest: String = avrio_blockchain::form_state_digest(
+            &open_database(config().db_path + &"/chaindigest".to_owned()).unwrap(),
+        )
+        .unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
     }
     info!(
