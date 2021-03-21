@@ -405,6 +405,8 @@ pub fn form_state_digest(
             }
         }
         // we have gone through every digest and hashed them together, now we save to disk
+    } else if _roots.len() == 1 {
+        temp_leaf = avrio_crypto::raw_lyra(_roots[0].1.to_owned());
     } else {
         temp_leaf = avrio_crypto::raw_lyra(&"".to_owned());
     }
