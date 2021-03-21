@@ -5,11 +5,11 @@ use crate::{
     utils::*,
 };
 use avrio_blockchain::{
-    check_block, enact_block, enact_send, generate_merkle_root_all, getBlock, getBlockFromRaw,
+    check_block, enact_block, enact_send, generate_merkle_root_all,
     saveBlock, Block, BlockType,
 };
 use avrio_config::config;
-use avrio_database::{get_data, save_data};
+use avrio_database::{get_data};
 
 //use bson;
 use log::*;
@@ -106,7 +106,7 @@ pub fn sync() -> Result<u64, String> {
     for peer in pl.iter_mut() {
         //let _ = lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
 
-        if let Ok(mut peer_new) = lock(peer, 1000) {
+        if let Ok(peer_new) = lock(peer, 1000) {
             let mut cloned_peer = peer_new.try_clone().unwrap();
             _peers.push(peer_new);
             let handle = thread::Builder::new()
@@ -569,7 +569,7 @@ fn send_chain_digest(peer: &mut TcpStream) {
     }
 }
 
-fn get_chain_digest_string(peer: &mut TcpStream, unlock: bool) -> String {
+fn get_chain_digest_string(peer: &mut TcpStream, _unlock: bool) -> String {
     let _ = send("".to_owned(), peer, 0x1c, true, None);
     let res = loop {
         let read = read(peer, Some(10000), None).unwrap_or_else(|e| {
@@ -584,7 +584,7 @@ fn get_chain_digest_string(peer: &mut TcpStream, unlock: bool) -> String {
 }
 
 /// this asks the peer for their chain digest
-fn get_chain_digest(peer: &mut TcpStream, unlock: bool) -> ChainDigestPeer {
+fn get_chain_digest(peer: &mut TcpStream, _unlock: bool) -> ChainDigestPeer {
     while !locked(&peer.peer_addr().unwrap()).unwrap() {
         log::trace!("NOT LOCKED GCD");
     }
