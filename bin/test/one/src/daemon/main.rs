@@ -478,7 +478,7 @@ fn main() {
 
         info!("Enacting genesis block");
 
-        match enact_block(genesis_block_clone.clone()) {
+        match enact_send(genesis_block_clone.clone()) {
             Ok(_) => {
                 info!("Sucessfully enacted genesis block!");
             }
@@ -497,7 +497,7 @@ fn main() {
 
         info!("Sent block to network");
 
-        // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+        // now for each txn to a unique reciver form the rec block of the block we just formed and prop + enact that
         let rec_blk = genesis_block_clone
             .form_receive_block(Some(genesis_block_clone.header.chain_key.to_owned()))
             .unwrap();
@@ -646,24 +646,33 @@ fn main() {
 
             blk.hash();
 
-            let _ = blk.sign(&wallet.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
+            let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
 
             // now for each txn to a unique receiver form the rec block of the block we just formed and prob + enact that
-            let proccessed_accs: Vec<String> = vec![];
+            let mut processed_accounts: Vec<String> = vec![];
 
             for txn in &blk.txns {
-                if !proccessed_accs.contains(&txn.receive_key) {
+                if !processed_accounts.contains(&txn.receive_key) {
                     let rec_blk = blk
                         .form_receive_block(Some(txn.receive_key.to_owned()))
                         .unwrap();
 
                     let _ = check_block(rec_blk.clone()).unwrap();
+                    trace!("Validated formed rec block with hash={}", rec_blk.hash);
                     let _ = saveBlock(rec_blk.clone()).unwrap();
-                    let _ = prop_block(&rec_blk).unwrap();
+                    trace!("Saved formed rec block with hash={}", rec_blk.hash);
                     let _ = enact_block(rec_blk.clone()).unwrap();
+                    trace!("Enacted formed rec block with hash={}", rec_blk.hash);
+                    let peer_count = prop_block(&rec_blk).unwrap();
+                    trace!(
+                        "Propaged formed rec block with hash={} to {} peers",
+                        rec_blk.hash,
+                        peer_count
+                    );
+                    processed_accounts.push(txn.receive_key.to_owned());
                 }
             }
 
@@ -804,7 +813,7 @@ fn main() {
             let amount: u64 = read!("{}\n");
 
             if amount > 0 && amount < 15 {
-                warn!("This will be very slow, especially on HDD. Continue? (Y/N)");
+                warn!("This can be very slow, especially on HDD. Continue? (Y/N)");
 
                 let confirmation: String = read!();
 
@@ -928,13 +937,13 @@ fn main() {
 
                             blk.hash();
 
-                            let _ = blk.sign(&wallet.private_key);
                             let _ = check_block(blk.clone()).unwrap();
                             let _ = saveBlock(blk.clone()).unwrap();
+                            let _ = enact_send(blk.clone()).unwrap();
                             let _ = prop_block(&blk).unwrap();
 
                             // now for each txn to a unique receiver form the rec block of the block we just formed and prob + enact that
-                            let processed_accounts: Vec<String> = vec![];
+                            let mut processed_accounts: Vec<String> = vec![];
 
                             for txn in &blk.txns {
                                 if !processed_accounts.contains(&txn.receive_key) {
@@ -943,9 +952,18 @@ fn main() {
                                         .unwrap();
 
                                     let _ = check_block(rec_blk.clone()).unwrap();
+                                    trace!("Validated formed rec block with hash={}", rec_blk.hash);
                                     let _ = saveBlock(rec_blk.clone()).unwrap();
-                                    let _ = prop_block(&rec_blk).unwrap();
+                                    trace!("Saved formed rec block with hash={}", rec_blk.hash);
                                     let _ = enact_block(rec_blk.clone()).unwrap();
+                                    trace!("Enacted formed rec block with hash={}", rec_blk.hash);
+                                    let peer_count = prop_block(&rec_blk).unwrap();
+                                    trace!(
+                                        "Propaged formed rec block with hash={} to {} peers",
+                                        rec_blk.hash,
+                                        peer_count
+                                    );
+                                    processed_accounts.push(txn.receive_key.to_owned());
                                 }
                             }
 
@@ -1067,6 +1085,7 @@ fn main() {
             let _ = blk.sign(&wallet.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
+            let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
 
             // now for each txn to a unique receiver form the rec block of the block we just formed and prob + enact that
@@ -1079,9 +1098,17 @@ fn main() {
                         .unwrap();
 
                     let _ = check_block(rec_blk.clone()).unwrap();
+                    trace!("Validated formed rec block with hash={}", rec_blk.hash);
                     let _ = saveBlock(rec_blk.clone()).unwrap();
+                    trace!("Saved formed rec block with hash={}", rec_blk.hash);
                     let _ = enact_block(rec_blk.clone()).unwrap();
-                    let _ = prop_block(&rec_blk).unwrap();
+                    trace!("Enacted formed rec block with hash={}", rec_blk.hash);
+                    let peer_count = prop_block(&rec_blk).unwrap();
+                    trace!(
+                        "Propaged formed rec block with hash={} to {} peers",
+                        rec_blk.hash,
+                        peer_count
+                    );
                     processed_accounts.push(txn.receive_key.to_owned());
                 }
             }
@@ -1207,24 +1234,33 @@ fn main() {
 
                         blk.hash();
 
-                        let _ = blk.sign(&wallet.private_key);
                         let _ = check_block(blk.clone()).unwrap();
                         let _ = saveBlock(blk.clone()).unwrap();
+                        let _ = enact_send(blk.clone()).unwrap();
                         let _ = prop_block(&blk).unwrap();
 
                         // now for each txn to a unique receiver form the rec block of the block we just formed and prob + enact that
-                        let proccessed_accs: Vec<String> = vec![];
+                        let mut processed_accounts: Vec<String> = vec![];
 
                         for txn in &blk.txns {
-                            if !proccessed_accs.contains(&txn.receive_key) {
+                            if !processed_accounts.contains(&txn.receive_key) {
                                 let rec_blk = blk
                                     .form_receive_block(Some(txn.receive_key.to_owned()))
                                     .unwrap();
 
                                 let _ = check_block(rec_blk.clone()).unwrap();
+                                trace!("Validated formed rec block with hash={}", rec_blk.hash);
                                 let _ = saveBlock(rec_blk.clone()).unwrap();
-                                let _ = prop_block(&rec_blk).unwrap();
+                                trace!("Saved formed rec block with hash={}", rec_blk.hash);
                                 let _ = enact_block(rec_blk.clone()).unwrap();
+                                trace!("Enacted formed rec block with hash={}", rec_blk.hash);
+                                let peer_count = prop_block(&rec_blk).unwrap();
+                                trace!(
+                                    "Propaged formed rec block with hash={} to {} peers",
+                                    rec_blk.hash,
+                                    peer_count
+                                );
+                                processed_accounts.push(txn.receive_key.to_owned());
                             }
                         }
 
