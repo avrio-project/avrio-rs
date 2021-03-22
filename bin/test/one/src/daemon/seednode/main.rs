@@ -75,22 +75,61 @@ pub async fn recieved_block(block: avrio_blockchain::Block) {
                     for txn in block.clone().txns {
                         total_transfered += txn.amount;
                     }
-                    e.field("Total funds change", total_transfered, true);
+                    e.field(
+                        "Total funds change",
+                        avrio_core::account::to_dec(total_transfered),
+                        true,
+                    );
                     e.field("Timestamp", format!("{} ", block.header.timestamp), false);
-                    e.field("Type", format!("{:?}", block.block_type), false);
-                    e.image(format!("attachment://{}.png", block.hash));
                     if block.block_type == BlockType::Recieve {
-                        e.field("Type", "Recieve", false);
+                        e.field("Type", "Recieve", true);
                         e.field(
                             "Send block hash",
                             format!("{} ", block.send_block.clone().unwrap_or_default()),
-                            false,
+                            true,
                         );
                     } else {
                         e.field("Type", "Send", false);
                     }
                     //e.field("Signature", format!("{} ", txn.signature), false);
                     //e.field("Gas, gas price, total fee", format!("{}, {}, {} ", txn.gas, txn.gas_price, txn.gas * txn.gas_price), false);
+                    e.footer(|f| {
+                        f.text("Avro Testnet Bot");
+
+                        f
+                    });
+                    e
+                });
+                m
+            })
+            .await
+        {
+            error!("Error sending message: {:?}", why);
+        };
+    }
+}
+
+pub async fn username_registered(
+    block: avrio_blockchain::Block,
+    account: avrio_core::account::Account,
+) {
+    debug!("Discord hook: {:?} {:?}", block, account);
+    unsafe {
+        if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
+            .send_message(&CTX_HOLDER.clone().unwrap(), |m| {
+                m.embed(|e| {
+                    e.title("New Username registered");
+                    e.field("Username", format!("{}", account.username), true);
+                    e.field(
+                        "Address",
+                        format!(
+                            "{}",
+                            avrio_crypto::public_key_to_address(&account.public_key)
+                        ),
+                        true,
+                    );
+                    e.field("In block", format!("{}", block.hash.to_owned()), false);
+                    e.field("Timestamp", format!("{} ", block.header.timestamp), false);
                     e.footer(|f| {
                         f.text("Avro Testnet Bot");
 
@@ -1258,6 +1297,14 @@ fn main() {
                                 let runtime = Runtime::new().unwrap();
                                 let _ = runtime.block_on(async {
                                     recieved_block(rec_blk.clone()).await;
+                                });
+                                let _ = runtime.block_on(async {
+                                    username_registered(
+                                        rec_blk,
+                                        avrio_core::account::getAccount(&wall.public_key)
+                                            .unwrap_or_default(),
+                                    )
+                                    .await;
                                 });
                             }
                         }
