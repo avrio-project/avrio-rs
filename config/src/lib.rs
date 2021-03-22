@@ -173,7 +173,7 @@ impl Default for ConfigSave {
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
-                    discord_token: "DISCORD_TOKEN",
+                    discord_token: "DISCORD_TOKEN".to_string(),
                 };
             } else {
                 return ConfigSave {
@@ -194,7 +194,7 @@ impl Default for ConfigSave {
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
-                    discord_token: "DISCORD_TOKEN",
+                    discord_token: "DISCORD_TOKEN".to_string(),
                 };
             }
         } else {
@@ -216,7 +216,7 @@ impl Default for ConfigSave {
                 log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                 wallet_password: "wallet_password_123".to_string(),
                 time_beetween_sync: 5 * 60000,
-                discord_token: "DISCORD_TOKEN",
+                discord_token: "DISCORD_TOKEN".to_string(),
             };
         }
     }
@@ -270,7 +270,7 @@ impl ConfigSave {
             assessor_node_count: nconf.assessor_node_count,
             min_suported_version: nconf.min_suported_version,
             max_supported_version: nconf.max_supported_version,
-            discord_token: nconf.discord_token,
+            discord_token: self.discord_token.to_owned(),
         };
     }
 }
