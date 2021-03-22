@@ -285,7 +285,10 @@ fn main() {
     if config().chain_key == "".to_owned() {
         generate_chains().unwrap();
 
-        let chain_digest: String = avrio_blockchain::form_state_digest(&open_database(config().db_path + &"/chaindigest".to_owned()).unwrap()).unwrap_or_default();
+        let chain_digest: String = avrio_blockchain::form_state_digest(
+            &open_database(config().db_path + &"/chaindigest".to_owned()).unwrap(),
+        )
+        .unwrap_or_default();
 
         info!("Chain digest: {}", chain_digest);
     }
@@ -475,11 +478,7 @@ fn main() {
 
         info!("Enacting genesis block");
 
-        let _ = prop_block(&genesis_block_clone).unwrap();
-
-        info!("Sent block to network");
-
-        match enact_block(genesis_block_clone) {
+        match enact_block(genesis_block_clone.clone()) {
             Ok(_) => {
                 info!("Sucessfully enacted genesis block!");
             }
@@ -493,6 +492,20 @@ fn main() {
                 process::exit(1);
             }
         };
+
+        let _ = prop_block(&genesis_block_clone).unwrap();
+
+        info!("Sent block to network");
+
+        // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+        let rec_blk = genesis_block_clone
+            .form_receive_block(Some(genesis_block_clone.header.chain_key.to_owned()))
+            .unwrap();
+        let _ = check_block(rec_blk.clone()).unwrap();
+        let _ = saveBlock(rec_blk.clone()).unwrap();
+        let _ = prop_block(&rec_blk).unwrap();
+        let _ = enact_block(rec_blk.clone()).unwrap();
+        info!("Propagated genesis recieve block, hash={}", rec_blk.hash);
 
         wallet = Wallet::from_private_key(chain_key[1].clone());
     } else {
@@ -1057,7 +1070,7 @@ fn main() {
             let _ = prop_block(&blk).unwrap();
 
             // now for each txn to a unique receiver form the rec block of the block we just formed and prob + enact that
-            let processed_accounts: Vec<String> = vec![];
+            let mut processed_accounts: Vec<String> = vec![];
 
             for txn in &blk.txns {
                 if !processed_accounts.contains(&txn.receive_key) {
@@ -1067,8 +1080,9 @@ fn main() {
 
                     let _ = check_block(rec_blk.clone()).unwrap();
                     let _ = saveBlock(rec_blk.clone()).unwrap();
-                    let _ = prop_block(&rec_blk).unwrap();
                     let _ = enact_block(rec_blk.clone()).unwrap();
+                    let _ = prop_block(&rec_blk).unwrap();
+                    processed_accounts.push(txn.receive_key.to_owned());
                 }
             }
 

@@ -411,24 +411,20 @@ fn main() {
             "Enacting genesis block (height={})",
             genesis_block_clone.header.height
         );
-        let _ = enact_block(genesis_block_clone.clone()).unwrap();
+        let _ = enact_send(genesis_block_clone.clone()).unwrap();
         let _ = prop_block(&genesis_block_clone).unwrap();
         info!("Sent block to network; Generating rec blocks");
 
         // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
-        let proccessed_accs: Vec<String> = vec![];
-        for txn in &genesis_block_clone.txns {
-            if !proccessed_accs.contains(&txn.receive_key) {
-                let rec_blk = genesis_block_clone
-                    .form_receive_block(Some(txn.receive_key.to_owned()))
-                    .unwrap();
-                let _ = check_block(rec_blk.clone()).unwrap();
-                let _ = saveBlock(rec_blk.clone()).unwrap();
-                let _ = prop_block(&rec_blk).unwrap();
-                let _ = enact_block(rec_blk.clone()).unwrap();
-                info!("Propagated recieve block hash={}", rec_blk.hash);
-            }
-        }
+
+        let rec_blk = genesis_block_clone
+            .form_receive_block(Some(genesis_block_clone.header.chain_key.to_owned()))
+            .unwrap();
+        let _ = check_block(rec_blk.clone()).unwrap();
+        let _ = saveBlock(rec_blk.clone()).unwrap();
+        let _ = prop_block(&rec_blk).unwrap();
+        let _ = enact_block(rec_blk.clone()).unwrap();
+        info!("Propagated recieve block hash={}", rec_blk.hash);
     } else {
         info!("Using chain: {}", config().chain_key);
         wall = open_wallet(config().chain_key, false);
