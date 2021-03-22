@@ -575,10 +575,21 @@ impl Block {
             chainKey = key;
         }
         let txn_iter = 0;
+        let new_nonce = avrio_database::get_data(
+            config().db_path
+                + &"/chains/".to_owned()
+                + &chainKey
+                + &"-chainindex".to_owned(),
+            &"txncount".to_owned(),
+        )
+        .parse()
+        .unwrap_or_default();
         for txn in blk_clone.clone().txns {
             txn_iter + 1;
             if txn.receive_key != chainKey {
                 blk_clone.txns.remove(txn_iter);
+            } else {
+                blk_clone.txns[txn_iter].nonce = new_nonce;
             }
         }
         if chainKey == self.header.chain_key {
