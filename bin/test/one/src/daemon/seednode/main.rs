@@ -1,6 +1,22 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
+use serenity::{
+    async_trait,
+    model::{
+        channel::Message,
+        gateway::{Activity, Ready},
+        id::{ChannelId, GuildId},
+    },
+    prelude::*,
+};
 use std::io::{self, Write};
 
 use std::thread;
@@ -43,8 +59,86 @@ use avrio_api::start_server;
 
 extern crate avrio_crypto;
 use avrio_crypto::Wallet;
+use fern::colors::{Color, ColoredLevelConfig};
 
 use text_io::read;
+struct Handler;
+static txn_notif_channel_id: u64 = 823568815350480916;
+static mut ctx_holder: Option<Context> = None;
+
+#[async_trait]
+impl EventHandler for Handler {
+    async fn message(&self, ctx: Context, msg: Message) {
+        if msg.content == "!test" {
+            println!("test txn command");
+            // Sending a message can fail, due to a network error, an
+            // authentication error, or lack of permissions to post in the
+            // channel, so log to stdout when some error happens, with a
+            // description of it.
+            /* let mut txn = avrio_core::transaction::Transaction::default();
+            txn.amount = 10;
+            txn.sender_key = "0xuwhiu3iy78ufihyhijdu".to_string();
+            txn.receive_key = "0xiu38uidojekuy89iedo".to_string();
+            txn.hash();
+            recieved_txn(txn).await;*/
+        }
+    }
+
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        info!("{} is connected!", ready.user.name);
+        unsafe { ctx_holder = Some(ctx) }
+    }
+}
+
+pub async fn recieved_block(block: avrio_blockchain::Block) {
+    debug!("Discord hook: {:?}", block);
+    unsafe {
+        if let Err(why) = ChannelId(txn_notif_channel_id)
+            .send_message(&ctx_holder.clone().unwrap(), |m| {
+                m.embed(|e| {
+                    e.title("New Block recieved");
+                    e.field("Hash", format!("{}", block.hash), false);
+                    e.field("Txns", ":", false);
+                    for txn in block.txns {
+                        e.field("Hash:", format!("{}", txn.hash), false);
+                        e.field("Amount transfered", format!("{} ", txn.amount), false);
+                        e.field("Sender", format!("{} ", txn.sender_key), false);
+                        e.field("Reciever", format!("{} ", txn.receive_key), false);
+                    }
+                    // e.field("Timestamp", format!("{} ", txn.timestamp), false);
+                    //e.field("Signature", format!("{} ", txn.signature), false);
+                    //e.field("Gas, gas price, total fee", format!("{}, {}, {} ", txn.gas, txn.gas_price, txn.gas * txn.gas_price), false);
+                    e.footer(|f| {
+                        f.text("Avro Testnet Bot");
+
+                        f
+                    });
+                    e
+                });
+                m
+            })
+            .await
+        {
+            error!("Error sending message: {:?}", why);
+        };
+    }
+}
+
+#[tokio::main]
+async fn main_discord() {
+    let token = avrio_config::config().discord_token;
+    if token != "DISCORD_TOKEN" {
+        info!("Creating discord client");
+        let mut client = Client::builder(&token)
+            .event_handler(Handler)
+            .await
+            .expect("Err creating client");
+
+        if let Err(why) = client.start().await {
+            error!("Client error: {:?}", why);
+        }
+    }
+}
 
 pub fn safe_exit() {
     // TODO: save mempool to disk + send kill to all threads.
@@ -53,7 +147,107 @@ pub fn safe_exit() {
     avrio_p2p::core::close_all();
     std::process::exit(0);
 }
+fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
+    let mut base_config = fern::Dispatch::new();
+    base_config = match verbosity {
+        0 => {
+            // Let's say we depend on something which whose "info" level messages are too
+            // verbose to include in end-user output. If we don't need them,
+            // let's not include them.
+            base_config
+                .level(log::LevelFilter::Error)
+                .level_for("avrio_blockchain", log::LevelFilter::Error)
+                .level_for("avrio_database", log::LevelFilter::Error)
+                .level_for("avrio_config", log::LevelFilter::Error)
+                .level_for("seednode", log::LevelFilter::Error)
+                .level_for("avrio_core", log::LevelFilter::Error)
+                .level_for("avrio_crypto", log::LevelFilter::Error)
+                .level_for("avrio_blockchain", log::LevelFilter::Error)
+        }
+        1 => base_config
+            .level(log::LevelFilter::Warn)
+            .level(log::LevelFilter::Error)
+            .level_for("avrio_blockchain", log::LevelFilter::Warn)
+            .level_for("avrio_database", log::LevelFilter::Warn)
+            .level_for("avrio_config", log::LevelFilter::Warn)
+            .level_for("seednode", log::LevelFilter::Warn)
+            .level_for("avrio_core", log::LevelFilter::Warn)
+            .level_for("avrio_crypto", log::LevelFilter::Warn)
+            .level_for("avrio_blockchain", log::LevelFilter::Warn),
+        2 => base_config
+            .level(log::LevelFilter::Warn)
+            .level_for("avrio_blockchain", log::LevelFilter::Info)
+            .level_for("avrio_database", log::LevelFilter::Info)
+            .level_for("avrio_config", log::LevelFilter::Info)
+            .level_for("seednode", log::LevelFilter::Info)
+            .level_for("avrio_core", log::LevelFilter::Info)
+            .level_for("avrio_crypto", log::LevelFilter::Info)
+            .level_for("avrio_blockchain", log::LevelFilter::Info),
+        3 => base_config
+            .level(log::LevelFilter::Warn)
+            .level_for("avrio_blockchain", log::LevelFilter::Debug)
+            .level_for("avrio_database", log::LevelFilter::Debug)
+            .level_for("avrio_config", log::LevelFilter::Debug)
+            .level_for("seednode", log::LevelFilter::Debug)
+            .level_for("avrio_core", log::LevelFilter::Debug)
+            .level_for("avrio_crypto", log::LevelFilter::Debug)
+            .level_for("avrio_blockchain", log::LevelFilter::Debug),
+        _ => base_config
+            .level(log::LevelFilter::Warn)
+            .level_for("avrio_blockchain", log::LevelFilter::Trace)
+            .level_for("avrio_database", log::LevelFilter::Trace)
+            .level_for("avrio_config", log::LevelFilter::Trace)
+            .level_for("seednode", log::LevelFilter::Trace)
+            .level_for("avrio_core", log::LevelFilter::Trace)
+            .level_for("avrio_crypto", log::LevelFilter::Trace)
+            .level_for("avrio_blockchain", log::LevelFilter::Trace),
+    };
 
+
+    // Separate file config so we can include year, month and day in file logs
+    let file_config = fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .chain(fern::log_file("program.log")?);
+
+    let stdout_config = fern::Dispatch::new()
+        .format(|out, message, record| {
+            let colors = ColoredLevelConfig::default()
+                .info(Color::Green)
+                .debug(Color::Magenta);
+            // special format for debug messages coming from our own crate.
+            if record.level() > log::LevelFilter::Info && record.target() == "cmd_program" {
+                out.finish(format_args!(
+                    "---\nDEBUG: {}: {}\n---",
+                    chrono::Local::now().format("%H:%M:%S"),
+                    message
+                ))
+            } else {
+                out.finish(format_args!(
+                    "[{}][{}][{}] {}",
+                    chrono::Local::now().format("%H:%M"),
+                    record.target(),
+                    colors.color(record.level()),
+                    message
+                ))
+            }
+        })
+        .chain(io::stdout());
+
+    base_config
+        .chain(file_config)
+        .chain(stdout_config)
+        .apply()?;
+
+    Ok(())
+}
 fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
     for block in genesis_blocks() {
         info!(
@@ -219,11 +413,11 @@ fn main() {
         )
         .get_matches();
     match matches.value_of("loglev").unwrap_or(&"2") {
-        "0" => simple_logger::init_with_level(log::Level::Error).unwrap(),
-        "1" => simple_logger::init_with_level(log::Level::Warn).unwrap(),
-        "2" => simple_logger::init_with_level(log::Level::Info).unwrap(),
-        "3" => simple_logger::init_with_level(log::Level::Debug).unwrap(),
-        "4" => simple_logger::init_with_level(log::Level::Trace).unwrap(),
+        "0" => setup_logging(0).unwrap(),
+        "1" => setup_logging(1).unwrap(),
+        "2" => setup_logging(2).unwrap(),
+        "3" => setup_logging(3).unwrap(),
+        "4" => setup_logging(4).unwrap(),
         _ => {
             println!("Unknown log-level: {} ", matches.occurrences_of("loglev"));
             println!("Supported levels: 0: Error, 1: Warn, 2: Info, 3: Debug, 4: Trace");
@@ -260,6 +454,12 @@ fn main() {
         )
         .unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
+    }
+    if config().discord_token != "DISCORD_TOKEN" {
+        info!("Launching discord thread");
+        let _discord_thread = thread::spawn(|| {
+            main_discord();
+        });
     }
     info!(
         "Launching P2p server on {}:{}",
@@ -414,6 +614,13 @@ fn main() {
         let _ = enact_send(genesis_block_clone.clone()).unwrap();
         let _ = prop_block(&genesis_block_clone).unwrap();
         info!("Sent block to network; Generating rec blocks");
+        use tokio::runtime::Runtime;
+        let runtime = Runtime::new().unwrap();
+        let _ = runtime.block_on(async {
+            recieved_block(genesis_block_clone.clone()).await;
+        });
+
+        // recieved_block(genesis_block_clone.clone()).poll();
 
         // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
 
@@ -424,6 +631,9 @@ fn main() {
         let _ = saveBlock(rec_blk.clone()).unwrap();
         let _ = prop_block(&rec_blk).unwrap();
         let _ = enact_block(rec_blk.clone()).unwrap();
+        let _ = runtime.block_on(async {
+            recieved_block(rec_blk.clone()).await;
+        });
         info!("Propagated recieve block hash={}", rec_blk.hash);
     } else {
         info!("Using chain: {}", config().chain_key);
