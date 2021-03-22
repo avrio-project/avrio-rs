@@ -67,6 +67,7 @@ pub struct ConfigSave {
     pub log_level: u8,
     pub wallet_password: String,
     pub time_beetween_sync: u64,
+    pub discord_token: String,
 }
 
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
@@ -115,6 +116,7 @@ pub struct Config {
     pub time_beetween_sync: u64,
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
+    pub discord_token: String,
 }
 
 pub fn config_read() -> Config {
@@ -171,6 +173,7 @@ impl Default for ConfigSave {
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
+                    discord_token: "DISCORD_TOKEN",
                 };
             } else {
                 return ConfigSave {
@@ -191,6 +194,7 @@ impl Default for ConfigSave {
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
+                    discord_token: "DISCORD_TOKEN",
                 };
             }
         } else {
@@ -212,6 +216,7 @@ impl Default for ConfigSave {
                 log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                 wallet_password: "wallet_password_123".to_string(),
                 time_beetween_sync: 5 * 60000,
+                discord_token: "DISCORD_TOKEN",
             };
         }
     }
@@ -265,6 +270,7 @@ impl ConfigSave {
             assessor_node_count: nconf.assessor_node_count,
             min_suported_version: nconf.min_suported_version,
             max_supported_version: nconf.max_supported_version,
+            discord_token: nconf.discord_token,
         };
     }
 }
@@ -331,6 +337,7 @@ impl Config {
             log_level: self.log_level,
             wallet_password: self.wallet_password,
             time_beetween_sync: self.time_beetween_sync,
+            discord_token: self.discord_token,
         }
     }
 
