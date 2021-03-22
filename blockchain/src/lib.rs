@@ -575,7 +575,7 @@ impl Block {
             chainKey = key;
         }
         let txn_iter = 0;
-        let new_nonce = avrio_database::get_data(
+        let new_nonce: u64 = avrio_database::get_data(
             config().db_path
                 + &"/chains/".to_owned()
                 + &chainKey
@@ -588,8 +588,6 @@ impl Block {
             txn_iter + 1;
             if txn.receive_key != chainKey {
                 blk_clone.txns.remove(txn_iter);
-            } else {
-                blk_clone.txns[txn_iter].nonce = new_nonce;
             }
         }
         if chainKey == self.header.chain_key {
@@ -982,7 +980,7 @@ pub fn check_block(blk: Block) -> std::result::Result<(), blockValidationErrors>
             }
             for txn in blk.txns {
                 // check each txn in the block is valid
-                if let Err(e) = txn.valid() {
+                if let Err(e) = txn.valid(blk.block_type == BlockType::Recieve) {
                     return Err(blockValidationErrors::invalidTransaction(e));
                 } /*else { removed as this will return prematurley and result in only the first txn being validated
                       return Ok(());
