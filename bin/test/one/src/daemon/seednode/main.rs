@@ -1,25 +1,13 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-
 use serenity::{
     async_trait,
-    model::{
-        channel::Message,
-        gateway::{Activity, Ready},
-        id::{ChannelId, GuildId},
-    },
+    model::{channel::Message, gateway::Ready, id::ChannelId},
     prelude::*,
 };
 use std::io::{self, Write};
-
 use std::thread;
+use tokio::runtime::Runtime;
 
 extern crate clap;
 use clap::{App, Arg};
@@ -63,49 +51,44 @@ use fern::colors::{Color, ColoredLevelConfig};
 
 use text_io::read;
 struct Handler;
-static txn_notif_channel_id: u64 = 823568815350480916;
-static mut ctx_holder: Option<Context> = None;
+static TXN_NOTIF_CHANNEL_ID: u64 = 823568815350480916;
+static mut CTX_HOLDER: Option<Context> = None;
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!test" {
-            println!("test txn command");
-            // Sending a message can fail, due to a network error, an
-            // authentication error, or lack of permissions to post in the
-            // channel, so log to stdout when some error happens, with a
-            // description of it.
-            /* let mut txn = avrio_core::transaction::Transaction::default();
-            txn.amount = 10;
-            txn.sender_key = "0xuwhiu3iy78ufihyhijdu".to_string();
-            txn.receive_key = "0xiu38uidojekuy89iedo".to_string();
-            txn.hash();
-            recieved_txn(txn).await;*/
-        }
-    }
-
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
-        unsafe { ctx_holder = Some(ctx) }
+        unsafe { CTX_HOLDER = Some(ctx) }
     }
 }
 
 pub async fn recieved_block(block: avrio_blockchain::Block) {
     debug!("Discord hook: {:?}", block);
     unsafe {
-        if let Err(why) = ChannelId(txn_notif_channel_id)
-            .send_message(&ctx_holder.clone().unwrap(), |m| {
+        if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
+            .send_message(&CTX_HOLDER.clone().unwrap(), |m| {
                 m.embed(|e| {
                     e.title("New Block recieved");
-                    e.field("Hash", format!("{}", block.hash), false);
-                    e.field("Txns", ":", false);
-                    for txn in block.txns {
-                        e.field("Hash:", format!("{}", txn.hash), false);
-                        e.field("Amount transfered", format!("{} ", txn.amount), false);
-                        e.field("Sender", format!("{} ", txn.sender_key), false);
-                        e.field("Reciever", format!("{} ", txn.receive_key), false);
+                    e.field("Hash", format!("{}", block.hash.to_owned()), false);
+                    e.field("Transaction count", block.txns.len(), true);
+                    let mut total_transfered = 0;
+                    for txn in block.clone().txns {
+                        total_transfered += txn.amount;
                     }
-                    // e.field("Timestamp", format!("{} ", txn.timestamp), false);
+                    e.field("Total funds change", total_transfered, true);
+                    e.field("Timestamp", format!("{} ", block.header.timestamp), false);
+                    e.field("Type", format!("{:?}", block.block_type), false);
+                    e.image(format!("attachment://{}.png", block.hash));
+                    if block.block_type == BlockType::Recieve {
+                        e.field("Type", "Recieve", false);
+                        e.field(
+                            "Send block hash",
+                            format!("{} ", block.send_block.clone().unwrap_or_default()),
+                            false,
+                        );
+                    } else {
+                        e.field("Type", "Send", false);
+                    }
                     //e.field("Signature", format!("{} ", txn.signature), false);
                     //e.field("Gas, gas price, total fee", format!("{}, {}, {} ", txn.gas, txn.gas_price, txn.gas * txn.gas_price), false);
                     e.footer(|f| {
@@ -202,7 +185,6 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_crypto", log::LevelFilter::Trace)
             .level_for("avrio_blockchain", log::LevelFilter::Trace),
     };
-
 
     // Separate file config so we can include year, month and day in file logs
     let file_config = fern::Dispatch::new()
@@ -441,7 +423,7 @@ fn main() {
     let _api_server_handle = thread::spawn(|| {
         start_server();
     });
-    let mut synced: bool = true;
+    let synced: bool;
 
     if !database_present() {
         create_file_structure().unwrap();
@@ -614,7 +596,6 @@ fn main() {
         let _ = enact_send(genesis_block_clone.clone()).unwrap();
         let _ = prop_block(&genesis_block_clone).unwrap();
         info!("Sent block to network; Generating rec blocks");
-        use tokio::runtime::Runtime;
         let runtime = Runtime::new().unwrap();
         let _ = runtime.block_on(async {
             recieved_block(genesis_block_clone.clone()).await;
@@ -754,6 +735,10 @@ fn main() {
             let _ = saveBlock(blk.clone()).unwrap();
             let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
+            let runtime = Runtime::new().unwrap();
+            let _ = runtime.block_on(async {
+                recieved_block(blk.clone()).await;
+            });
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
             let proccessed_accs: Vec<String> = vec![];
             for txn in &blk.txns {
@@ -765,22 +750,13 @@ fn main() {
                     let _ = saveBlock(rec_blk.clone()).unwrap();
                     let _ = prop_block(&rec_blk).unwrap();
                     let _ = enact_block(rec_blk.clone()).unwrap();
+                    let _ = runtime.block_on(async {
+                        recieved_block(blk.clone()).await;
+                    });
                 }
             }
             // all done
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
-            let proccessed_accs: Vec<String> = vec![];
-            for txn in &blk.txns {
-                if !proccessed_accs.contains(&txn.receive_key) {
-                    let rec_blk = blk
-                        .form_receive_block(Some(txn.receive_key.to_owned()))
-                        .unwrap();
-                    let _ = check_block(rec_blk.clone()).unwrap();
-                    let _ = saveBlock(rec_blk.clone()).unwrap();
-                    let _ = prop_block(&rec_blk).unwrap();
-                    let _ = enact_block(rec_blk.clone()).unwrap();
-                }
-            }
             // all done
             let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
             info!(
@@ -1018,6 +994,10 @@ fn main() {
                             let _ = saveBlock(blk.clone()).unwrap();
                             let _ = enact_send(blk.clone()).unwrap();
                             let _ = prop_block(&blk).unwrap();
+                            let runtime = Runtime::new().unwrap();
+                            let _ = runtime.block_on(async {
+                                recieved_block(blk.clone()).await;
+                            });
                             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
                             let proccessed_accs: Vec<String> = vec![];
                             for txn in &blk.txns {
@@ -1029,6 +1009,10 @@ fn main() {
                                     let _ = saveBlock(rec_blk.clone()).unwrap();
                                     let _ = prop_block(&rec_blk).unwrap();
                                     let _ = enact_block(rec_blk.clone()).unwrap();
+                                    let runtime = Runtime::new().unwrap();
+                                    let _ = runtime.block_on(async {
+                                        recieved_block(rec_blk.clone()).await;
+                                    });
                                 }
                             }
                             // all done
@@ -1129,6 +1113,10 @@ fn main() {
             let _ = saveBlock(blk.clone()).unwrap();
             let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
+            let runtime = Runtime::new().unwrap();
+            let _ = runtime.block_on(async {
+                recieved_block(blk.clone()).await;
+            });
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
             let proccessed_accs: Vec<String> = vec![];
             for txn in &blk.txns {
@@ -1140,6 +1128,9 @@ fn main() {
                     let _ = saveBlock(rec_blk.clone()).unwrap();
                     let _ = prop_block(&rec_blk).unwrap();
                     let _ = enact_block(rec_blk.clone()).unwrap();
+                    let _ = runtime.block_on(async {
+                        recieved_block(rec_blk.clone()).await;
+                    });
                 }
             }
             // all done
@@ -1249,6 +1240,10 @@ fn main() {
                         let _ = saveBlock(blk.clone()).unwrap();
                         let _ = enact_send(blk.clone()).unwrap();
                         let _ = prop_block(&blk).unwrap();
+                        let runtime = Runtime::new().unwrap();
+                        let _ = runtime.block_on(async {
+                            recieved_block(blk.clone()).await;
+                        });
                         // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
                         let proccessed_accs: Vec<String> = vec![];
                         for txn in &blk.txns {
@@ -1260,6 +1255,10 @@ fn main() {
                                 let _ = saveBlock(rec_blk.clone()).unwrap();
                                 let _ = prop_block(&rec_blk).unwrap();
                                 let _ = enact_block(rec_blk.clone()).unwrap();
+                                let runtime = Runtime::new().unwrap();
+                                let _ = runtime.block_on(async {
+                                    recieved_block(rec_blk.clone()).await;
+                                });
                             }
                         }
                         // all done;
