@@ -694,7 +694,7 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
 /// In presharding networks (eg now) use enact_send then form_receive_block and enact the outputed recieve block
 /// Make sure the send block is propegated BEFORE the recieve block (to reduce processing latency)
 pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    if block.block_type != BlockType::Recieve && block.header.height != 0 {
+    if block.block_type != BlockType::Recieve {
         // we only enact recive blocks, ignore send blocks
         return Err("tried to enact a send block".into());
     }
