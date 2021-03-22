@@ -293,6 +293,19 @@ impl Wallet {
         }
     }
 }
+pub fn public_key_to_address(public_key: &String) -> String {
+    let mut unencoded: Vec<u8> = vec![];
+    unencoded.extend(vec![0].iter());
+    unencoded.extend(public_key.bytes());
+    let checked: String = public_key.hash_item();
+    let mut i: usize = 0;
+    while unencoded.len() != 49 {
+        i += 1;
+        unencoded.extend(checked[i - 1..i].bytes());
+    }
+    unencoded.push(i as u8);
+    return bs58::encode(unencoded).into_string();
+}
 
 #[cfg(test)]
 mod tests {
