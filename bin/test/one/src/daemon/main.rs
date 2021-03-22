@@ -1231,7 +1231,7 @@ fn main() {
                             confimed: false,
                             node_signatures: vec![],
                         };
-
+                        let _ = blk.sign(&wallet.private_key);
                         blk.hash();
 
                         let _ = check_block(blk.clone()).unwrap();
