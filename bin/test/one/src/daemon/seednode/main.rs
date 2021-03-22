@@ -717,6 +717,13 @@ fn main() {
                         while i_block < amount {
                             let mut i: u64 = 0;
                             let mut txns: Vec<Transaction> = vec![];
+                            let nonce_i = avrio_database::get_data(
+                                config().db_path
+                                    + &"/chains/".to_owned()
+                                    + &wall.public_key.clone()
+                                    + &"-chainindex".to_owned(),
+                                &"txncount".to_owned(),
+                            );
                             while i < txnamount {
                                 let mut txn = Transaction {
                                     hash: String::from(""),
@@ -729,15 +736,7 @@ fn main() {
                                     gas_price: 100,
                                     max_gas: 100,
                                     gas: 20,
-                                    nonce: avrio_database::get_data(
-                                        config().db_path
-                                            + &"/chains/".to_owned()
-                                            + &wall.public_key.clone()
-                                            + &"-chainindex".to_owned(),
-                                        &"txncount".to_owned(),
-                                    )
-                                    .parse()
-                                    .unwrap(),
+                                    nonce: nonce_i.parse().unwrap_or_default(),
                                     unlock_time: 0,
                                     timestamp: SystemTime::now()
                                         .duration_since(UNIX_EPOCH)
