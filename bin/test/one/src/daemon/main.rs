@@ -645,7 +645,7 @@ fn main() {
             };
 
             blk.hash();
-
+            let _ = blk.sign(&wallet.private_key);
             let _ = check_block(blk.clone()).unwrap();
             let _ = saveBlock(blk.clone()).unwrap();
             let _ = enact_send(blk.clone()).unwrap();
@@ -936,6 +936,7 @@ fn main() {
                             };
 
                             blk.hash();
+                            let _ = blk.sign(&wallet.private_key);
 
                             let _ = check_block(blk.clone()).unwrap();
                             let _ = saveBlock(blk.clone()).unwrap();
