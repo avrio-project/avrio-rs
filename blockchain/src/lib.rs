@@ -566,6 +566,10 @@ impl Block {
         // else we can get on with forming the rec block for this block
         let mut blk_clone = self.clone();
         blk_clone.block_type = BlockType::Recieve;
+        blk_clone.header.timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64;
         let mut chainKey: String = config().chain_key;
         if let Some(key) = chain_key {
             chainKey = key;

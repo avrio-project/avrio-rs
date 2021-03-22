@@ -6,7 +6,7 @@ use avrio_config::config;
 extern crate hex;
 use crate::{Block, BlockType, Header};
 use avrio_core::transaction::Transaction;
-
+use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, PartialEq)]
 pub enum genesisBlockErrors {
     BlockNotFound,
@@ -104,7 +104,10 @@ pub fn generateGenesisBlock(
             chain_key: chainKey,
             prev_hash: "00000000000".to_owned(),
             height: 0,
-            timestamp: 0,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis() as u64,
             network: config().network_id,
         },
         block_type: BlockType::Send,
