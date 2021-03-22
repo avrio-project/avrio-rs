@@ -209,7 +209,7 @@ impl Transaction {
         return Ok(());
     }
 
-    pub fn valid(&self) -> Result<(), TransactionValidationErrors> {
+    pub fn valid(&self, recieve: bool) -> Result<(), TransactionValidationErrors> {
         trace!("Validating txn with hash: {}", self.hash);
         let acc: Account = open_or_create(&self.sender_key);
         let txn_count = avrio_database::get_data(
@@ -219,7 +219,7 @@ impl Transaction {
                 + &"-chainindex".to_owned(),
             &"txncount".to_owned(),
         );
-        if self.nonce.to_string() != txn_count {
+        if self.nonce.to_string() != txn_count && recieve == false {
             return Err(TransactionValidationErrors::BadNonce);
         } else if self.hash_return() != self.hash {
             return Err(TransactionValidationErrors::BadHash);
@@ -404,7 +404,7 @@ impl Transaction {
     }
 
     pub fn validate_transaction(&self) -> bool {
-        if let Err(_) = self.valid() {
+        if let Err(_) = self.valid(false) {
             return false;
         } else {
             return true;
