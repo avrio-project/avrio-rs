@@ -2,7 +2,7 @@ use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use serenity::{
     async_trait,
-    model::{channel::Message, gateway::Ready, id::ChannelId},
+    model::{gateway::Ready, id::ChannelId},
     prelude::*,
 };
 use std::io::{self, Write};
@@ -35,7 +35,7 @@ use avrio_blockchain::{
 };
 
 extern crate avrio_database;
-use avrio_database::{get_data, get_iterator, get_peerlist, open_database, save_data};
+use avrio_database::{get_data, get_peerlist, open_database, save_data};
 
 #[macro_use]
 extern crate log;

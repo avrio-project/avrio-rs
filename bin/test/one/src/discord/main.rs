@@ -1,10 +1,4 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+
 
 use serenity::{
     async_trait,
@@ -21,7 +15,7 @@ static txn_notif_channel_id: u64 = 823568815350480916;
 static mut ctx_holder: Option<Context> = None;
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, ctx: Context, msg: Message) {
+    async fn message(&self, _ctx: Context, msg: Message) {
         if msg.content == "!test" {
             println!("test txn command");
             // Sending a message can fail, due to a network error, an

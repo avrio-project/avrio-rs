@@ -29,7 +29,7 @@ use avrio_blockchain::{
 use avrio_config::{config, Config};
 use avrio_core::{account::to_atomc, transaction::Transaction};
 use avrio_crypto::Wallet;
-use avrio_database::{get_data, get_iterator, get_peerlist, open_database, save_data};
+use avrio_database::{get_data, get_peerlist, open_database, save_data};
 use avrio_p2p::{core::new_connection, core::rec_server, helper::prop_block, helper::sync};
 
 fn connect_seednodes(
