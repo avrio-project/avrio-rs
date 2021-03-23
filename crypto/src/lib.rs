@@ -312,8 +312,7 @@ mod tests {
     pub use crate::*;
     pub use csv::Writer;
     use std::error::Error;
-    
-    
+
     #[test]
     fn test_address_prefix() {
         for _ in 0..1000 {
