@@ -10,5 +10,7 @@ serde_json = "1.0.48"
 serde = { version = "1.0", features = ["derive"] }
 rocksdb = "0.13"
 avrio_config = { path = "../config/" }
+avrio_crypto = { path = "../crypto/"}
 log = "0.4"
 num_cpus = "1.13.0"
+lazy_static = "1.4.0"
