@@ -2,19 +2,18 @@ extern crate avrio_config;
 extern crate num_cpus;
 use std::collections::HashMap;
 use std::sync::{
-    mpsc::{Receiver, Sender},
-    Arc, Mutex,
+    mpsc::{Receiver, Sender}, Mutex,
 };
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-use rocksdb::{DBRawIterator, Error, Options, DB};
+use rocksdb::{DBRawIterator, Options, DB};
 use serde::{Deserialize, Serialize};
 use std::mem::size_of_val;
 use std::net::SocketAddr;
-use std::process;
+
 
 use avrio_config::config;
 // a lazy static muxtex (essentially a 'global' variable)
