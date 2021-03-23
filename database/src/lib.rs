@@ -43,13 +43,37 @@ pub fn close_flush_stream() {
     }
 }
 
-pub fn open_database(path: String) -> Result<rocksdb::DB, Error> {
+pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    //  gain a lock on the DATABASES lazy_sataic
+    if let Ok(database_lock) = DATABASES.lock() {
+        // check if it contains a Some(x) value
+        if let Some(databases) = database_lock.clone() {
+            // it does; now check if the databases hashmap contains our path (eg is this db cached)
+            if databases.contains_key(&path) {
+                //  we have this database cached, read from it
+                let mut return_databases: HashMap<String, String> = HashMap::new();
+                for (key, (val, _)) in databases[&path].0.clone() {
+                    return_databases.insert(key, val);
+                }
+                return Ok(return_databases);
+            }
+        }
+    }
+    // we need to read from disc
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_skip_stats_update_on_db_open(false);
     opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
-
-    return DB::open(&opts, path);
+    let mut return_databases: HashMap<String, String> = HashMap::new();
+    let db = DB::open(&opts, path)?;
+    let iter = db.raw_iterator();
+    while iter.valid() {
+        return_databases.insert(
+            String::from_utf8(iter.key().unwrap_or_default().to_vec())?,
+            String::from_utf8(iter.value().unwrap_or_default().to_vec())?,
+        );
+    }
+    return Ok(return_databases);
 }
 
 pub fn get_iterator<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
@@ -73,11 +97,12 @@ pub fn init_cache(
         HashMap::new();
     for path in to_cache_paths {
         let final_path = config().db_path + path;
-        log::debug!(
-            "Caching db, path={}",
-            final_path,
-        );
-        let db = open_database(final_path.to_string())?; // open the on disk db
+        log::debug!("Caching db, path={}", final_path,);
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.set_skip_stats_update_on_db_open(false);
+        opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
+        let db = DB::open(&opts, path)?;
         let db_iter = db.raw_iterator();
         let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
         while db_iter.valid() {
@@ -87,12 +112,7 @@ pub fn init_cache(
                     // now get the value
                     if let Some(value_bytes) = db_iter.value() {
                         if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
-                            trace!(
-                                "(DB={}) Got key={} for value={}",
-                                path,
-                                key,
-                                value
-                            );
+                            trace!("(DB={}) Got key={} for value={}", path, key, value);
                             // now put that into a hashmap
                             values_hashmap.insert(hashed_key, (value, 0));
                         }
@@ -131,7 +151,7 @@ pub fn init_cache(
     // all done, launch the dirty data flush thread
     let (send, recv) = std::sync::mpsc::channel();
     let flush_handler = std::thread::spawn(move || {
-        flush_dirty_to_disk(recv);
+        let _ = flush_dirty_to_disk(recv).expect("Flush dirty page function returned an error");
     });
     *FLUSH_STREAM_HANDLER.lock().unwrap() = Some(send.clone()); // set global var
     return Ok((send, flush_handler));
@@ -159,7 +179,12 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                 );
                 if dirty {
                     // TODO: save data to disk
-                    let db = open_database(path.clone())?;
+                    // we need to read from disc
+                    let mut opts = Options::default();
+                    opts.create_if_missing(true);
+                    opts.set_skip_stats_update_on_db_open(false);
+                    opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
+                    let db = DB::open(&opts, &path)?;
                     for (key, value) in db_tuple.0 {
                         if value.1 != 0 {
                             if let Err(e) = db.put(key.clone(), value.0.clone()) {
@@ -172,7 +197,7 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                                     value.0
                                 );
                                 // set per-value dirty flag to 0 (clean)
-                                let mut reset_bit_buffer = db_lock_val[&path].0.clone();
+                                //     let mut reset_bit_buffer = db_lock_val[&path].0.clone();
                                 let mut reset_bit = db_lock_val.get_mut(&key).unwrap();
                                 reset_bit.1 = 0;
                                 *db_lock_val.get_mut(&path).unwrap() = reset_bit.clone();
@@ -193,7 +218,7 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
     return Ok(());
 }
 
-pub fn save_data(serialized: String, path: String, key: String) -> u8 {
+pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
     //  gain a lock on the DATABASES lazy_sataic
     if let Ok(mut database_lock) = DATABASES.lock() {
         // check if it contains a Some(x) value
@@ -205,7 +230,10 @@ pub fn save_data(serialized: String, path: String, key: String) -> u8 {
                 // safe to get the value
                 let mut db = databases[&hashed_path].clone().0;
                 // write to our local copy of the lazy_static
-                db.insert(avrio_crypto::raw_lyra(&key.to_string()), (serialized, 1));
+                db.insert(
+                    avrio_crypto::raw_lyra(&key.to_string()),
+                    (serialized.to_owned(), 1),
+                );
                 // now update the global lazy_static
                 *database_lock = Some(databases);
                 return 1;
@@ -213,10 +241,16 @@ pub fn save_data(serialized: String, path: String, key: String) -> u8 {
         }
     }
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
-    let db = open_database(path).unwrap_or_else(|e| {
+    // we need to read from disc
+    let mut opts = Options::default();
+    opts.create_if_missing(true);
+    opts.set_skip_stats_update_on_db_open(false);
+    opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
+    let db = DB::open(&opts, path).unwrap();
+    /*    let db = open_database(path).unwrap_or_else(|e| {
         error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
-    });
+    });*/
 
     if let Err(e) = db.put(key.clone(), serialized.clone()) {
         error!("Failed to save data to db, gave error: {}", e);
@@ -276,25 +310,24 @@ pub fn save_peerlist(
     let s = serde_json::to_string(&as_string)?;
 
     save_data(
-        s,
-        config().db_path + &"/peers".to_string(),
+        &s,
+        &(config().db_path + &"/peers".to_string()),
         "white".to_string(),
     );
 
     Ok(())
 }
 
-pub fn get_data(path: String, key: &str) -> String {
+pub fn get_data(dbpath: String, key: &str) -> String {
     //  gain a lock on the DATABASES lazy_sataic
     if let Ok(database_lock) = DATABASES.lock() {
         // check if it contains a Some(x) value
         if let Some(databases) = database_lock.clone() {
             // it does; now check if the databases hashmap contains our path (eg is this db cached)
-            let hashed_path = avrio_crypto::raw_lyra(&path);
-            if databases.contains_key(&hashed_path) {
+            if databases.contains_key(&dbpath) {
                 //  we have this database cached, read from it
                 // safe to get the value
-                let db = databases[&hashed_path].clone().0;
+                let db = databases[&dbpath].clone().0;
                 // does the database cache have this value?
                 let hashed_key = avrio_crypto::raw_lyra(&key.to_string());
                 if db.contains_key(&hashed_key) {
@@ -309,10 +342,11 @@ pub fn get_data(path: String, key: &str) -> String {
     // 1) the database cached
     // or 2) the key cached
     // therfore we read from disk to be sure we dont have this value
-    let db = open_database(path.clone()).unwrap_or_else(|e| {
-        error!("Failed to open database, gave error {:?}", e);
-        process::exit(0);
-    });
+    let mut opts = Options::default();
+    opts.create_if_missing(true);
+    opts.set_skip_stats_update_on_db_open(false);
+    opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
+    let db = DB::open(&opts, &dbpath).unwrap();
 
     let data: String;
 
@@ -320,13 +354,13 @@ pub fn get_data(path: String, key: &str) -> String {
         Ok(Some(value)) => {
             data = String::from_utf8(value).unwrap_or("".to_owned());
 
-            trace!("got data from db: {}, data: {}, key {}", path, data, key);
+            trace!("got data from db: {}, data: {}, key {}", dbpath, data, key);
         }
 
         Ok(None) => {
             data = "-1".to_owned();
 
-            trace!("got data from db: {}, data: None, key: {}", path, key);
+            trace!("got data from db: {}, data: None, key: {}", dbpath, key);
         }
 
         Err(e) => {
@@ -339,53 +373,21 @@ pub fn get_data(path: String, key: &str) -> String {
     data
 }
 
-pub fn get_data_from_database(db: &DB, key: &str) -> String {
+pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String {
     let data: String;
 
-    match db.get(key) {
-        Ok(Some(value)) => {
-            data = String::from_utf8(value).unwrap_or("".to_owned());
+    match db.contains_key(key) {
+        true => {
+            data = db[key].to_owned();
 
-            trace!(
-                "got data (db) from db: {}, data: {}",
-                db.path().display(),
-                data
-            );
+            trace!("got data (db) from db: hashmap, data: {}", data);
         }
-
-        Ok(None) => {
+        false => {
             data = "-1".to_owned();
 
-            trace!("got data (db) from db: {}, data: None", db.path().display());
-        }
-
-        Err(e) => {
-            data = "0".to_owned();
-
-            error!("Error {} getting data (db) from db", e);
+            trace!("got data (db) from db: hashmap, data: None");
         }
     }
 
     return data;
-}
-
-pub fn set_data_in_database(value: &String, db: &DB, key: &str) -> u8 {
-    if let Err(e) = db.put(key, value) {
-        error!(
-            "Failed to save data (db) to db: {}, gave error: {}",
-            db.path().display(),
-            e
-        );
-
-        return 0;
-    } else {
-        trace!(
-            "set data (db) to db: {}, key: {}, value, {}",
-            db.path().display(),
-            key,
-            value
-        );
-
-        return 1;
-    }
 }
