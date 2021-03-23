@@ -73,11 +73,9 @@ pub fn init_cache(
         HashMap::new();
     for path in to_cache_paths {
         let final_path = config().db_path + path;
-        let hashed_path = avrio_crypto::raw_lyra(&final_path);
         log::debug!(
-            "Caching db, path={}, hashed_path={}",
+            "Caching db, path={}",
             final_path,
-            hashed_path
         );
         let db = open_database(final_path.to_string())?; // open the on disk db
         let db_iter = db.raw_iterator();
@@ -90,10 +88,9 @@ pub fn init_cache(
                     if let Some(value_bytes) = db_iter.value() {
                         if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
                             trace!(
-                                "(DB={}) Got key={}, hashed={} for value={}",
+                                "(DB={}) Got key={} for value={}",
                                 path,
                                 key,
-                                hashed_key,
                                 value
                             );
                             // now put that into a hashmap
@@ -106,7 +103,7 @@ pub fn init_cache(
         // get size of values_hashmap HashMap
         let size_of_local = size_of_val(&values_hashmap);
         // we have gone through every key value pair and added it to values_hashmap, now add the values_hashmap HashMap to the databases_hashmap HashMap
-        databases_hashmap.insert(hashed_path, (values_hashmap, 0));
+        databases_hashmap.insert(final_path.to_owned(), (values_hashmap, 0));
         let size_of_total = size_of_val(&databases_hashmap);
         debug!(
             "Cached db with path={}, db_hashmap_size={} bytes, databases_hashmap_size={} bytes",
