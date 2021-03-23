@@ -147,8 +147,8 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
             .expect("wallet private key encryption failure!"),
     );
 
-    let _ = save_data(publickey_en, path.clone(), "pubkey".to_owned());
-    let _ = save_data(privatekey_en, path.clone(), "privkey".to_owned());
+    let _ = save_data(&publickey_en, &path, "pubkey".to_owned());
+    let _ = save_data(&privatekey_en, &path, "privkey".to_owned());
 
     info!("Saved wallet to {}", path);
 
@@ -290,10 +290,9 @@ fn main() {
     if config().chain_key == "".to_owned() {
         generate_chains().unwrap();
 
-        let chain_digest: String = avrio_blockchain::form_state_digest(
-            &open_database(config().db_path + &"/chaindigest".to_owned()).unwrap(),
-        )
-        .unwrap_or_default();
+        let chain_digest: String =
+            avrio_blockchain::form_state_digest(config().db_path + &"/chaindigest".to_owned())
+                .unwrap_or_default();
 
         info!("Chain digest: {}", chain_digest);
     }
@@ -603,27 +602,15 @@ fn main() {
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-
-            let mut inv_iter = get_iterator(&inv_db);
             let mut highest_so_far: u64 = 0;
 
-            inv_iter.seek_to_first();
-
-            while inv_iter.valid() {
-                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                    .unwrap()
-                    .parse::<u64>()
-                {
+            for (key, _) in inv_db.iter() {
+                if let Ok(height) = key.parse::<u64>() {
                     if height > highest_so_far {
                         highest_so_far = height
                     }
                 }
-
-                inv_iter.next();
             }
-
-            drop(inv_iter);
-            drop(inv_db);
 
             let height: u64 = highest_so_far;
             let mut blk = Block {
@@ -880,8 +867,6 @@ fn main() {
                                 info!("txn {}/{}", current_transaction, transaction_amount);
                             }
 
-                            // TODO: FIX!!
-
                             let inv_db = open_database(
                                 config().db_path
                                     + &"/chains/".to_string()
@@ -889,39 +874,22 @@ fn main() {
                                     + &"-chainindex".to_string(),
                             )
                             .unwrap();
-
-                            let mut inv_iter = get_iterator(&inv_db);
                             let mut highest_so_far: u64 = 0;
-
-                            inv_iter.seek_to_first();
-
-                            while inv_iter.valid() {
-                                if let Ok(height) =
-                                    String::from_utf8(inv_iter.key().unwrap().into())
-                                        .unwrap()
-                                        .parse::<u64>()
-                                {
+                            for (key, _) in inv_db.iter() {
+                                if let Ok(height) = key.parse::<u64>() {
                                     if height > highest_so_far {
                                         highest_so_far = height
                                     }
                                 }
-
-                                inv_iter.next();
                             }
-
-                            let height: u64 = highest_so_far;
-
-                            drop(inv_iter);
-                            drop(inv_db);
-
                             let mut blk = Block {
                                 header: Header {
                                     version_major: 0,
                                     version_breaking: 0,
                                     version_minor: 0,
                                     chain_key: wallet.public_key.clone(),
-                                    prev_hash: getBlock(&wallet.public_key, height).hash,
-                                    height: height + 1,
+                                    prev_hash: getBlock(&wallet.public_key, highest_so_far).hash,
+                                    height: highest_so_far + 1,
                                     timestamp: SystemTime::now()
                                         .duration_since(UNIX_EPOCH)
                                         .expect("Time went backwards")
@@ -1039,27 +1007,15 @@ fn main() {
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-
-            let mut inv_iter = get_iterator(&inv_db);
             let mut highest_so_far: u64 = 0;
 
-            inv_iter.seek_to_first();
-
-            while inv_iter.valid() {
-                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                    .unwrap()
-                    .parse::<u64>()
-                {
+            for (key, _) in inv_db.iter() {
+                if let Ok(height) = key.parse::<u64>() {
                     if height > highest_so_far {
                         highest_so_far = height
                     }
                 }
-
-                inv_iter.next();
             }
-
-            drop(inv_iter);
-            drop(inv_db);
 
             let height: u64 = highest_so_far;
 
@@ -1189,27 +1145,14 @@ fn main() {
                                 + &"-chainindex".to_string(),
                         )
                         .unwrap();
-
-                        let mut inv_iter = get_iterator(&inv_db);
                         let mut highest_so_far: u64 = 0;
-
-                        inv_iter.seek_to_first();
-
-                        while inv_iter.valid() {
-                            if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                                .unwrap()
-                                .parse::<u64>()
-                            {
+                        for (key, _) in inv_db.iter() {
+                            if let Ok(height) = key.parse::<u64>() {
                                 if height > highest_so_far {
                                     highest_so_far = height
                                 }
                             }
-
-                            inv_iter.next();
                         }
-
-                        drop(inv_iter);
-                        drop(inv_db);
 
                         let height: u64 = highest_so_far;
 

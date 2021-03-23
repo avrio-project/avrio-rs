@@ -356,8 +356,8 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
         aead.encrypt(nonce, keypair[1].as_bytes().as_ref())
             .expect("wallet private key encryption failure!"),
     );
-    let _ = save_data(publickey_en, path.clone(), "pubkey".to_owned());
-    let _ = save_data(privatekey_en, path.clone(), "privkey".to_owned());
+    let _ = save_data(&publickey_en, &path, "pubkey".to_owned());
+    let _ = save_data(&privatekey_en, &path, "privkey".to_owned());
     info!("Saved wallet to {}", path);
     conf.chain_key = keypair[0].clone();
     conf.create()?;
@@ -476,10 +476,9 @@ fn main() {
     info!("Avrio Seednode Daemon successfully launched");
     if config().chain_key == "".to_owned() {
         generate_chains().unwrap();
-        let chainsdigest: String = avrio_blockchain::form_state_digest(
-            &open_database(config().db_path + &"/chaindigest".to_owned()).unwrap(),
-        )
-        .unwrap_or_default();
+        let chainsdigest: String =
+            avrio_blockchain::form_state_digest(config().db_path + &"/chaindigest".to_owned())
+                .unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
     }
     if config().discord_token != "DISCORD_TOKEN" {
@@ -735,22 +734,15 @@ fn main() {
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-            let mut inv_iter = get_iterator(&inv_db);
             let mut highest_so_far: u64 = 0;
-            inv_iter.seek_to_first();
-            while inv_iter.valid() {
-                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                    .unwrap()
-                    .parse::<u64>()
-                {
+
+            for (key, _) in inv_db.iter() {
+                if let Ok(height) = key.parse::<u64>() {
                     if height > highest_so_far {
                         highest_so_far = height
                     }
                 }
-                inv_iter.next();
             }
-            drop(inv_iter);
-            drop(inv_db);
             let height: u64 = highest_so_far;
             let mut blk = Block {
                 header: Header {
@@ -982,7 +974,6 @@ fn main() {
                                 i += 1;
                                 info!("txn {}/{}", i, txnamount);
                             }
-                            // TODO: FIX!!
                             let inv_db = open_database(
                                 config().db_path
                                     + &"/chains/".to_string()
@@ -990,24 +981,15 @@ fn main() {
                                     + &"-chainindex".to_string(),
                             )
                             .unwrap();
-                            let mut inv_iter = get_iterator(&inv_db);
                             let mut highest_so_far: u64 = 0;
-                            inv_iter.seek_to_first();
-                            while inv_iter.valid() {
-                                if let Ok(height) =
-                                    String::from_utf8(inv_iter.key().unwrap().into())
-                                        .unwrap()
-                                        .parse::<u64>()
-                                {
+                            for (key, _) in inv_db.iter() {
+                                if let Ok(height) = key.parse::<u64>() {
                                     if height > highest_so_far {
                                         highest_so_far = height
                                     }
                                 }
-                                inv_iter.next();
                             }
                             let height: u64 = highest_so_far;
-                            drop(inv_iter);
-                            drop(inv_db);
                             let mut blk = Block {
                                 header: Header {
                                     version_major: 0,
@@ -1113,22 +1095,15 @@ fn main() {
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-            let mut inv_iter = get_iterator(&inv_db);
             let mut highest_so_far: u64 = 0;
-            inv_iter.seek_to_first();
-            while inv_iter.valid() {
-                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                    .unwrap()
-                    .parse::<u64>()
-                {
+
+            for (key, _) in inv_db.iter() {
+                if let Ok(height) = key.parse::<u64>() {
                     if height > highest_so_far {
                         highest_so_far = height
                     }
                 }
-                inv_iter.next();
             }
-            drop(inv_iter);
-            drop(inv_db);
             let height: u64 = highest_so_far;
             let mut blk = Block {
                 header: Header {
@@ -1238,22 +1213,14 @@ fn main() {
                                 + &"-chainindex".to_string(),
                         )
                         .unwrap();
-                        let mut inv_iter = get_iterator(&inv_db);
                         let mut highest_so_far: u64 = 0;
-                        inv_iter.seek_to_first();
-                        while inv_iter.valid() {
-                            if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                                .unwrap()
-                                .parse::<u64>()
-                            {
+                        for (key, _) in inv_db.iter() {
+                            if let Ok(height) = key.parse::<u64>() {
                                 if height > highest_so_far {
                                     highest_so_far = height
                                 }
                             }
-                            inv_iter.next();
                         }
-                        drop(inv_iter);
-                        drop(inv_db);
                         let height: u64 = highest_so_far;
                         let mut blk = Block {
                             header: Header {
