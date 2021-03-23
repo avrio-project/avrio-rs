@@ -101,7 +101,7 @@ impl Transaction {
 
     pub fn enact(
         &self,
-        chain_idex_db: &rocksdb::DB,
+        chain_index_db: String,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let txn_type: String = self.typeTransaction();
         if txn_type == "normal".to_owned() {
@@ -123,12 +123,12 @@ impl Transaction {
             sendacc.save().unwrap();
             trace!("Get txn count");
             let txn_count: u64 =
-                avrio_database::get_data_from_database(chain_idex_db, &"txncount").parse()?;
+                avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
             trace!("Setting txn count");
-            if avrio_database::set_data_in_database(
+            if avrio_database::save_data(
                 &(txn_count + 1).to_string(),
-                chain_idex_db,
-                &"txncount",
+                &chain_index_db,
+                "txncount".to_string(),
             ) != 1
             {
                 return Err("failed to update send acc nonce".into());
@@ -150,12 +150,12 @@ impl Transaction {
             let _ = acc.save();
             trace!("Get txn count");
             let txn_count: u64 =
-                avrio_database::get_data_from_database(chain_idex_db, &"txncount").parse()?;
+                avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
             trace!("Setting txn count");
-            if avrio_database::set_data_in_database(
+            if avrio_database::save_data(
                 &(txn_count + 1).to_string(),
-                chain_idex_db,
-                &"txncount",
+                &chain_index_db,
+                "txncount".to_owned(),
             ) != 1
             {
                 return Err("failed to update send acc nonce".into());
@@ -184,12 +184,12 @@ impl Transaction {
                 }
                 trace!("Get txn count");
                 let txn_count: u64 =
-                    avrio_database::get_data_from_database(chain_idex_db, &"txncount").parse()?;
+                    avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
                 trace!("Setting txn count");
-                if avrio_database::set_data_in_database(
+                if avrio_database::save_data(
                     &(txn_count + 1).to_string(),
-                    chain_idex_db,
-                    &"txncount",
+                    &chain_index_db,
+                    "txncount".to_owned(),
                 ) != 1
                 {
                     return Err("failed to update send acc nonce".into());
