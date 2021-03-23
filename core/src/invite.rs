@@ -53,8 +53,8 @@ pub fn mark_spent(invite: &String) -> Result<(), ()> {
     if !unspent(invite) {
         return Err(());
     } else if save_data(
-        "s".to_owned(),
-        config().db_path + &"/invites".to_owned(),
+        &"s".to_string(),
+        &(config().db_path + &"/invites".to_owned()),
         invite.to_owned(),
     ) != 1
     {
@@ -69,8 +69,8 @@ pub fn new(invite: &String) -> Result<(), ()> {
     if get_data(config().db_path + &"/invites".to_owned(), invite) != "-1".to_owned() {
         return Err(());
     } else if save_data(
-        "u".to_owned(),
-        config().db_path + &"/invites".to_owned(),
+        &"u".to_owned(),
+        &(config().db_path + &"/invites".to_owned()),
         invite.to_owned(),
     ) != 1
     {
