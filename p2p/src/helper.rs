@@ -228,10 +228,7 @@ pub fn sync() -> Result<u64, String> {
     }
 
     info!("Synced all chains, checking chain digest with peers");
-    let cd = avrio_blockchain::form_state_digest(
-        &avrio_database::open_database(config().db_path + &"/chaindigest").unwrap(),
-    )
-    .unwrap(); //  recalculate our state digest
+    let cd = avrio_blockchain::form_state_digest(config().db_path + &"/chaindigest").unwrap(); //  recalculate our state digest
     if cd != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
         error!("Our CD: {}, expected: {}", cd, mode_hash);
@@ -559,16 +556,15 @@ pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box
 /// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
 /// it is calculated with the generateChainDigest function which is auto called every time we get a new block
 fn send_chain_digest(peer: &mut TcpStream) {
-    let cd_db = avrio_database::open_database(config().db_path + &"/chaindigest".to_owned())
-        .expect("Failed to open chains digest db");
-    let chains_digest = avrio_database::get_data_from_database(&cd_db, &"master");
+    let cd_db = config().db_path + &"/chaindigest".to_owned();
+    let chains_digest = avrio_database::get_data(cd_db.to_owned(), "master");
     // let chains_digest = get_data(config().db_path + &"/chaindigest".to_owned(), &"master");
 
     trace!("sending our chain digest: {}", chains_digest);
 
     if chains_digest == "-1".to_owned() || chains_digest == "0".to_owned() {
         let _ = send(
-            form_state_digest(&cd_db).unwrap_or("".to_owned()),
+            form_state_digest(cd_db.to_owned()).unwrap_or("".to_owned()),
             peer,
             0x01,
             true,
