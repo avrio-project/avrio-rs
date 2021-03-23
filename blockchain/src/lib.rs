@@ -562,7 +562,7 @@ impl Block {
             chainKey = key;
         }
         let txn_iter = 0;
-        let new_nonce: u64 = avrio_database::get_data(
+        let _new_nonce: u64 = avrio_database::get_data(
             config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
             &"txncount".to_owned(),
         )
