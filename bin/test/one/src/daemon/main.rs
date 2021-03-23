@@ -102,9 +102,9 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
 pub fn safe_exit() {
     // TODO: save mempool to disk + send kill to all threads.
 
-    info!("Good bye!");
-
+    info!("Goodbye!");
     avrio_p2p::core::close_all();
+    avrio_database::close_flush_stream();
     std::process::exit(0);
 }
 

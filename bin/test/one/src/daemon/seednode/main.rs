@@ -167,6 +167,7 @@ pub fn safe_exit() {
 
     info!("Goodbye!");
     avrio_p2p::core::close_all();
+    avrio_database::close_flush_stream();
     std::process::exit(0);
 }
 fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
