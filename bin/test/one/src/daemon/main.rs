@@ -221,6 +221,7 @@ fn main() {
         safe_exit();
     })
     .expect("Error setting Ctrl-C handler");
+    avrio_database::init_cache(1000000000).expect("Failed to init db cache");
     let matches = App::new("Avrio Daemon")
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
