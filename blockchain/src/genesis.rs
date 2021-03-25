@@ -2,21 +2,19 @@
 
 extern crate avrio_config;
 use avrio_config::config;
-use avrio_database::getData;
 
 extern crate hex;
 use crate::{Block, Header};
 use avrio_core::transaction::Transaction;
 
 #[derive(Debug, PartialEq)]
-pub enum genesisBlockErrors {
+pub enum GenesisBlockErrors {
     BlockNotFound,
     OtherDb,
     Other,
 }
 
 extern crate avrio_crypto;
-use avrio_crypto::Wallet;
 
 pub fn genesis_blocks() -> Vec<Block> {
     /*example
@@ -86,14 +84,14 @@ pub fn get_genesis_txns() -> Vec<Transaction> {
     ];
 }
 
-pub fn generateGenesisBlock(
-    chainKey: String,
-    privKey: String,
-) -> Result<Block, genesisBlockErrors> {
+pub fn generate_genesis_block(
+    chain_key: String,
+    priv_key: String,
+) -> Result<Block, GenesisBlockErrors> {
     let mut my_genesis_txns: Vec<Transaction> = vec![];
     let genesis_txns = get_genesis_txns();
     for tx in genesis_txns {
-        if tx.receive_key == chainKey {
+        if tx.receive_key == chain_key {
             my_genesis_txns.push(tx);
         }
     }
@@ -103,7 +101,7 @@ pub fn generateGenesisBlock(
             version_major: 0,
             version_breaking: 0,
             version_minor: 1,
-            chain_key: chainKey,
+            chain_key: chain_key,
             prev_hash: "00000000000".to_owned(),
             height: 0,
             timestamp: 0,
@@ -117,15 +115,15 @@ pub fn generateGenesisBlock(
     };
 
     genesis_block.hash();
-    genesis_block.sign(&privKey);
+    genesis_block.sign(&priv_key).unwrap();
     return Ok(genesis_block);
 }
 /// Reads the genesis block for this chain from the list of blocks
-pub fn getGenesisBlock(chainkey: &String) -> Result<Block, genesisBlockErrors> {
+pub fn get_genesis_block(chainkey: &String) -> Result<Block, GenesisBlockErrors> {
     for block in genesis_blocks() {
         if block.header.chain_key == *chainkey {
             return Ok(block);
         }
     }
-    return Err(genesisBlockErrors::BlockNotFound);
+    return Err(GenesisBlockErrors::BlockNotFound);
 }

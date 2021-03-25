@@ -7,10 +7,7 @@ use avrio_crypto::Hashable;
 extern crate bs58;
 use std::time::Instant;
 extern crate hex;
-use ring::{
-    rand as randc,
-    signature::{self, KeyPair},
-};
+use ring::signature::{self};
 use std::error::Error;
 extern crate avrio_config;
 use avrio_config::config;

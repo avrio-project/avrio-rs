@@ -11,7 +11,7 @@ use ring::signature;
 extern crate avrio_database;
 
 use crate::{
-    account::{deltaFunds, getAccount, getByUsername, open_or_create, Accesskey, Account},
+    account::{get_account, get_by_username, open_or_create, Accesskey, Account},
     certificate::Certificate,
     gas::*,
 };
@@ -82,7 +82,7 @@ impl Hashable for Transaction {
     }
 }
 impl Transaction {
-    pub fn typeTransaction(&self) -> String {
+    pub fn type_transaction(&self) -> String {
         return match self.flag {
             'n' => "normal".to_string(),
             'r' => "reward".to_string(),
@@ -102,7 +102,7 @@ impl Transaction {
         &self,
         chain_idex_db: &rocksdb::DB,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let txn_type: String = self.typeTransaction();
+        let txn_type: String = self.type_transaction();
         if txn_type == "normal".to_owned() {
             trace!("Opening senders account");
             let mut sendacc = open_or_create(&self.sender_key);
@@ -121,9 +121,9 @@ impl Transaction {
             trace!("Saving sender acc");
             sendacc.save().unwrap();
             trace!("Get txn count");
-            let txn_count: u64 = avrio_database::getDataDb(chain_idex_db, &"txncount").parse()?;
+            let txn_count: u64 = avrio_database::get_data_db(chain_idex_db, &"txncount").parse()?;
             trace!("Setting txn count");
-            if avrio_database::setDataDb(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
+            if avrio_database::set_data_db(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
                 != 1
             {
                 return Err("failed to update send acc nonce".into());
@@ -144,9 +144,9 @@ impl Transaction {
             trace!("Saving acc");
             let _ = acc.save();
             trace!("Get txn count");
-            let txn_count: u64 = avrio_database::getDataDb(chain_idex_db, &"txncount").parse()?;
+            let txn_count: u64 = avrio_database::get_data_db(chain_idex_db, &"txncount").parse()?;
             trace!("Setting txn count");
-            if avrio_database::setDataDb(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
+            if avrio_database::set_data_db(&(txn_count + 1).to_string(), chain_idex_db, &"txncount")
                 != 1
             {
                 return Err("failed to update send acc nonce".into());
@@ -160,7 +160,7 @@ impl Transaction {
             }
         } else if txn_type == "username registraion".to_string() {
             trace!("Getting acc (uname reg)");
-            let mut acc = getAccount(&self.sender_key).unwrap_or_default();
+            let mut acc = get_account(&self.sender_key).unwrap_or_default();
             if acc == Account::default() {
                 return Err("failed to get account for username addition".into());
             } else if acc.username != "".to_owned() {
@@ -175,9 +175,9 @@ impl Transaction {
                 }
                 trace!("Get txn count");
                 let txn_count: u64 =
-                    avrio_database::getDataDb(chain_idex_db, &"txncount").parse()?;
+                    avrio_database::get_data_db(chain_idex_db, &"txncount").parse()?;
                 trace!("Setting txn count");
-                if avrio_database::setDataDb(
+                if avrio_database::set_data_db(
                     &(txn_count + 1).to_string(),
                     chain_idex_db,
                     &"txncount",
@@ -203,7 +203,7 @@ impl Transaction {
     pub fn valid(&self) -> Result<(), TransactionValidationErrors> {
         trace!("Validating txn with hash: {}", self.hash);
         let acc: Account = open_or_create(&self.sender_key);
-        let txn_count = avrio_database::getData(
+        let txn_count = avrio_database::get_data(
             config().db_path
                 + &"/chains/".to_owned()
                 + &self.sender_key
@@ -309,7 +309,7 @@ impl Transaction {
         if self.flag == 'u' && self.amount < config().username_burn_amount {
             return Err(TransactionValidationErrors::InsufficentBurnForUsername);
         }
-        if self.timestamp - (config().transactionTimestampMaxOffset as u64)
+        if self.timestamp - (config().transaction_timestamp_max_offset as u64)
             > SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
@@ -333,7 +333,7 @@ impl Transaction {
                     // a public key will never be this short
                     // this is probably a username rather than a publickey
                     peer_public_key_bytes = bs58::decode(
-                        getByUsername(&self.sender_key)
+                        get_by_username(&self.sender_key)
                             .unwrap_or_default()
                             .public_key,
                     )

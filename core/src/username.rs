@@ -4,7 +4,7 @@ This file handles the registartion and validation of txns.
 */
 
 use avrio_crypto::Hashable;
-use ring::signature::{self, KeyPair};
+use ring::signature::{self};
 use serde::{Deserialize, Serialize};
 extern crate bs58;
 #[derive(Debug, Default, PartialEq, PartialOrd, Ord, Eq, Deserialize, Serialize)]
