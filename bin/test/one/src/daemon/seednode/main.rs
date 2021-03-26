@@ -1,9 +1,7 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 
-use std::time::Duration;
-
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 
 use std::thread;
 
@@ -12,7 +10,7 @@ use clap::{App, Arg};
 
 use std::fs::create_dir_all;
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -27,12 +25,12 @@ use avrio_p2p::{new_connection, prop_block, rec_server, sync, sync_needed};
 
 extern crate avrio_blockchain;
 use avrio_blockchain::{
-    genesis::{generateGenesisBlock, genesisBlockErrors, genesis_blocks, getGenesisBlock},
+    genesis::{generate_genesis_block, genesis_blocks, get_genesis_block, GenesisBlockErrors},
     *,
 };
 
 extern crate avrio_database;
-use avrio_database::{getData, getIter, get_peerlist, openDb, saveData};
+use avrio_database::{get_data, get_iter, get_peerlist, open_db, save_data};
 
 #[macro_use]
 extern crate log;
@@ -62,8 +60,8 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
             "addr: {}",
             Wallet::new(block.header.chain_key.clone(), "".to_owned()).address()
         );
-        if getBlockFromRaw(block.hash.clone()) != block {
-            saveBlock(block.clone())?;
+        if get_block_from_raw(block.hash.clone()) != block {
+            save_block(block.clone())?;
             enact_block(block)?;
         }
     }
@@ -71,7 +69,7 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn database_present() -> bool {
-    let get_res = getData(
+    let get_res = get_data(
         config().db_path + &"/chains/masterchainindex".to_owned(),
         &"digest".to_owned(),
     );
@@ -143,8 +141,8 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
         aead.encrypt(nonce, keypair[1].as_bytes().as_ref())
             .expect("wallet private key encryption failure!"),
     );
-    let _ = saveData(publickey_en, path.clone(), "pubkey".to_owned());
-    let _ = saveData(privatekey_en, path.clone(), "privkey".to_owned());
+    let _ = save_data(publickey_en, path.clone(), "pubkey".to_owned());
+    let _ = save_data(privatekey_en, path.clone(), "privkey".to_owned());
     info!("Saved wallet to {}", path);
     conf.chain_key = keypair[0].clone();
     conf.create()?;
@@ -183,7 +181,7 @@ fn open_wallet(key: String, address: bool) -> Wallet {
     let padded_string = String::from_utf8(padded).unwrap();
     let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
     trace!("nonce: {}", padded_string);
-    let ciphertext = hex::decode(getData(
+    let ciphertext = hex::decode(get_data(
         config().db_path + &"/wallets/".to_owned() + &wall.public_key,
         &"privkey".to_owned(),
     ))
@@ -221,11 +219,26 @@ fn main() {
         )
         .get_matches();
     match matches.value_of("loglev").unwrap_or(&"2") {
-        "0" => simple_logger::init_with_level(log::Level::Error).unwrap(),
-        "1" => simple_logger::init_with_level(log::Level::Warn).unwrap(),
-        "2" => simple_logger::init_with_level(log::Level::Info).unwrap(),
-        "3" => simple_logger::init_with_level(log::Level::Debug).unwrap(),
-        "4" => simple_logger::init_with_level(log::Level::Trace).unwrap(),
+        "0" => simple_logger::SimpleLogger::new()
+            .with_level(log::LevelFilter::Error)
+            .init()
+            .unwrap(),
+        "1" => simple_logger::SimpleLogger::new()
+            .with_level(log::LevelFilter::Warn)
+            .init()
+            .unwrap(),
+        "2" => simple_logger::SimpleLogger::new()
+            .with_level(log::LevelFilter::Info)
+            .init()
+            .unwrap(),
+        "3" => simple_logger::SimpleLogger::new()
+            .with_level(log::LevelFilter::Debug)
+            .init()
+            .unwrap(),
+        "4" => simple_logger::SimpleLogger::new()
+            .with_level(log::LevelFilter::Trace)
+            .init()
+            .unwrap(),
         _ => {
             println!("Unknown log-level: {} ", matches.occurrences_of("loglev"));
             println!("Supported levels: 0: Error, 1: Warn, 2: Info, 3: Debug, 4: Trace");
@@ -249,7 +262,7 @@ fn main() {
     let _rpc_server_handle = thread::spawn(|| {
         start_server();
     });
-    let mut synced: bool = true;
+    let synced: bool;
 
     if !database_present() {
         create_file_structure().unwrap();
@@ -348,14 +361,14 @@ fn main() {
             }
         }
 
-        let mut genesis_block = getGenesisBlock(&chain_key[0]);
+        let mut genesis_block = get_genesis_block(&chain_key[0]);
         if let Err(e) = genesis_block {
-            if e == genesisBlockErrors::BlockNotFound {
+            if e == GenesisBlockErrors::BlockNotFound {
                 info!(
                     "No genesis block found for chain: {}, generating",
                     Wallet::from_private_key(chain_key[1].clone()).address()
                 );
-                genesis_block = generateGenesisBlock(chain_key[0].clone(), chain_key[1].clone());
+                genesis_block = generate_genesis_block(chain_key[0].clone(), chain_key[1].clone());
             } else {
                 error!(
                 "Database error occoured when trying to get genesisblock for chain: {}. (Fatal)",
@@ -379,7 +392,7 @@ fn main() {
                 genesis_block_clone.hash
             ),
         }
-        let e_code = saveBlock(genesis_block_clone.clone());
+        let e_code = save_block(genesis_block_clone.clone());
         match e_code {
             Ok(_) => {
                 info!("Sucessfully saved genesis block!");
@@ -415,7 +428,7 @@ fn main() {
     }
     info!(
         "Transaction count for our chain: {}",
-        avrio_database::getData(
+        avrio_database::get_data(
             config().db_path
                 + &"/chains/".to_owned()
                 + &wall.public_key
@@ -423,7 +436,7 @@ fn main() {
             &"txncount".to_owned(),
         )
     );
-    let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+    let ouracc = avrio_core::account::get_account(&wall.public_key).unwrap();
     info!("Our balance: {}", ouracc.balance_ui().unwrap());
     loop {
         // Now we loop until shutdown
@@ -458,14 +471,14 @@ fn main() {
                 rec_wall = Wallet::from_address(addr);
             } else {
                 rec_wall = Wallet::new(
-                    avrio_core::account::getByUsername(&addr)
+                    avrio_core::account::get_by_username(&addr)
                         .unwrap()
                         .public_key,
                     "".to_owned(),
                 );
             }
             txn.receive_key = rec_wall.public_key;
-            txn.nonce = avrio_database::getData(
+            txn.nonce = avrio_database::get_data(
                 config().db_path
                     + &"/chains/".to_owned()
                     + &txn.sender_key
@@ -476,18 +489,18 @@ fn main() {
             .unwrap_or(0);
             txn.hash();
             let _ = txn.sign(&wall.private_key);
-            let inv_db = openDb(
+            let inv_db = open_db(
                 config().db_path
                     + &"/chains/".to_string()
                     + &wall.public_key
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-            let mut invIter = getIter(&inv_db);
+            let mut inv_iter = get_iter(&inv_db);
             let mut highest_so_far: u64 = 0;
-            invIter.seek_to_first();
-            while invIter.valid() {
-                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
+            inv_iter.seek_to_first();
+            while inv_iter.valid() {
+                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
                     .unwrap()
                     .parse::<u64>()
                 {
@@ -495,9 +508,9 @@ fn main() {
                         highest_so_far = height
                     }
                 }
-                invIter.next();
+                inv_iter.next();
             }
-            drop(invIter);
+            drop(inv_iter);
             drop(inv_db);
             let height: u64 = highest_so_far;
             let mut blk = Block {
@@ -506,7 +519,7 @@ fn main() {
                     version_breaking: 0,
                     version_minor: 0,
                     chain_key: wall.public_key.clone(),
-                    prev_hash: getBlock(&wall.public_key, height).hash,
+                    prev_hash: get_block(&wall.public_key, height).hash,
                     height: height + 1,
                     timestamp: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -523,10 +536,10 @@ fn main() {
             blk.hash();
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
-            let _ = saveBlock(blk.clone()).unwrap();
+            let _ = save_block(blk.clone()).unwrap();
             let _ = prop_block(&blk, &connections_mut).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
-            let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+            let ouracc = avrio_core::account::get_account(&wall.public_key).unwrap();
             info!(
                 "Transaction sent! Txn hash: {}, Block hash: {}. Our new balance: {} AIO",
                 blk.txns[0].hash,
@@ -536,7 +549,7 @@ fn main() {
         } else if read == "get_balance" {
             info!(
                 "Your balance: {} AIO",
-                avrio_core::account::getAccount(&wall.public_key)
+                avrio_core::account::get_account(&wall.public_key)
                     .unwrap()
                     .balance_ui()
                     .unwrap_or_default()
@@ -550,7 +563,7 @@ fn main() {
             info!("Enter the address of the account.");
             let addr: String = read!("{}\n");
             let acc =
-                avrio_core::account::getAccount(&Wallet::from_address(addr.clone()).public_key)
+                avrio_core::account::get_account(&Wallet::from_address(addr.clone()).public_key)
                     .unwrap_or_default();
             info!("Account details for {}", addr);
             info!("____________________________");
@@ -582,7 +595,7 @@ fn main() {
         } else if read == "get_block" {
             info!("Enter block hash:");
             let hash: String = read!("{}\n");
-            let blk: Block = getBlockFromRaw(hash);
+            let blk: Block = get_block_from_raw(hash);
             if blk == Block::default() {
                 error!("Couldnt find a block with that hash");
             } else {
@@ -591,11 +604,11 @@ fn main() {
         } else if read == "get_transaction" {
             info!("Enter the transaction hash:");
             let hash: String = read!("{}\n");
-            let block_txn_is_in = getData(config().db_path + &"/transactions".to_owned(), &hash);
+            let block_txn_is_in = get_data(config().db_path + &"/transactions".to_owned(), &hash);
             if block_txn_is_in == "-1".to_owned() {
                 error!("Can not find that txn in db");
             } else {
-                let blk: Block = getBlockFromRaw(block_txn_is_in);
+                let blk: Block = get_block_from_raw(block_txn_is_in);
                 if blk == Block::default() {
                     error!("Couldnt find a block with that transaction in");
                 } else {
@@ -615,7 +628,7 @@ fn main() {
                                 blk.header.height, blk.hash
                             );
                             info!("From chain: {}", blk.header.chain_key);
-                            info!("Txn type: {}", txn.typeTransaction());
+                            info!("Txn type: {}", txn.type_transaction());
                             info!(
                                 "Used gas: {}, Gas price: {}, Fee: {}",
                                 txn.gas,
@@ -632,7 +645,7 @@ fn main() {
             info!("Enter the public key of the account:");
             let addr: String = read!("{}\n");
             let wall = Wallet::new(addr.clone(), "".to_owned());
-            let acc = avrio_core::account::getAccount(&wall.public_key).unwrap_or_default();
+            let acc = avrio_core::account::get_account(&wall.public_key).unwrap_or_default();
             info!("Account details for {}", wall.address());
             info!("____________________________");
             info!(
@@ -683,7 +696,7 @@ fn main() {
                                     gas_price: 100,
                                     max_gas: 100,
                                     gas: 20,
-                                    nonce: avrio_database::getData(
+                                    nonce: avrio_database::get_data(
                                         config().db_path
                                             + &"/chains/".to_owned()
                                             + &wall.public_key.clone()
@@ -707,29 +720,30 @@ fn main() {
                                 info!("txn {}/{}", i, txnamount);
                             }
                             // TODO: FIX!!
-                            let inv_db = openDb(
+                            let inv_db = open_db(
                                 config().db_path
                                     + &"/chains/".to_string()
                                     + &wall.public_key
                                     + &"-chainindex".to_string(),
                             )
                             .unwrap();
-                            let mut invIter = getIter(&inv_db);
+                            let mut inv_iter = get_iter(&inv_db);
                             let mut highest_so_far: u64 = 0;
-                            invIter.seek_to_first();
-                            while invIter.valid() {
-                                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
-                                    .unwrap()
-                                    .parse::<u64>()
+                            inv_iter.seek_to_first();
+                            while inv_iter.valid() {
+                                if let Ok(height) =
+                                    String::from_utf8(inv_iter.key().unwrap().into())
+                                        .unwrap()
+                                        .parse::<u64>()
                                 {
                                     if height > highest_so_far {
                                         highest_so_far = height
                                     }
                                 }
-                                invIter.next();
+                                inv_iter.next();
                             }
                             let height: u64 = highest_so_far;
-                            drop(invIter);
+                            drop(inv_iter);
                             drop(inv_db);
                             let mut blk = Block {
                                 header: Header {
@@ -737,7 +751,7 @@ fn main() {
                                     version_breaking: 0,
                                     version_minor: 0,
                                     chain_key: wall.public_key.clone(),
-                                    prev_hash: getBlock(&wall.public_key, height).hash,
+                                    prev_hash: get_block(&wall.public_key, height).hash,
                                     height: height + 1,
                                     timestamp: SystemTime::now()
                                         .duration_since(UNIX_EPOCH)
@@ -759,7 +773,7 @@ fn main() {
                             let _ = blk.sign(&wall.private_key);
                             let _ = check_block(blk.clone()).unwrap();
                             info!("checked block");
-                            let _ = saveBlock(blk.clone()).unwrap();
+                            let _ = save_block(blk.clone()).unwrap();
                             info!("saved block");
                             let _ = prop_block(&blk, &connections_mut).unwrap();
                             info!("Sent block");
@@ -767,7 +781,7 @@ fn main() {
                             info!("enacted block :{}", i_block);
                             i_block += 1;
                         }
-                        let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+                        let ouracc = avrio_core::account::get_account(&wall.public_key).unwrap();
                         info!(
                             "Blocks sent! Our new balance: {} AIO",
                             ouracc.balance_ui().unwrap()
@@ -799,7 +813,7 @@ fn main() {
                 signature: String::from(""),
             };
             txn.receive_key = wall.public_key.clone();
-            txn.nonce = avrio_database::getData(
+            txn.nonce = avrio_database::get_data(
                 config().db_path
                     + &"/chains/".to_owned()
                     + &txn.sender_key
@@ -810,18 +824,18 @@ fn main() {
             .unwrap_or(0);
             txn.hash();
             let _ = txn.sign(&wall.private_key);
-            let inv_db = openDb(
+            let inv_db = open_db(
                 config().db_path
                     + &"/chains/".to_string()
                     + &wall.public_key
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-            let mut invIter = getIter(&inv_db);
+            let mut inv_iter = get_iter(&inv_db);
             let mut highest_so_far: u64 = 0;
-            invIter.seek_to_first();
-            while invIter.valid() {
-                if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
+            inv_iter.seek_to_first();
+            while inv_iter.valid() {
+                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
                     .unwrap()
                     .parse::<u64>()
                 {
@@ -829,9 +843,9 @@ fn main() {
                         highest_so_far = height
                     }
                 }
-                invIter.next();
+                inv_iter.next();
             }
-            drop(invIter);
+            drop(inv_iter);
             drop(inv_db);
             let height: u64 = highest_so_far;
             let mut blk = Block {
@@ -840,7 +854,7 @@ fn main() {
                     version_breaking: 0,
                     version_minor: 0,
                     chain_key: wall.public_key.clone(),
-                    prev_hash: getBlock(&wall.public_key, height).hash,
+                    prev_hash: get_block(&wall.public_key, height).hash,
                     height: height + 1,
                     timestamp: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -857,10 +871,10 @@ fn main() {
             blk.hash();
             let _ = blk.sign(&wall.private_key);
             let _ = check_block(blk.clone()).unwrap();
-            let _ = saveBlock(blk.clone()).unwrap();
+            let _ = save_block(blk.clone()).unwrap();
             let _ = prop_block(&blk, &connections_mut).unwrap();
             let _ = enact_block(blk.clone()).unwrap();
-            let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+            let ouracc = avrio_core::account::get_account(&wall.public_key).unwrap();
             info!(
                 "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
                 blk.txns[0].hash,
@@ -869,10 +883,10 @@ fn main() {
         } else if read == "register_username".to_owned() {
             info!("Please enter the username you would like to register:");
             let username: String = read!("{}\n");
-            if let Ok(_) = avrio_core::account::getByUsername(&username) {
+            if let Ok(_) = avrio_core::account::get_by_username(&username) {
                 error!("That username is already registered, please try another");
             } else {
-                let acc = avrio_core::account::getAccount(&wall.public_key).unwrap_or_default();
+                let acc = avrio_core::account::get_account(&wall.public_key).unwrap_or_default();
                 if acc == Default::default() {
                     error!("Failed to get your account");
                 } else {
@@ -901,7 +915,7 @@ fn main() {
                             signature: String::from(""),
                         };
                         txn.receive_key = wall.public_key.clone();
-                        txn.nonce = avrio_database::getData(
+                        txn.nonce = avrio_database::get_data(
                             config().db_path
                                 + &"/chains/".to_owned()
                                 + &txn.sender_key
@@ -912,18 +926,18 @@ fn main() {
                         .unwrap_or(0);
                         txn.hash();
                         let _ = txn.sign(&wall.private_key);
-                        let inv_db = openDb(
+                        let inv_db = open_db(
                             config().db_path
                                 + &"/chains/".to_string()
                                 + &wall.public_key
                                 + &"-chainindex".to_string(),
                         )
                         .unwrap();
-                        let mut invIter = getIter(&inv_db);
+                        let mut inv_iter = get_iter(&inv_db);
                         let mut highest_so_far: u64 = 0;
-                        invIter.seek_to_first();
-                        while invIter.valid() {
-                            if let Ok(height) = String::from_utf8(invIter.key().unwrap().into())
+                        inv_iter.seek_to_first();
+                        while inv_iter.valid() {
+                            if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
                                 .unwrap()
                                 .parse::<u64>()
                             {
@@ -931,9 +945,9 @@ fn main() {
                                     highest_so_far = height
                                 }
                             }
-                            invIter.next();
+                            inv_iter.next();
                         }
-                        drop(invIter);
+                        drop(inv_iter);
                         drop(inv_db);
                         let height: u64 = highest_so_far;
                         let mut blk = Block {
@@ -942,7 +956,7 @@ fn main() {
                                 version_breaking: 0,
                                 version_minor: 0,
                                 chain_key: wall.public_key.clone(),
-                                prev_hash: getBlock(&wall.public_key, height).hash,
+                                prev_hash: get_block(&wall.public_key, height).hash,
                                 height: height + 1,
                                 timestamp: SystemTime::now()
                                     .duration_since(UNIX_EPOCH)
@@ -961,10 +975,10 @@ fn main() {
                         blk.hash();
                         let _ = blk.sign(&wall.private_key);
                         let _ = check_block(blk.clone()).unwrap();
-                        let _ = saveBlock(blk.clone()).unwrap();
+                        let _ = save_block(blk.clone()).unwrap();
                         let _ = prop_block(&blk, &connections_mut).unwrap();
                         let _ = enact_block(blk.clone()).unwrap();
-                        let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
+                        let ouracc = avrio_core::account::get_account(&wall.public_key).unwrap();
                         info!(
                             "Transaction sent! Txn hash: {}, Our new balance: {} AIO",
                             blk.txns[0].hash,

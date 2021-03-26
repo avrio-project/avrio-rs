@@ -5,8 +5,8 @@ use std::io;
 use std::io::prelude::*;
 extern crate log;
 use dirs::*;
-use rand::prelude::*;
-use sha2::{Digest, Sha256, Sha512};
+
+use sha2::{Digest, Sha256};
 #[macro_use]
 extern crate lazy_static;
 extern crate hex;
@@ -32,9 +32,9 @@ pub struct NetworkConfig {
     pub max_reward: u32,
     pub min_vote: u8,
     pub probatory_epoch_count: u8,
-    pub certificateDifficulty: u128,
+    pub certificate_difficulty: u128,
     pub fullnode_lock_amount: u64,
-    pub transactionTimestampMaxOffset: u32,
+    pub transaction_timestamp_max_offset: u32,
     pub max_time_to_live: u64,
     pub target_epoch_length: u64,
     pub fullnode_lock_time: u64,
@@ -98,9 +98,9 @@ pub struct Config {
     pub max_reward: u32,
     pub min_vote: u8,
     pub probatory_epoch_count: u8,
-    pub certificateDifficulty: u128,
+    pub certificate_difficulty: u128,
     pub fullnode_lock_amount: u64,
-    pub transactionTimestampMaxOffset: u32,
+    pub transaction_timestamp_max_offset: u32,
     pub max_time_to_live: u64,
     pub target_epoch_length: u64,
     pub username_burn_amount: u64,
@@ -233,7 +233,7 @@ impl ConfigSave {
             version_minor: nconf.version_minor,
             coin_name: nconf.coin_name,
             node_drop_off_threshold: nconf.node_drop_off_threshold,
-            certificateDifficulty: nconf.certificateDifficulty,
+            certificate_difficulty: nconf.certificate_difficulty,
             decimal_places: nconf.decimal_places,
             min_intrest: nconf.min_intrest,
             min_vote: nconf.min_vote,
@@ -243,7 +243,7 @@ impl ConfigSave {
             max_reward: nconf.max_reward,
             probatory_epoch_count: nconf.probatory_epoch_count,
             fullnode_lock_amount: nconf.fullnode_lock_amount,
-            transactionTimestampMaxOffset: nconf.transactionTimestampMaxOffset,
+            transaction_timestamp_max_offset: nconf.transaction_timestamp_max_offset,
             max_time_to_live: nconf.max_time_to_live,
             target_epoch_length: nconf.target_epoch_length,
             username_burn_amount: nconf.username_burn_amount,
@@ -284,13 +284,13 @@ impl Default for NetworkConfig {
             max_reward: 25000, // 2.5000 AIO
             min_vote: 65,
             probatory_epoch_count: 10,
-            certificateDifficulty: 1000, // TODO find this value
+            certificate_difficulty: 1000, // TODO find this value
             fullnode_lock_amount: 50000,
-            transactionTimestampMaxOffset: 600000, // 10 mins
-            max_time_to_live: 600000,              // millisecconds
-            target_epoch_length: 18000000,         // 5 Hours
-            fullnode_lock_time: 30 * 5,            // epoches (30 days)
-            username_burn_amount: 5000,            // 0.5000 AIO
+            transaction_timestamp_max_offset: 600000, // 10 mins
+            max_time_to_live: 600000,                 // millisecconds
+            target_epoch_length: 18000000,            // 5 Hours
+            fullnode_lock_time: 30 * 5,               // epoches (30 days)
+            username_burn_amount: 5000,               // 0.5000 AIO
             first_block_hash: "0x...".to_string(),
             commitee_size: 15,
             consensus_commitee_size: 21,

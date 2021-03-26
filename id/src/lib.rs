@@ -7,10 +7,7 @@ extern crate rand;
 #[macro_use]
 extern crate log;
 use avrio_crypto::raw_hash;
-use ring::{
-    rand as randc,
-    signature::{self, KeyPair},
-};
+use ring::signature;
 use serde::{Deserialize, Serialize};
 pub struct HashParams {
     pub iterations: u32,
@@ -34,8 +31,8 @@ pub fn check_difficulty(hash: &String, difficulty: u128) -> bool {
     difficulty > difficulty_bytes_as_u128(&hash.as_bytes().to_vec())
 }
 
-fn calculate_hash_params(PrevBlockHash: String) -> HashParams {
-    let cu = PrevBlockHash.as_bytes();
+fn _calculate_hash_params(prev_block_hash: String) -> HashParams {
+    let cu = prev_block_hash.as_bytes();
     let b: Vec<u8> = cu.iter().cloned().collect();
     let mut a: u32 = 0;
     let _i = 0;
@@ -57,7 +54,7 @@ fn hash_string(params: &HashParams, s: &String) -> String {
     return out;
 }
 
-pub fn generateId(
+pub fn generate_id(
     k: String,
     public_key: String,
     private_key: String,

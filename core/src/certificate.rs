@@ -7,7 +7,7 @@ extern crate avrio_config;
 use avrio_config::config;
 extern crate avrio_database;
 use crate::{invite::valid, transaction::Transaction};
-use avrio_database::getData;
+use avrio_database::get_data;
 
 use avrio_crypto::Hashable;
 use ring::signature::{self, KeyPair};
@@ -181,8 +181,8 @@ pub fn generate_certificate(
         .expect("Time went backwards")
         .as_millis() as u64;
     let diff_cert = diff; //config().certificateDifficulty;
-    let block_hash = getData(config().db_path + "/transactions.db", &cert.txn_hash);
-    let blk = getBlockFromRaw(block_hash); // get the txn to check if it is correct
+    let block_hash = get_data(config().db_path + "/transactions.db", &cert.txn_hash);
+    let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
     let mut txn: Transaction = Default::default();
     for transaction in blk.txns {
         if transaction.hash == cert.txn_hash {
@@ -225,7 +225,7 @@ impl Certificate {
     pub fn validate(&mut self) -> Result<(), CertificateErrors> {
         let cert = self;
         cert.hash();
-        let diff_cert = config().certificateDifficulty;
+        let diff_cert = config().certificate_difficulty;
         if !cert.check_diff(&diff_cert) {
             return Err(CertificateErrors::DifficultyLow);
         } else if !cert.valid_signature() {
@@ -238,8 +238,8 @@ impl Certificate {
         {
             return Err(CertificateErrors::TimestampHigh);
         }
-        let block_hash = getData(config().db_path + "/transactions.db", &cert.txn_hash);
-        let blk = getBlockFromRaw(block_hash); // get the txn to check if it is correct
+        let block_hash = get_data(config().db_path + "/transactions.db", &cert.txn_hash);
+        let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
         let mut txn: Transaction = Default::default();
         for transaction in blk.txns {
             if transaction.hash == cert.txn_hash {
@@ -251,12 +251,12 @@ impl Certificate {
         }
         if txn.sender_key != cert.public_key {
             return Err(CertificateErrors::TransactionNotOwnedByAccount);
-        } else if txn.typeTransaction() != "lock" {
+        } else if txn.type_transaction() != "lock" {
             return Err(CertificateErrors::TransactionNotLock);
         } else if txn.amount != config().fullnode_lock_amount {
             return Err(CertificateErrors::LockedFundsInsufficent);
         }
-        let got_data = getData(
+        let got_data = get_data(
             config().db_path + &"/fn-certificates".to_owned(),
             &(cert.public_key.to_owned() + &"-cert".to_owned()),
         );
@@ -271,13 +271,13 @@ impl Certificate {
                 return Err(CertificateErrors::WalletAlreadyRegistered);
             }
         }
-        if txn.unlock_time - (config().transactionTimestampMaxOffset as u64)
+        if txn.unlock_time - (config().transaction_timestamp_max_offset as u64)
             < (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64)
                 + (config().fullnode_lock_time * config().target_epoch_length)
-            || txn.unlock_time + (config().transactionTimestampMaxOffset as u64)
+            || txn.unlock_time + (config().transaction_timestamp_max_offset as u64)
                 < (SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
@@ -396,7 +396,7 @@ impl Certificate {
 
 /// irelavant clone from blockchain lib to preven cylic dependencys
 #[derive(Serialize, Deserialize, Default)]
-pub struct _Header_Clone {
+pub struct _HeaderClone {
     pub version_major: u8,
     pub version_breaking: u8,
     pub version_minor: u8,
@@ -409,18 +409,18 @@ pub struct _Header_Clone {
 /// irelavant clone from blockchain lib to preven cylic dependencys
 
 #[derive(Serialize, Deserialize, Default)]
-pub struct _Block_Clone {
-    pub header: _Header_Clone,
+pub struct _BlockClone {
+    pub header: _HeaderClone,
     pub txns: Vec<Transaction>,
     pub hash: String,
     pub signature: String,
     pub confimed: bool,
-    pub node_signatures: Vec<_BlockSignature_Clone>,
+    pub node_signatures: Vec<_BlockSignatureClone>,
 }
 #[derive(Serialize, Deserialize, Default)]
 /// irelavant clone from blockchain lib to preven cylic dependencys
 
-pub struct _BlockSignature_Clone {
+pub struct _BlockSignatureClone {
     pub hash: String,
     pub timestamp: u64,
     pub block_hash: String,
@@ -433,11 +433,11 @@ use std::fs::File;
 use std::io::prelude::*;
 
 /// irelavant clone from blockchain lib to preven cylic dependencys
-fn getBlockFromRaw(hash: String) -> _Block_Clone {
+fn get_block_from_raw(hash: String) -> _BlockClone {
     // returns the block when you only know the hash by opeining the raw blk-HASH.dat file (where hash == the block hash)
     let mut file =
         File::open(config().db_path + &"/blocks/blk-".to_owned() + &hash + ".dat").unwrap();
     let mut contents = String::new();
-    file.read_to_string(&mut contents);
+    file.read_to_string(&mut contents).unwrap();
     return serde_json::from_str(&contents).unwrap_or_default();
 }

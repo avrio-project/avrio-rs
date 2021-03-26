@@ -7,14 +7,13 @@ rpc/lib.rs -
 #![feature(proc_macro_hygiene, decl_macro)]
 
 extern crate avrio_core;
-use avrio_blockchain::{check_block, enact_block, getBlockFromRaw, saveBlock, Block};
-use avrio_core::account::{getAccount, Account};
+use avrio_blockchain::get_block_from_raw;
+use avrio_core::account::{get_account, Account};
 #[macro_use]
 extern crate rocket;
 use rocket::config::{Config, Environment, LoggingLevel};
 
 extern crate avrio_p2p;
-use avrio_p2p::prop_block;
 
 fn not_supported() -> String {
     "{ \"error\": \"this method is not yet supported\"}".to_owned()
@@ -26,7 +25,7 @@ fn must_provide_method() -> &'static str {
 
 #[get("/getBalance/<chain>")]
 fn get_balance(chain: String) -> String {
-    let acc: Account = getAccount(&chain).unwrap_or(Account::default());
+    let acc: Account = get_account(&chain).unwrap_or(Account::default());
     let balance: u64 = acc.balance;
     let locked: u64 = acc.locked;
     "{    \"response\": 200, \"chainkey\": ".to_owned()
@@ -40,7 +39,7 @@ fn get_balance(chain: String) -> String {
 
 #[get("/getBlock/<hash>")]
 fn get_block(hash: String) -> String {
-    let blk = getBlockFromRaw(hash);
+    let blk = get_block_from_raw(hash);
     serde_json::to_string(&blk).unwrap_or_default()
 }
 
@@ -48,8 +47,8 @@ fn get_block(hash: String) -> String {
 fn get_usernames() -> String {
     not_supported()
 }
-#[post("/submit_block", format = "application/json", data = "<block_dat>")]
-fn submit_block(block_dat: rocket::Data) -> String {
+#[post("/submit_block", format = "application/json", data = "<_block_dat>")]
+fn submit_block(_block_dat: rocket::Data) -> String {
     /* TODO: Find a way of getting all conections currently active (a function) wich returns a vec of refrences to mutable TcpStreams so we can prop the block
     let block_utf8 = block_dat.peek();
     let block: String = String::from_utf8(block_utf8.to_vec()).unwrap_or_default();

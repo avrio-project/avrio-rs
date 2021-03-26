@@ -1,7 +1,6 @@
-use rocksdb::DBCompactionStyle;
 use rocksdb::{DBRawIterator, Error, Options, DB};
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::process;
 #[macro_use]
 extern crate log;
@@ -14,20 +13,20 @@ struct PeerlistSave {
     peers: Vec<String>,
 }
 
-pub fn openDb(path: String) -> Result<rocksdb::DB, Error> {
+pub fn open_db(path: String) -> Result<rocksdb::DB, Error> {
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_skip_stats_update_on_db_open(false);
     opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
     return DB::open(&opts, path);
 }
-pub fn getIter<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
+pub fn get_iter<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
     return db.raw_iterator();
 }
 
-pub fn saveData(serialized: String, path: String, key: String) -> u8 {
+pub fn save_data(serialized: String, path: String, key: String) -> u8 {
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
-    let db = openDb(path).unwrap_or_else(|e| {
+    let db = open_db(path).unwrap_or_else(|e| {
         error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
     });
@@ -46,8 +45,8 @@ pub fn saveData(serialized: String, path: String, key: String) -> u8 {
 }
 
 pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
-    let peers_db = openDb(config().db_path + &"/peers".to_string()).unwrap();
-    let s = getDataDb(&peers_db, &"white");
+    let peers_db = open_db(config().db_path + &"/peers".to_string()).unwrap();
+    let s = get_data_db(&peers_db, &"white");
     drop(peers_db);
     if s == "-1".to_owned() {
         return Err("peerlist not found".into());
@@ -77,7 +76,7 @@ pub fn save_peerlist(
         as_string.push(peer.to_string());
     }
     let s = serde_json::to_string(&as_string)?;
-    saveData(
+    save_data(
         s,
         config().db_path + &"/peers".to_string(),
         "white".to_string(),
@@ -85,8 +84,8 @@ pub fn save_peerlist(
     return Ok(());
 }
 
-pub fn getData(path: String, key: &str) -> String {
-    let db = openDb(path.clone()).unwrap_or_else(|e| {
+pub fn get_data(path: String, key: &str) -> String {
+    let db = open_db(path.clone()).unwrap_or_else(|e| {
         error!("Failed to open database, gave error {:?}", e);
         process::exit(0);
     });
@@ -108,12 +107,16 @@ pub fn getData(path: String, key: &str) -> String {
     return data;
 }
 
-pub fn getDataDb(db: &DB, key: &str) -> String {
+pub fn get_data_db(db: &DB, key: &str) -> String {
     let data: String;
     match db.get(key) {
         Ok(Some(value)) => {
             data = String::from_utf8(value).unwrap_or("".to_owned());
-            trace!("got data (db) from db: {}, data: {}", db.path().display(), data);
+            trace!(
+                "got data (db) from db: {}, data: {}",
+                db.path().display(),
+                data
+            );
         }
         Ok(None) => {
             data = "-1".to_owned();
@@ -127,7 +130,7 @@ pub fn getDataDb(db: &DB, key: &str) -> String {
     return data;
 }
 
-pub fn setDataDb(value: &String, db: &DB, key: &str) -> u8 {
+pub fn set_data_db(value: &String, db: &DB, key: &str) -> u8 {
     if let Err(e) = db.put(key, value) {
         error!(
             "Failed to save data (db) to db: {}, gave error: {}",

@@ -1,8 +1,9 @@
 extern crate avrio_database;
-use avrio_database::{getData, saveData};
+
 use serde::{Deserialize, Serialize};
 extern crate avrio_config;
 use avrio_config::config;
+use std::convert::TryInto;
 use std::fs::File;
 use std::io::prelude::*;
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
@@ -39,7 +40,7 @@ impl Account {
         return Ok(to_dec(self.balance));
     }
     pub fn save(&self) -> Result<(), ()> {
-        match setAccount(self) {
+        match set_account(self) {
             0 => {
                 return Err(());
             }
@@ -51,10 +52,10 @@ impl Account {
             }
         };
     }
-    pub fn new(publicKey: String) -> Account {
+    pub fn new(public_key: String) -> Account {
         // allows Account::new(publicKey)
         let acc: Account = Account {
-            public_key: publicKey,
+            public_key: public_key,
             username: "".to_string(),
             balance: 0,
             locked: 0,
@@ -67,15 +68,15 @@ impl Account {
         };
         return acc;
     }
-    pub fn addUsername(&mut self, userName: String) -> Result<(), ()> {
-        self.username = userName;
+    pub fn add_username(&mut self, user_name: String) -> Result<(), ()> {
+        self.username = user_name;
         self.save()
     }
-    pub fn addAccessCode(&mut self, permCode: &String, pubKey: &String) -> Result<(), ()> {
+    pub fn add_access_code(&mut self, perm_code: &String, pub_key: &String) -> Result<(), ()> {
         let new_acc_key: Accesskey = Accesskey {
-            key: pubKey.to_owned(),
+            key: pub_key.to_owned(),
             allowance: 0,
-            code: permCode.to_owned(),
+            code: perm_code.to_owned(),
         };
         self.access_keys.push(new_acc_key);
         self.save()
@@ -83,23 +84,23 @@ impl Account {
 }
 /// Gets the account assosiated with the username provided
 /// if the account or the username does not exist it returns an err
-pub fn getByUsername(username: &String) -> Result<Account, String> {
+pub fn get_by_username(username: &String) -> Result<Account, String> {
     let path =
         config().db_path + &"/usernames/".to_owned() + &avrio_crypto::raw_hash(username) + ".uname";
     if let Ok(mut file) = File::open(path) {
         let mut contents = String::new();
         let _ = file.read_to_string(&mut contents);
-        return Ok(getAccount(&contents).unwrap_or_default());
+        return Ok(get_account(&contents).unwrap_or_default());
     } else {
         return Err("failed to open file".to_owned());
     }
 }
 
-pub fn setAccount(acc: &Account) -> u8 {
+pub fn set_account(acc: &Account) -> u8 {
     let path = config().db_path + "/accounts/" + &acc.public_key + ".account";
     let serialized: String;
-    let getAccOld = getAccount(&acc.public_key);
-    if let Ok(deserialized) = getAccOld {
+    let get_acc_old = get_account(&acc.public_key);
+    if let Ok(deserialized) = get_acc_old {
         if acc.username != deserialized.username && deserialized != Account::default() {
             let upath = config().db_path
                 + &"/usernames/".to_owned()
@@ -143,7 +144,7 @@ pub fn setAccount(acc: &Account) -> u8 {
 }
 /// Gets the account assosiated with the public_key provided
 /// if the account does not exist it returns an err
-pub fn getAccount(public_key: &String) -> Result<Account, u8> {
+pub fn get_account(public_key: &String) -> Result<Account, u8> {
     let path = config().db_path + &"/accounts/".to_owned() + &public_key + ".account";
     if let Ok(mut file) = File::open(path) {
         let mut contents = String::new();
@@ -159,26 +160,26 @@ pub fn getAccount(public_key: &String) -> Result<Account, u8> {
 }
 
 pub fn open_or_create(public_key: &String) -> Account {
-    if let Ok(acc) = getAccount(public_key) {
+    if let Ok(acc) = get_account(public_key) {
         return acc;
     } else {
-        if let Ok(acc) = getByUsername(public_key) {
+        if let Ok(acc) = get_by_username(public_key) {
             return acc;
         } else {
             let acc = Account::new(public_key.clone());
-            let _ = setAccount(&acc);
+            let _ = set_account(&acc);
             return acc;
         }
     }
 }
 
-pub fn deltaFunds(
+pub fn delta_funds(
     public_key: &String,
     amount: u64,
     mode: u8,
     access_key: String,
 ) -> Result<(), String> {
-    let mut acc: Account = getAccount(public_key).unwrap_or_else(|e| {
+    let mut acc: Account = get_account(public_key).unwrap_or_else(|e| {
         debug!(
             "failed to get account with public key {}, gave error {}",
             public_key, e
@@ -203,7 +204,7 @@ pub fn deltaFunds(
                 );
             } else {
                 acc.balance = acc.balance - amount;
-                return match setAccount(&acc) {
+                return match set_account(&acc) {
                     1 => Ok(()),
                     _ => Err("failed to set account".to_string()),
                 };
@@ -222,7 +223,7 @@ pub fn deltaFunds(
                 warn!("changing funds for account {} with access key {}. Access key does not exist in context to account !", acc.public_key, access_key);
                 return Err("Access Key Does not exist".to_string());
             } else {
-                let after_change = acc.access_keys[i].allowance - amount;
+                let after_change: i64 = (acc.access_keys[i].allowance - amount).try_into().unwrap();
                 if after_change < 0 {
                     // can access key allowance cover this?
                     warn!("changing funds for account {} with access key {:?} would produce negative allowance!",acc.public_key, access_key);
@@ -230,7 +231,7 @@ pub fn deltaFunds(
                 } else {
                     acc.balance = acc.balance - amount;
                     acc.access_keys[i].allowance = acc.access_keys[i].allowance - amount;
-                    return match setAccount(&acc) {
+                    return match set_account(&acc) {
                         1 => Ok(()),
                         _ => Err("Failed to save account".to_string()),
                     };
@@ -242,7 +243,7 @@ pub fn deltaFunds(
         if access_key == "" {
             // none provdied/ using main key
             acc.balance = acc.balance + amount;
-            return match setAccount(&acc) {
+            return match set_account(&acc) {
                 1 => Ok(()),
                 _ => Err("Failed to save account".to_string()),
             };
@@ -261,7 +262,7 @@ pub fn deltaFunds(
             } else {
                 acc.access_keys[i].allowance = acc.access_keys[i].allowance + amount;
                 acc.balance = acc.balance + amount;
-                return match setAccount(&acc) {
+                return match set_account(&acc) {
                     1 => Ok(()),
                     _ => Err("Failed to save account".to_string()),
                 };
