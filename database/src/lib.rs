@@ -2,7 +2,8 @@ extern crate avrio_config;
 extern crate num_cpus;
 use std::collections::HashMap;
 use std::sync::{
-    mpsc::{Receiver, Sender}, Mutex,
+    mpsc::{Receiver, Sender},
+    Mutex,
 };
 #[macro_use]
 extern crate lazy_static;
@@ -13,7 +14,6 @@ use rocksdb::{DBRawIterator, Options, DB};
 use serde::{Deserialize, Serialize};
 use std::mem::size_of_val;
 use std::net::SocketAddr;
-
 
 use avrio_config::config;
 // a lazy static muxtex (essentially a 'global' variable)
@@ -26,10 +26,9 @@ use avrio_config::config;
 lazy_static! {
     static ref DATABASES: Mutex<Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>> =
         Mutex::new(None);
-}
-lazy_static! {
     static ref FLUSH_STREAM_HANDLER: Mutex<Option<std::sync::mpsc::Sender<String>>> =
         Mutex::new(None);
+    static ref DATABASEFILES: Mutex<HashMap<String, rocksdb::DB>> = Mutex::new(HashMap::new());
 }
 #[derive(Debug, Serialize, Deserialize)]
 struct PeerlistSave {
@@ -38,7 +37,14 @@ struct PeerlistSave {
 pub fn close_flush_stream() {
     info!("Shutting down dirty page flusher stream");
     if let Some(sender) = FLUSH_STREAM_HANDLER.lock().unwrap().clone() {
-        sender.send("stop".to_string());
+        if let Err(e) = sender.send("stop".to_string()) {
+            error!(
+                "CRITICAL: failed to send stop message to dirty data flush stream. Got error={}",
+                e
+            );
+        } else {
+            info!("Safley shut down dirty data flush stream!");
+        }
     }
 }
 
@@ -62,7 +68,7 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_skip_stats_update_on_db_open(false);
-    opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
+    opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
     let mut return_databases: HashMap<String, String> = HashMap::new();
     let db = DB::open(&opts, path)?;
     let iter = db.raw_iterator();
@@ -78,6 +84,74 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
 pub fn get_iterator<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
     return db.raw_iterator();
 }
+fn reload_cache(db_paths: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
+    let mut db_file_lock = DATABASEFILES.lock()?;
+    let mut additions = 0;
+    let mut unchanged = 0;
+    for path in db_paths {
+        // iterate over all the new paths to add
+        trace!("Recaching {}", path);
+        let db: DB;
+        match db_file_lock.keys().len() {
+            0 => {
+                // the existing hashmap is empty, open the db from disk
+                let mut opts = Options::default();
+                opts.create_if_missing(true);
+                opts.set_skip_stats_update_on_db_open(false);
+                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                db = DB::open(&opts, &path)?;
+                additions += 1;
+            }
+            _ => {
+                // db file locks hashmap is not empty
+                let db_hashmap = &mut *db_file_lock;
+                if db_hashmap.contains_key(&path) {
+                    // the db files lock hashmap contains the database we are looking for, call remove on it to gain ownership of it
+                    db = db_hashmap.remove(&path).unwrap();
+                    unchanged += 1;
+                } else {
+                    // open the db file, we dont have it already
+                    let mut opts = Options::default();
+                    opts.create_if_missing(true);
+                    opts.set_skip_stats_update_on_db_open(false);
+                    opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                    db = DB::open(&opts, &path)?;
+                    additions += 1;
+                }
+            }
+        };
+        new_db_hashmap.insert(path, db); //  add DB lock file to new_db_hashmap
+    }
+    let mut keys: Vec<String> = vec![];
+    {
+        // now we iterate over all the other open DBs
+        let local_keys = db_file_lock.keys().clone();
+        for key in local_keys {
+            keys.push(key.to_string());
+        }
+    }
+    for key in keys {
+        if db_file_lock.contains_key(&key) {
+            trace!("Moving DB lock file (key={}) to new hashmap", key);
+            let moved_db = db_file_lock.remove(&key).unwrap();
+            unchanged += 1;
+            new_db_hashmap.insert(key, moved_db);
+        } else {
+            error!(
+                "Unexpected error. Key listed in hm.keys() is not contained, key={}",
+                key
+            );
+        }
+    }
+    // now we need to set the lazy_static to new_hashmap
+    *db_file_lock = new_db_hashmap;
+    debug!(
+        "Updated db_file_lock to new db hashmap, additions_count={}, unchanged_count={}",
+        additions, unchanged
+    );
+    return Ok(());
+}
 pub fn init_cache(
     max_size: usize,
 ) -> Result<(Sender<String>, std::thread::JoinHandle<()>), Box<dyn std::error::Error>> {
@@ -86,7 +160,7 @@ pub fn init_cache(
     let mut db_lock = DATABASES.lock()?;
     trace!("Gained lock on lazy static");
     // TODO move this to config
-    let to_cache_paths = /* (config().db_path + )*/ vec![""];
+    let to_cache_paths = /* (config().db_path + )*/ vec!["/chains/masterchainindex", "/chaindigest"];
     log::info!(
         "Starting database cache, max size (bytes)={}, number_cachable_dbs={}",
         max_size,
@@ -94,26 +168,29 @@ pub fn init_cache(
     );
     let mut databases_hashmap: HashMap<String, (HashMap<String, (String, u16)>, u16)> =
         HashMap::new();
+    let mut database_lock_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
     for path in to_cache_paths {
         let final_path = config().db_path + path;
-        log::debug!("Caching db, path={}", final_path,);
+        log::debug!("Caching db, path={}", final_path);
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.set_skip_stats_update_on_db_open(false);
-        opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
-        let db = DB::open(&opts, path)?;
-        let db_iter = db.raw_iterator();
+        opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
         let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
-        while db_iter.valid() {
-            if let Some(key_bytes) = db_iter.key() {
-                if let Ok(key) = String::from_utf8(Vec::from(key_bytes)) {
-                    let hashed_key = avrio_crypto::raw_lyra(&key);
-                    // now get the value
-                    if let Some(value_bytes) = db_iter.value() {
-                        if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
-                            trace!("(DB={}) Got key={} for value={}", path, key, value);
-                            // now put that into a hashmap
-                            values_hashmap.insert(hashed_key, (value, 0));
+        {
+            let db = DB::open(&opts, path)?;
+            let db_iter = db.raw_iterator();
+            while db_iter.valid() {
+                if let Some(key_bytes) = db_iter.key() {
+                    if let Ok(key) = String::from_utf8(Vec::from(key_bytes)) {
+                        let hashed_key = avrio_crypto::raw_lyra(&key);
+                        // now get the value
+                        if let Some(value_bytes) = db_iter.value() {
+                            if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
+                                trace!("(DB={}) Got key={} for value={}", path, key, value);
+                                // now put that into a hashmap
+                                values_hashmap.insert(hashed_key, (value, 0));
+                            }
                         }
                     }
                 }
@@ -131,11 +208,15 @@ pub fn init_cache(
         if max_size != 0 {
             debug!(
                 "Used {}% of allocated cache memory ({}/{} bytes)",
-                max_size / size_of_total,
+                size_of_total / max_size,
                 size_of_local,
                 size_of_total
             );
         }
+        // reopen the db
+        let db_new = DB::open(&opts, path)?;
+        // now we add the on-disk DB lock to DATABASEFILES
+        database_lock_hashmap.insert(path.to_string(), db_new);
     }
     debug!(
         "Cached all DB's, total used mem={}, set_max={} ({}%)",
@@ -146,7 +227,13 @@ pub fn init_cache(
     // now we need to set the DATABASES global var to this
     trace!("Allocating to databases");
     *db_lock = Some(databases_hashmap);
-    trace!("Set db global varible to the database_hashmap finished");
+    trace!("Set db global varible to the database_hashmap");
+    // now set the DATABASE_FILES lazy static
+    trace!("Adding on-disk database locks to lazy_static");
+    let mut db_file_lock = DATABASEFILES.lock()?;
+    *db_file_lock = database_lock_hashmap;
+    trace!("Added on-disk database locks to memory");
+
     // all done, launch the dirty data flush thread
     let (send, recv) = std::sync::mpsc::channel();
     let flush_handler = std::thread::spawn(move || {
@@ -177,13 +264,34 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                     dirty
                 );
                 if dirty {
-                    // TODO: save data to disk
-                    // we need to read from disc
-                    let mut opts = Options::default();
-                    opts.create_if_missing(true);
-                    opts.set_skip_stats_update_on_db_open(false);
-                    opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
-                    let db = DB::open(&opts, &path)?;
+                    // we need to write to disc
+                    let mut db_file_lock = DATABASEFILES.lock()?;
+                    let db_deref: DB;
+                    let db: &DB;
+                    match db_file_lock.keys().len() {
+                        0 => {
+                            let mut opts = Options::default();
+                            opts.create_if_missing(true);
+                            opts.set_skip_stats_update_on_db_open(false);
+                            opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                            db_deref = DB::open(&opts, &path)?;
+                            db = &db_deref;
+                        }
+                        _ => {
+                            let db_hashmap = &mut *db_file_lock;
+                            if db_hashmap.contains_key(&path) {
+                                db = &db_hashmap[&path];
+                            } else {
+                                let mut opts = Options::default();
+                                opts.create_if_missing(true);
+                                opts.set_skip_stats_update_on_db_open(false);
+                                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                                db_deref = DB::open(&opts, &path)?;
+                                db = &db_deref;
+                                let _ = reload_cache(vec![path.clone()])?;
+                            }
+                        }
+                    };
                     for (key, value) in db_tuple.0 {
                         if value.1 != 0 {
                             if let Err(e) = db.put(key.clone(), value.0.clone()) {
@@ -240,16 +348,35 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
         }
     }
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
-    // we need to read from disc
-    let mut opts = Options::default();
-    opts.create_if_missing(true);
-    opts.set_skip_stats_update_on_db_open(false);
-    opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
-    let db = DB::open(&opts, path).unwrap();
-    /*    let db = open_database(path).unwrap_or_else(|e| {
-        error!("Failed to open database, gave error {:?}", e);
-        process::exit(0);
-    });*/
+    // we need to write to disc
+    let mut db_file_lock = DATABASEFILES.lock().unwrap();
+    let db_deref: DB;
+    let db: &DB;
+    match db_file_lock.keys().len() {
+        0 => {
+            let mut opts = Options::default();
+            opts.create_if_missing(true);
+            opts.set_skip_stats_update_on_db_open(false);
+            opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+            db_deref = DB::open(&opts, path).unwrap();
+            db = &db_deref;
+        }
+        _ => {
+            let db_hashmap = &mut *db_file_lock;
+            if db_hashmap.contains_key(path) {
+                db = &db_hashmap[path];
+            } else {
+                let mut opts = Options::default();
+                opts.create_if_missing(true);
+                opts.set_skip_stats_update_on_db_open(false);
+                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                db_deref = DB::open(&opts, &path).unwrap();
+                db = &db_deref;
+                let _ = reload_cache(vec![path.clone()]);
+            }
+        }
+    };
+    
 
     if let Err(e) = db.put(key.clone(), serialized.clone()) {
         error!("Failed to save data to db, gave error: {}", e);
@@ -340,15 +467,40 @@ pub fn get_data(dbpath: String, key: &str) -> String {
     // er did not have:
     // 1) the database cached
     // or 2) the key cached
-    // therfore we read from disk to be sure we dont have this value
+    // therefore we read from disk to be sure we dont have this value
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_skip_stats_update_on_db_open(false);
-    opts.increase_parallelism(((1 / 2) * num_cpus::get()) as i32);
-    let db = DB::open(&opts, &dbpath).unwrap();
-
+    opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
     let data: String;
-
+    // we need to write to disc
+    let mut db_file_lock = DATABASEFILES.lock().unwrap();
+    let db_deref: DB;
+    let db: &DB;
+    match db_file_lock.keys().len() {
+        0 => {
+            let mut opts = Options::default();
+            opts.create_if_missing(true);
+            opts.set_skip_stats_update_on_db_open(false);
+            opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+            db_deref = DB::open(&opts, &dbpath).unwrap();
+            db = &db_deref;
+        }
+        _ => {
+            let db_hashmap = &mut *db_file_lock;
+            if db_hashmap.contains_key(&dbpath) {
+                db = &db_hashmap[&dbpath];
+            } else {
+                let mut opts = Options::default();
+                opts.create_if_missing(true);
+                opts.set_skip_stats_update_on_db_open(false);
+                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                db_deref = DB::open(&opts, &dbpath).unwrap();
+                db = &db_deref;
+                let _ = reload_cache(vec![dbpath.clone()]);
+            }
+        }
+    };
     match db.get(key) {
         Ok(Some(value)) => {
             data = String::from_utf8(value).unwrap_or("".to_owned());
@@ -364,12 +516,10 @@ pub fn get_data(dbpath: String, key: &str) -> String {
 
         Err(e) => {
             data = "0".to_owned();
-
             error!("Error {} getting data from db", e);
         }
     }
-
-    data
+    return data;
 }
 
 pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String {
