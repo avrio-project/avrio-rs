@@ -642,7 +642,7 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
 
         let inv_sender_res = save_data(
             &block.hash,
-            &(config().db_path + &"/chaindigest".to_owned()),
+            &(config().db_path + "/chains/" + &block.header.chain_key + "-chainindex"),
             block.header.height.to_string(),
         );
 
