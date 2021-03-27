@@ -260,8 +260,8 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 ))
             } else {
                 out.finish(format_args!(
-                    "[{}][{}][{}] {}",
-                    chrono::Local::now().format("%H:%M"),
+                    "{}[{}][{}] {}",
+                    chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
                     record.target(),
                     colors.color(record.level()),
                     message
