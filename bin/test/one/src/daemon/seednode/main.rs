@@ -64,7 +64,7 @@ impl EventHandler for Handler {
 
 pub async fn recieved_block(block: avrio_blockchain::Block) {
     if config().discord_token == "DISCORD_TOKEN" {
-        return
+        return;
     }
     debug!("Discord hook: {:?}", block);
 
@@ -118,7 +118,7 @@ pub async fn username_registered(
     account: avrio_core::account::Account,
 ) {
     if config().discord_token == "DISCORD_TOKEN" {
-        return
+        return;
     }
     debug!("Discord hook: {:?} {:?}", block, account);
     unsafe {
@@ -459,13 +459,8 @@ fn main() {
         }
     }
     let art = "
-   #    #     # ######  ### #######
-  # #   #     # #     #  #  #     #
- #   #  #     # #     #  #  #     #
-#     # #     # ######   #  #     #
-#######  #   #  #   #    #  #     #
-#     #   # #   #    #   #  #     #
-#     #    #    #     # ### ####### ";
+    ▄▀█ █░█ █▀█ █ █▀█
+    █▀█ ▀▄▀ █▀▄ █ █▄█ ";
     let mut chain_key: Vec<String> = vec![]; // 0 = pubkey, 1 = privkey
     println!("{}", art);
     info!("Avrio Seednode Daemon Testnet v1.0.0 (pre-alpha)");
@@ -681,8 +676,16 @@ fn main() {
             &"txncount".to_owned(),
         )
     );
-    let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
-    info!("Our balance: {}", ouracc.balance_ui().unwrap());
+    let try_get_acc = avrio_core::account::getAccount(&wall.public_key);
+    if let Ok(ouracc) = try_get_acc {
+        info!("Our balance: {}", ouracc.balance_ui().unwrap());
+    } else {
+        error!(
+            "Failed to get account, wallet_public_key={}, error={}",
+            wall.public_key,
+            try_get_acc.unwrap_err()
+        );
+    }
     loop {
         // Now we loop until shutdown
         let _ = io::stdout().flush();
