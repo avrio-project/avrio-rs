@@ -557,19 +557,13 @@ impl Block {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_millis() as u64;
-        let mut chainKey: String = config().chain_key;
+        let mut chainKey: String = config().chain_key; // if we were not passed a chainkey, use our one
         if let Some(key) = chain_key {
             chainKey = key;
         }
-        let txn_iter = 0;
-        let _new_nonce: u64 = avrio_database::get_data(
-            config().db_path + &"/chains/".to_owned() + &chainKey + &"-chainindex".to_owned(),
-            &"txncount".to_owned(),
-        )
-        .parse()
-        .unwrap_or_default();
+        let mut txn_iter = 0;
         for txn in blk_clone.clone().txns {
-            txn_iter + 1;
+            txn_iter += 1;
             if txn.receive_key != chainKey {
                 blk_clone.txns.remove(txn_iter);
             }
@@ -595,6 +589,7 @@ impl Block {
             } else {
                 our_height = our_height_.parse()?;
             }
+            trace!("our_height={}", our_height);
             blk_clone.header.chain_key = chainKey;
             blk_clone.header.height = our_height + 1;
             blk_clone.send_block = Some(self.hash.to_owned());
