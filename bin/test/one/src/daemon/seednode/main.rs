@@ -479,7 +479,7 @@ fn main() {
     if !database_present() {
         create_file_structure().unwrap();
     }
-    avrio_database::init_cache(1000000000).expect("Failed to init db cache");
+    avrio_database::init_cache(1000000000).expect("Failed to init db cache"); // 1 gb db cache // TODO: Move this number (cache size) to config
     info!("Launching API server");
     let _api_server_handle = thread::spawn(|| {
         start_server();
