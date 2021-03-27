@@ -64,13 +64,38 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
             }
         }
     }
-    // we need to read from disc
-    let mut opts = Options::default();
-    opts.create_if_missing(true);
-    opts.set_skip_stats_update_on_db_open(false);
-    opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+    // we need to write to disc
+    let mut db_file_lock = DATABASEFILES.lock().unwrap();
+    let db_deref: DB;
+    let db: &DB;
+    match db_file_lock.keys().len() {
+        0 => {
+            let mut opts = Options::default();
+            opts.create_if_missing(true);
+            opts.set_skip_stats_update_on_db_open(false);
+            opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+            db_deref = DB::open(&opts, path).unwrap();
+            db = &db_deref;
+        }
+        _ => {
+            let db_hashmap = &mut *db_file_lock;
+            if db_hashmap.contains_key(&path) {
+                db = &db_hashmap[&path];
+            } else {
+                let mut opts = Options::default();
+                opts.create_if_missing(true);
+                opts.set_skip_stats_update_on_db_open(false);
+                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                db_deref = DB::open(&opts, &path).unwrap();
+                db = &db_deref;
+                let cloned_path = path.clone();
+                std::thread::spawn(move || {
+                    let _ = reload_cache(vec![cloned_path]);
+                });
+            }
+        }
+    };
     let mut return_databases: HashMap<String, String> = HashMap::new();
-    let db = DB::open(&opts, path)?;
     let iter = db.raw_iterator();
     while iter.valid() {
         return_databases.insert(
@@ -85,8 +110,10 @@ pub fn get_iterator<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
     return db.raw_iterator();
 }
 fn reload_cache(db_paths: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
     let mut db_file_lock = DATABASEFILES.lock()?;
+    trace!("Got lock on DBFILES");
     let mut additions = 0;
     let mut unchanged = 0;
     for path in db_paths {
@@ -169,8 +196,8 @@ pub fn init_cache(
     let mut databases_hashmap: HashMap<String, (HashMap<String, (String, u16)>, u16)> =
         HashMap::new();
     let mut database_lock_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
-    for path in to_cache_paths {
-        let final_path = config().db_path + path;
+    for raw_path in to_cache_paths {
+        let final_path = config().db_path + raw_path;
         log::debug!("Caching db, path={}", final_path);
         let mut opts = Options::default();
         opts.create_if_missing(true);
@@ -178,7 +205,7 @@ pub fn init_cache(
         opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
         let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
         {
-            let db = DB::open(&opts, path)?;
+            let db = DB::open(&opts, final_path.to_owned())?;
             let db_iter = db.raw_iterator();
             while db_iter.valid() {
                 if let Some(key_bytes) = db_iter.key() {
@@ -187,7 +214,7 @@ pub fn init_cache(
                         // now get the value
                         if let Some(value_bytes) = db_iter.value() {
                             if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
-                                trace!("(DB={}) Got key={} for value={}", path, key, value);
+                                trace!("(DB={}) Got key={} for value={}", final_path, key, value);
                                 // now put that into a hashmap
                                 values_hashmap.insert(hashed_key, (value, 0));
                             }
@@ -214,9 +241,9 @@ pub fn init_cache(
             );
         }
         // reopen the db
-        let db_new = DB::open(&opts, path)?;
+        let db_new = DB::open(&opts, final_path.to_owned())?;
         // now we add the on-disk DB lock to DATABASEFILES
-        database_lock_hashmap.insert(path.to_string(), db_new);
+        database_lock_hashmap.insert(final_path.to_string(), db_new);
     }
     debug!(
         "Cached all DB's, total used mem={}, set_max={} ({}%)",
@@ -253,73 +280,79 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(5000)); // check every 5 secconds for dirty entries
-        let db_lock = DATABASES.lock()?; // get a lock
-        if let Some(mut db_lock_val) = db_lock.clone() {
-            for (path, db_tuple) in db_lock_val.clone() {
-                let dirty = db_tuple.1 != 0;
-                trace!(
-                    /*target="dirty flush loop", */
-                    "path={}, dirty={}",
-                    path,
-                    dirty
-                );
-                if dirty {
-                    // we need to write to disc
-                    let mut db_file_lock = DATABASEFILES.lock()?;
-                    let db_deref: DB;
-                    let db: &DB;
-                    match db_file_lock.keys().len() {
-                        0 => {
-                            let mut opts = Options::default();
-                            opts.create_if_missing(true);
-                            opts.set_skip_stats_update_on_db_open(false);
-                            opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
-                            db_deref = DB::open(&opts, &path)?;
-                            db = &db_deref;
-                        }
-                        _ => {
-                            let db_hashmap = &mut *db_file_lock;
-                            if db_hashmap.contains_key(&path) {
-                                db = &db_hashmap[&path];
-                            } else {
+        {
+            let db_lock = DATABASES.lock()?; // get a lock
+            if let Some(mut db_lock_val) = db_lock.clone() {
+                for (path, db_tuple) in db_lock_val.clone() {
+                    let dirty = db_tuple.1 != 0;
+                    trace!(
+                        /*target="dirty flush loop", */
+                        "path={}, dirty={}",
+                        path,
+                        dirty
+                    );
+                    if dirty {
+                        // we need to write to disc
+                        let mut db_file_lock = DATABASEFILES.lock()?;
+                        let db_deref: DB;
+                        let db: &DB;
+                        match db_file_lock.keys().len() {
+                            0 => {
                                 let mut opts = Options::default();
                                 opts.create_if_missing(true);
                                 opts.set_skip_stats_update_on_db_open(false);
                                 opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
                                 db_deref = DB::open(&opts, &path)?;
                                 db = &db_deref;
-                                let _ = reload_cache(vec![path.clone()])?;
+                            }
+                            _ => {
+                                let db_hashmap = &mut *db_file_lock;
+                                if db_hashmap.contains_key(&path) {
+                                    db = &db_hashmap[&path];
+                                } else {
+                                    let mut opts = Options::default();
+                                    opts.create_if_missing(true);
+                                    opts.set_skip_stats_update_on_db_open(false);
+                                    opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                                    db_deref = DB::open(&opts, &path)?;
+                                    db = &db_deref;
+                                    let cloned_path = path.clone();
+                                    std::thread::spawn(move || {
+                                        let _ = reload_cache(vec![cloned_path]);
+                                    });
+                                    //let cloned_path = path.clone();
+                                }
+                            }
+                        };
+                        for (key, value) in db_tuple.0 {
+                            if value.1 != 0 {
+                                if let Err(e) = db.put(key.clone(), value.0.clone()) {
+                                    error!("Failed to save data to db, gave error: {}", e);
+                                } else {
+                                    trace!(
+                                        "flushed data to db: {}, key: {}, value, {}",
+                                        db.path().display(),
+                                        key,
+                                        value.0
+                                    );
+                                    // set per-value dirty flag to 0 (clean)
+                                    //     let mut reset_bit_buffer = db_lock_val[&path].0.clone();
+                                    let mut reset_bit = db_lock_val.get_mut(&key).unwrap();
+                                    reset_bit.1 = 0;
+                                    *db_lock_val.get_mut(&path).unwrap() = reset_bit.clone();
+                                    *db_lock_val.get_mut(&path).unwrap() =
+                                        (db_lock_val[&path].0.clone(), db_lock_val[&path].1);
+                                }
                             }
                         }
-                    };
-                    for (key, value) in db_tuple.0 {
-                        if value.1 != 0 {
-                            if let Err(e) = db.put(key.clone(), value.0.clone()) {
-                                error!("Failed to save data to db, gave error: {}", e);
-                            } else {
-                                trace!(
-                                    "flushed data to db: {}, key: {}, value, {}",
-                                    db.path().display(),
-                                    key,
-                                    value.0
-                                );
-                                // set per-value dirty flag to 0 (clean)
-                                //     let mut reset_bit_buffer = db_lock_val[&path].0.clone();
-                                let mut reset_bit = db_lock_val.get_mut(&key).unwrap();
-                                reset_bit.1 = 0;
-                                *db_lock_val.get_mut(&path).unwrap() = reset_bit.clone();
-                                *db_lock_val.get_mut(&path).unwrap() =
-                                    (db_lock_val[&path].0.clone(), db_lock_val[&path].1);
-                            }
-                        }
+                        // set per-database dirty flag to 0 (clean)
+                        *db_lock_val.get_mut(&path).unwrap() = (db_lock_val[&path].0.clone(), 0);
                     }
-                    // set per-database dirty flag to 0 (clean)
-                    *db_lock_val.get_mut(&path).unwrap() = (db_lock_val[&path].0.clone(), 0);
                 }
             }
-        }
-        if to_break {
-            break;
+            if to_break {
+                break;
+            }
         }
     }
     return Ok(());
@@ -372,11 +405,13 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
                 opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
                 db_deref = DB::open(&opts, &path).unwrap();
                 db = &db_deref;
-                let _ = reload_cache(vec![path.clone()]);
+                let cloned_path = path.clone();
+                std::thread::spawn(move || {
+                    let _ = reload_cache(vec![cloned_path]);
+                });
             }
         }
     };
-    
 
     if let Err(e) = db.put(key.clone(), serialized.clone()) {
         error!("Failed to save data to db, gave error: {}", e);
@@ -497,7 +532,10 @@ pub fn get_data(dbpath: String, key: &str) -> String {
                 opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
                 db_deref = DB::open(&opts, &dbpath).unwrap();
                 db = &db_deref;
-                let _ = reload_cache(vec![dbpath.clone()]);
+                let cloned_path = dbpath.clone();
+                std::thread::spawn(move || {
+                    let _ = reload_cache(vec![cloned_path]);
+                });
             }
         }
     };
