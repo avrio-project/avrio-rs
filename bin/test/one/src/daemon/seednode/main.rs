@@ -63,7 +63,11 @@ impl EventHandler for Handler {
 }
 
 pub async fn recieved_block(block: avrio_blockchain::Block) {
+    if config().discord_token == "DISCORD_TOKEN" {
+        return
+    }
     debug!("Discord hook: {:?}", block);
+
     unsafe {
         if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
             .send_message(&CTX_HOLDER.clone().unwrap(), |m| {
@@ -113,6 +117,9 @@ pub async fn username_registered(
     block: avrio_blockchain::Block,
     account: avrio_core::account::Account,
 ) {
+    if config().discord_token == "DISCORD_TOKEN" {
+        return
+    }
     debug!("Discord hook: {:?} {:?}", block, account);
     unsafe {
         if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
@@ -305,6 +312,7 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
     create_dir_all(config().db_path + &"/wallets".to_string())?;
     create_dir_all(config().db_path + &"/accounts".to_string())?;
     create_dir_all(config().db_path + &"/usernames".to_string())?;
+    info!("Created datadir folder structure");
     return Ok(());
 }
 
@@ -415,7 +423,6 @@ fn main() {
         safe_exit();
     })
     .expect("Error setting Ctrl-C handler");
-    avrio_database::init_cache(1000000000).expect("Failed to init db cache");
     let matches = App::new("Avrio Daemon")
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
@@ -464,15 +471,15 @@ fn main() {
     info!("Avrio Seednode Daemon Testnet v1.0.0 (pre-alpha)");
     let conf = config();
     conf.create().unwrap();
+    if !database_present() {
+        create_file_structure().unwrap();
+    }
+    avrio_database::init_cache(1000000000).expect("Failed to init db cache");
     info!("Launching API server");
     let _api_server_handle = thread::spawn(|| {
         start_server();
     });
     let synced: bool;
-
-    if !database_present() {
-        create_file_structure().unwrap();
-    }
     info!("Avrio Seednode Daemon successfully launched");
     if config().chain_key == "".to_owned() {
         generate_chains().unwrap();
