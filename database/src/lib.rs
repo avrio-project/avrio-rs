@@ -210,13 +210,12 @@ pub fn init_cache(
             while db_iter.valid() {
                 if let Some(key_bytes) = db_iter.key() {
                     if let Ok(key) = String::from_utf8(Vec::from(key_bytes)) {
-                        let hashed_key = avrio_crypto::raw_lyra(&key);
                         // now get the value
                         if let Some(value_bytes) = db_iter.value() {
                             if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
                                 trace!("(DB={}) Got key={} for value={}", final_path, key, value);
                                 // now put that into a hashmap
-                                values_hashmap.insert(hashed_key, (value, 0));
+                                values_hashmap.insert(key, (value, 0));
                             }
                         }
                     }
@@ -364,16 +363,16 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
         // check if it contains a Some(x) value
         if let Some(databases) = database_lock.clone() {
             // it does; now check if the databases hashmap contains our path (eg is this db cached)
-            let hashed_path = avrio_crypto::raw_lyra(&path);
-            if databases.contains_key(&hashed_path) {
+            if databases.contains_key(path) {
                 //  we have this database cached, read from it
                 // safe to get the value
-                let mut db = databases[&hashed_path].clone().0;
+                let mut db = databases[path].clone().0;
                 // write to our local copy of the lazy_static
                 db.insert(
-                    avrio_crypto::raw_lyra(&key.to_string()),
+                    key.to_string(),
                     (serialized.to_owned(), 1),
                 );
+                trace!("Updated DB cache, path={}, key={}, serialized={}", path, key, serialized);
                 // now update the global lazy_static
                 *database_lock = Some(databases);
                 return 1;
@@ -490,11 +489,11 @@ pub fn get_data(dbpath: String, key: &str) -> String {
                 // safe to get the value
                 let db = databases[&dbpath].clone().0;
                 // does the database cache have this value?
-                let hashed_key = avrio_crypto::raw_lyra(&key.to_string());
-                if db.contains_key(&hashed_key) {
+               
+                if db.contains_key(key) {
                     //  we have this database cached, read from it
                     // safe to get the value
-                    return db[&hashed_key].clone().0; // return the first element of the tuple (the string value)
+                    return db[key].clone().0; // return the first element of the tuple (the string value)
                 } // we dont have this key-value pair cached we continue with reading from disk to be sure we are not missing data that has not been cached
             }
         }
