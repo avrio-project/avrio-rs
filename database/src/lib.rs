@@ -187,7 +187,7 @@ pub fn init_cache(
     let mut db_lock = DATABASES.lock()?;
     trace!("Gained lock on lazy static");
     // TODO move this to config
-    let to_cache_paths = /* (config().db_path + )*/ vec!["/chains/masterchainindex", "/chaindigest"];
+    let to_cache_paths = /* (config().db_path + )*/ vec!["/chains/masterchainindex", "/chaindigest", "/peers"];
     log::info!(
         "Starting database cache, max size (bytes)={}, number_cachable_dbs={}",
         max_size,
