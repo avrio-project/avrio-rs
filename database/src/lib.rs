@@ -368,11 +368,13 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
                 // safe to get the value
                 let mut db = databases[path].clone().0;
                 // write to our local copy of the lazy_static
-                db.insert(
-                    key.to_string(),
-                    (serialized.to_owned(), 1),
+                db.insert(key.to_string(), (serialized.to_owned(), 1));
+                trace!(
+                    "Updated DB cache, path={}, key={}, serialized={}",
+                    path,
+                    key,
+                    serialized
                 );
-                trace!("Updated DB cache, path={}, key={}, serialized={}", path, key, serialized);
                 // now update the global lazy_static
                 *database_lock = Some(databases);
                 return 1;
@@ -489,19 +491,26 @@ pub fn get_data(dbpath: String, key: &str) -> String {
                 // safe to get the value
                 let db = databases[&dbpath].clone().0;
                 // does the database cache have this value?
-               
                 if db.contains_key(key) {
                     //  we have this database cached, read from it
                     // safe to get the value
-                    return db[key].clone().0; // return the first element of the tuple (the string value)
+                    let val = db[key].clone().0;
+                    trace!(
+                        "Got data from DB cache, path={}, key={}, value={}",
+                        dbpath,
+                        key,
+                        val
+                    );
+                    return val;
+                    // return the first element of the tuple (the string value)
                 } // we dont have this key-value pair cached we continue with reading from disk to be sure we are not missing data that has not been cached
             }
         }
     }
-    // er did not have:
+    // either did not have:
     // 1) the database cached
     // or 2) the key cached
-    // therefore we read from disk to be sure we dont have this value
+    // therefore we read from disk to be sure we dont have this value there instead
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_skip_stats_update_on_db_open(false);
@@ -542,13 +551,13 @@ pub fn get_data(dbpath: String, key: &str) -> String {
         Ok(Some(value)) => {
             data = String::from_utf8(value).unwrap_or("".to_owned());
 
-            trace!("got data from db: {}, data: {}, key {}", dbpath, data, key);
+            trace!("got data from db={}, data={}, key={}", dbpath, data, key);
         }
 
         Ok(None) => {
             data = "-1".to_owned();
 
-            trace!("got data from db: {}, data: None, key: {}", dbpath, key);
+            trace!("got data from db={}, data=None, key={}", dbpath, key);
         }
 
         Err(e) => {
@@ -566,12 +575,12 @@ pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String
         true => {
             data = db[key].to_owned();
 
-            trace!("got data (db) from db: hashmap, data: {}", data);
+            trace!("got data from db hashmap, data: {}, key={}", data, key);
         }
         false => {
             data = "-1".to_owned();
 
-            trace!("got data (db) from db: hashmap, data: None");
+            trace!("got data from db hashmap, data: None, key={}", key);
         }
     }
 
