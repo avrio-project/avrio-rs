@@ -171,11 +171,12 @@ fn reload_cache(db_paths: Vec<String>) -> Result<(), Box<dyn std::error::Error>>
             );
         }
     }
+    let new_size = std::mem::size_of_val(&new_db_hashmap);
     // now we need to set the lazy_static to new_hashmap
     *db_file_lock = new_db_hashmap;
     debug!(
-        "Updated db_file_lock to new db hashmap, additions_count={}, unchanged_count={}",
-        additions, unchanged
+        "Updated db_file_lock to new db hashmap, additions_count={}, unchanged_count={}, new_cache_size={}",
+        additions, unchanged, new_size
     );
     return Ok(());
 }
