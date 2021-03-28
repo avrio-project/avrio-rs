@@ -10,7 +10,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-use rocksdb::{DBRawIterator, Options, DB};
+use rocksdb::{DBRawIterator, Options, DB, IteratorMode};
 use serde::{Deserialize, Serialize};
 use std::mem::size_of_val;
 use std::net::SocketAddr;
@@ -105,11 +105,16 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
         }
     };
     let mut return_databases: HashMap<String, String> = HashMap::new();
-    let iter = db.raw_iterator();
-    while iter.valid() {
+    let iter = db.iterator(IteratorMode::Start); // Always iterates forward
+    for (key, value) in iter {
+        trace!(
+            "OD: saw {}, {}",
+            String::from_utf8(key.to_vec())?,
+            String::from_utf8(value.to_vec())?,
+        );
         return_databases.insert(
-            String::from_utf8(iter.key().unwrap_or_default().to_vec())?,
-            String::from_utf8(iter.value().unwrap_or_default().to_vec())?,
+            String::from_utf8(key.to_vec())?,
+            String::from_utf8(value.to_vec())?,
         );
     }
     return Ok(return_databases);
