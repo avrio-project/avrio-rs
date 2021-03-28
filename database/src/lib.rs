@@ -16,13 +16,14 @@ use std::mem::size_of_val;
 use std::net::SocketAddr;
 
 use avrio_config::config;
-// a lazy static muxtex (essentially a 'global' variable)
-// The first hashmap is wrapped in Option (either None, or Some) for startup saftey
-// It is indexed by hashes of paths of db. eg to get the db at path "~/leocornelius/some_db"
-// You hash "~/leocornelius/some_db" and get the value from the hashmap
-// This returns a tuple (HashMap, u16), the u16 acts a modified tag. If tha value is != 0 the database is marked as 'dirty'
-// and a flush to disk operation is queued, the HashMap is the database itself, to get a value simply look up the corrosponding key in this hashmap
-// NOTE: this is dev docs, for writing avrio_db functions, to get data from the databases please use the get_data and save_data wrappers
+static cache_values: bool = false; // should we use a memtable to store database values in memory (NO, this is not yet working)
+                                   // a lazy static muxtex (essentially a 'global' variable)
+                                   // The first hashmap is wrapped in Option (either None, or Some) for startup saftey
+                                   // It is indexed by hashes of paths of db. eg to get the db at path "~/leocornelius/some_db"
+                                   // You hash "~/leocornelius/some_db" and get the value from the hashmap
+                                   // This returns a tuple (HashMap, u16), the u16 acts a modified tag. If tha value is != 0 the database is marked as 'dirty'
+                                   // and a flush to disk operation is queued, the HashMap is the database itself, to get a value simply look up the corrosponding key in this hashmap
+                                   // NOTE: this is dev docs, for writing avrio_db functions, to get data from the databases please use the get_data and save_data wrappers
 lazy_static! {
     static ref DATABASES: Mutex<Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>> =
         Mutex::new(None);
@@ -45,24 +46,28 @@ pub fn close_flush_stream() {
         } else {
             info!("Safley shut down dirty data flush stream!");
         }
+    } else {
+        error!("Called close_flsuh_stream() but failed to get access to FLUSH_STRAM_HANDLER");
     }
 }
 
 pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     //  gain a lock on the DATABASES lazy_sataic
-    if let Ok(database_lock) = DATABASES.lock() {
-        // check if it contains a Some(x) value
-        if let Some(databases) = database_lock.clone() {
-            // it does; now check if the databases hashmap contains our path (eg is this db cached)
-            if databases.contains_key(&path) {
-                //  we have this database cached, read from it
-                trace!("Open database: Database cached (path={})", path);
-                let mut return_databases: HashMap<String, String> = HashMap::new();
-                for (key, (val, _)) in databases[&path].0.clone() {
-                    trace!("OD: key={}, val={}", key, val);
-                    return_databases.insert(key, val);
+    if cache_values {
+        if let Ok(database_lock) = DATABASES.lock() {
+            // check if it contains a Some(x) value
+            if let Some(databases) = database_lock.clone() {
+                // it does; now check if the databases hashmap contains our path (eg is this db cached)
+                if databases.contains_key(&path) {
+                    //  we have this database cached, read from it
+                    trace!("Open database: Database cached (path={})", path);
+                    let mut return_databases: HashMap<String, String> = HashMap::new();
+                    for (key, (val, _)) in databases[&path].0.clone() {
+                        trace!("OD: key={}, val={}", key, val);
+                        return_databases.insert(key, val);
+                    }
+                    return Ok(return_databases);
                 }
-                return Ok(return_databases);
             }
         }
     }
@@ -93,9 +98,9 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
                 db_deref = DB::open(&opts, &path).unwrap();
                 db = &db_deref;
                 let cloned_path = path.clone();
-                std::thread::spawn(move || {
-                    let _ = reload_cache(vec![cloned_path]);
-                });
+                trace!("Open database, reloading cache");
+                let _ = reload_cache(vec![cloned_path], &mut db_file_lock, &mut DATABASES.lock()?);
+                trace!("Finished reloading cache, continuing");
             }
         }
     };
@@ -113,11 +118,17 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
 pub fn get_iterator<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
     return db.raw_iterator();
 }
-fn reload_cache(db_paths: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+fn reload_cache(
+    db_paths: Vec<String>,
+    db_file_lock: &mut std::sync::MutexGuard<HashMap<String, rocksdb::DB>>,
+    db_lock: &mut std::sync::MutexGuard<
+        Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>,
+    >,
+) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
-    let mut db_file_lock = DATABASEFILES.lock()?;
-    let mut db_lock = DATABASES.lock()?;
+    // let mut db_file_lock = DATABASEFILES.lock()?;
+    //let mut db_lock = DATABASES.lock()?;
     trace!("Got lock on DBFILES");
     let mut additions = 0;
     let mut unchanged = 0;
@@ -155,29 +166,31 @@ fn reload_cache(db_paths: Vec<String>) -> Result<(), Box<dyn std::error::Error>>
                 }
             }
         };
-        // now we use the opened db to load all values into values_hashmap
-        let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
+        if cache_values {
+            // now we use the opened db to load all values into values_hashmap
+            let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
 
-        {
-            let db_iter = db.raw_iterator();
-            while db_iter.valid() {
-                if let Some(key_bytes) = db_iter.key() {
-                    if let Ok(key) = String::from_utf8(Vec::from(key_bytes)) {
-                        // now get the value
-                        if let Some(value_bytes) = db_iter.value() {
-                            if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
-                                trace!("(DB={}) Got key={} for value={}", path, key, value);
-                                // now put that into a hashmap
-                                values_hashmap.insert(key, (value, 0));
+            {
+                let db_iter = db.raw_iterator();
+                while db_iter.valid() {
+                    if let Some(key_bytes) = db_iter.key() {
+                        if let Ok(key) = String::from_utf8(Vec::from(key_bytes)) {
+                            // now get the value
+                            if let Some(value_bytes) = db_iter.value() {
+                                if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
+                                    trace!("(DB={}) Got key={} for value={}", path, key, value);
+                                    // now put that into a hashmap
+                                    values_hashmap.insert(key, (value, 0));
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        // we now add values_hashmap to databases_hashmap
+            // we now add values_hashmap to databases_hashmap
 
-        databases_hashmap.insert(path.to_owned(), (values_hashmap, 0));
+            databases_hashmap.insert(path.to_owned(), (values_hashmap, 0));
+        }
         // now add the db object into the db locks hashmap
         new_db_hashmap.insert(path, db); //  add DB lock file to new_db_hashmap
     }
@@ -208,17 +221,19 @@ fn reload_cache(db_paths: Vec<String>) -> Result<(), Box<dyn std::error::Error>>
     }
     let new_size = std::mem::size_of_val(&new_db_hashmap); // get the current size of the db_locks hashmap
                                                            // now we need to set the lazy_static to new_hashmap
-    *db_file_lock = new_db_hashmap;
+    *(*db_file_lock) = new_db_hashmap;
     debug!(
         "Updated db_file_lock to new db hashmap, additions_count={}, unchanged_count={}, new_lock_cache_size={}",
         additions, unchanged, new_size
     );
-    trace!(
-        "Cached new valuess into global hashmap, new_values_cache_size={}",
-        std::mem::size_of_val(&databases_hashmap)
-    );
-    *db_lock = Some(databases_hashmap);
-    trace!("Set db global varible to the database_hashmap");
+    if cache_values {
+        trace!(
+            "Cached new valuess into global hashmap, new_values_cache_size={}",
+            std::mem::size_of_val(&databases_hashmap)
+        );
+        *(*db_lock) = Some(databases_hashmap);
+        trace!("Set db global varible to the database_hashmap");
+    }
     return Ok(());
 }
 pub fn init_cache(
@@ -246,7 +261,7 @@ pub fn init_cache(
         opts.set_skip_stats_update_on_db_open(false);
         opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
         let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
-        {
+        if cache_values {
             let db = DB::open(&opts, final_path.to_owned())?;
             let db_iter = db.raw_iterator();
             while db_iter.valid() {
@@ -263,34 +278,37 @@ pub fn init_cache(
                     }
                 }
             }
-        }
-        // get size of values_hashmap HashMap
-        let size_of_local = size_of_val(&values_hashmap);
-        // we have gone through every key value pair and added it to values_hashmap, now add the values_hashmap HashMap to the databases_hashmap HashMap
-        databases_hashmap.insert(final_path.to_owned(), (values_hashmap, 0));
-        let size_of_total = size_of_val(&databases_hashmap);
-        debug!(
-            "Cached db with path={}, db_hashmap_size={} bytes, databases_hashmap_size={} bytes",
-            final_path, size_of_local, size_of_total
-        );
-        if max_size != 0 {
+
+            // get size of values_hashmap HashMap
+            let size_of_local = size_of_val(&values_hashmap);
+            // we have gone through every key value pair and added it to values_hashmap, now add the values_hashmap HashMap to the databases_hashmap HashMap
+            databases_hashmap.insert(final_path.to_owned(), (values_hashmap, 0));
+            let size_of_total = size_of_val(&databases_hashmap);
             debug!(
-                "Used {}% of allocated cache memory ({}/{} bytes)",
-                size_of_total / max_size,
-                size_of_local,
-                size_of_total
+                "Cached db with path={}, db_hashmap_size={} bytes, databases_hashmap_size={} bytes",
+                final_path, size_of_local, size_of_total
             );
+            if max_size != 0 {
+                debug!(
+                    "Used {}% of allocated cache memory ({}/{} bytes)",
+                    size_of_total / max_size,
+                    size_of_local,
+                    size_of_total
+                );
+            }
         }
-        // reopen the db
+        // (re)open the db
         let db_new = DB::open(&opts, final_path.to_owned())?;
         // now we add the on-disk DB lock to DATABASEFILES
         database_lock_hashmap.insert(final_path.to_string(), db_new);
     }
+    let percent_usage: f64 =
+        ((size_of_val(&databases_hashmap) + size_of_val(&database_lock_hashmap)) / max_size) as f64;
     debug!(
         "Cached all DB's, total used mem={}, set_max={} ({}%)",
-        size_of_val(&databases_hashmap),
+        size_of_val(&databases_hashmap) + size_of_val(&database_lock_hashmap),
         max_size,
-        size_of_val(&databases_hashmap) / max_size
+        percent_usage
     );
     // now we need to set the DATABASES global var to this
     trace!("Allocating to databases");
@@ -305,7 +323,18 @@ pub fn init_cache(
     // all done, launch the dirty data flush thread
     let (send, recv) = std::sync::mpsc::channel();
     let flush_handler = std::thread::spawn(move || {
-        let _ = flush_dirty_to_disk(recv).expect("Flush dirty page function returned an error");
+        if cache_values {
+            debug!(
+                "Rrunning flush_dirty_data_to_disk, cache_values={}",
+                cache_values
+            );
+            let _ = flush_dirty_to_disk(recv).expect("Flush dirty page function returned an error");
+        } else {
+            debug!(
+                "Not running flush_dirty_data_to_disk, cache_values={}",
+                cache_values
+            );
+        }
     });
     *FLUSH_STREAM_HANDLER.lock().unwrap() = Some(send.clone()); // set global var
     return Ok((send, flush_handler));
@@ -322,7 +351,7 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
         }
         std::thread::sleep(std::time::Duration::from_millis(5000)); // check every 5 secconds for dirty entries
         {
-            let db_lock = DATABASES.lock()?; // get a lock
+            let mut db_lock = DATABASES.lock()?; // get a lock
             if let Some(mut db_lock_val) = db_lock.clone() {
                 for (path, db_tuple) in db_lock_val.clone() {
                     if db_tuple.1 != 0 {
@@ -356,10 +385,13 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                                     db_deref = DB::open(&opts, &path)?;
                                     db = &db_deref;
                                     let cloned_path = path.clone();
-                                    std::thread::spawn(move || {
-                                        let _ = reload_cache(vec![cloned_path]);
-                                    });
-                                    //let cloned_path = path.clone();
+                                    trace!("Dirty dataflush stream, reloading cache");
+                                    let _ = reload_cache(
+                                        vec![cloned_path],
+                                        &mut db_file_lock,
+                                        &mut db_lock,
+                                    );
+                                    trace!("Finished reloading cache, continuing");
                                 }
                             }
                         };
@@ -404,26 +436,28 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
 }
 
 pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
-    //  gain a lock on the DATABASES lazy_sataic
-    if let Ok(mut database_lock) = DATABASES.lock() {
-        // check if it contains a Some(x) value
-        if let Some(databases) = database_lock.clone() {
-            // it does; now check if the databases hashmap contains our path (eg is this db cached)
-            if databases.contains_key(path) {
-                //  we have this database cached, read from it
-                // safe to get the value
-                let mut db = databases[path].clone().0;
-                // write to our local copy of the lazy_static
-                db.insert(key.to_string(), (serialized.to_owned(), 1));
-                trace!(
-                    "Updated DB cache, path={}, key={}, serialized={}",
-                    path,
-                    key,
-                    serialized
-                );
-                // now update the global lazy_static
-                *database_lock = Some(databases);
-                return 1;
+    if cache_values {
+        //  gain a lock on the DATABASES lazy_sataic
+        if let Ok(mut database_lock) = DATABASES.lock() {
+            // check if it contains a Some(x) value
+            if let Some(databases) = database_lock.clone() {
+                // it does; now check if the databases hashmap contains our path (eg is this db cached)
+                if databases.contains_key(path) {
+                    //  we have this database cached, read from it
+                    // safe to get the value
+                    let mut db = databases[path].clone().0;
+                    // write to our local copy of the lazy_static
+                    db.insert(key.to_string(), (serialized.to_owned(), 1));
+                    trace!(
+                        "Updated DB cache, path={}, key={}, serialized={}",
+                        path,
+                        key,
+                        serialized
+                    );
+                    // now update the global lazy_static
+                    *database_lock = Some(databases);
+                    return 1;
+                }
             }
         }
     }
@@ -434,6 +468,7 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
     let db: &DB;
     match db_file_lock.keys().len() {
         0 => {
+            debug!("db_file_lock contains no keys");
             let mut opts = Options::default();
             opts.create_if_missing(true);
             opts.set_skip_stats_update_on_db_open(false);
@@ -442,6 +477,7 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
             db = &db_deref;
         }
         _ => {
+            trace!("db_file_lock contains keys");
             let db_hashmap = &mut *db_file_lock;
             if db_hashmap.contains_key(path) {
                 db = &db_hashmap[path];
@@ -453,9 +489,14 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
                 db_deref = DB::open(&opts, &path).unwrap();
                 db = &db_deref;
                 let cloned_path = path.clone();
-                std::thread::spawn(move || {
-                    let _ = reload_cache(vec![cloned_path]);
-                });
+                let try_lock = DATABASES.lock();
+                if let Ok(mut db_lock) = try_lock {
+                    trace!("Save data, reloading cache");
+                    let _ = reload_cache(vec![cloned_path], &mut db_file_lock, &mut db_lock);
+                    trace!("Finished reloading cache, continuing");
+                } else {
+                    error!("Save data, failed to gain lock on DATABASES mutex; skipping recache, error={}", try_lock.unwrap_err());
+                }
             }
         }
     };
@@ -500,7 +541,7 @@ pub fn add_peer(peer: SocketAddr) -> std::result::Result<(), Box<dyn std::error:
     let mut current_peer_list = get_peerlist().unwrap_or_default();
     current_peer_list.push(peer);
 
-    let deduplicated_peerlist: std::collections::HashSet<_> = current_peer_list.drain(..).collect(); // dedup
+    let deduplicated_peerlist: std::collections::HashSet<_> = current_peer_list.drain(..).collect(); // deduplicate peer list
     current_peer_list.extend(deduplicated_peerlist.into_iter());
 
     save_peerlist(&current_peer_list)
@@ -527,29 +568,31 @@ pub fn save_peerlist(
 }
 
 pub fn get_data(dbpath: String, key: &str) -> String {
-    //  gain a lock on the DATABASES lazy_sataic
-    if let Ok(database_lock) = DATABASES.lock() {
-        // check if it contains a Some(x) value
-        if let Some(databases) = database_lock.clone() {
-            // it does; now check if the databases hashmap contains our path (eg is this db cached)
-            if databases.contains_key(&dbpath) {
-                //  we have this database cached, read from it
-                // safe to get the value
-                let db = databases[&dbpath].clone().0;
-                // does the database cache have this value?
-                if db.contains_key(key) {
+    if cache_values {
+        //  gain a lock on the DATABASES lazy_sataic
+        if let Ok(database_lock) = DATABASES.lock() {
+            // check if it contains a Some(x) value
+            if let Some(databases) = database_lock.clone() {
+                // it does; now check if the databases hashmap contains our path (eg is this db cached)
+                if databases.contains_key(&dbpath) {
                     //  we have this database cached, read from it
                     // safe to get the value
-                    let val = db[key].clone().0;
-                    trace!(
-                        "Got data from DB cache, path={}, key={}, value={}",
-                        dbpath,
-                        key,
-                        val
-                    );
-                    return val;
-                    // return the first element of the tuple (the string value)
-                } // we dont have this key-value pair cached we continue with reading from disk to be sure we are not missing data that has not been cached
+                    let db = databases[&dbpath].clone().0;
+                    // does the database cache have this value?
+                    if db.contains_key(key) {
+                        //  we have this database cached, read from it
+                        // safe to get the value
+                        let val = db[key].clone().0;
+                        trace!(
+                            "Got data from DB cache, path={}, key={}, value={}",
+                            dbpath,
+                            key,
+                            val
+                        );
+                        return val;
+                        // return the first element of the tuple (the string value)
+                    } // we dont have this key-value pair cached we continue with reading from disk to be sure we are not missing data that has not been cached
+                }
             }
         }
     }
@@ -587,9 +630,14 @@ pub fn get_data(dbpath: String, key: &str) -> String {
                 db_deref = DB::open(&opts, &dbpath).unwrap();
                 db = &db_deref;
                 let cloned_path = dbpath.clone();
-                std::thread::spawn(move || {
-                    let _ = reload_cache(vec![cloned_path]);
-                });
+                let try_lock = DATABASES.lock();
+                if let Ok(mut db_lock) = try_lock {
+                    trace!("Get data, reloading cache");
+                    let _ = reload_cache(vec![cloned_path], &mut db_file_lock, &mut db_lock);
+                    trace!("Finished reloading cache, continuing");
+                } else {
+                    error!("Get data, failed to gain lock on DATABASES mutex; skipping recache, error={}", try_lock.unwrap_err());
+                }
             }
         }
     };
@@ -614,7 +662,7 @@ pub fn get_data(dbpath: String, key: &str) -> String {
     return data;
 }
 
-pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String {
+pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String { // TODO: legacy function, move evrything to stop using it
     let data: String;
 
     match db.contains_key(key) {
