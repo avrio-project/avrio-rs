@@ -188,7 +188,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 .level_for("avrio_blockchain", log::LevelFilter::Error)
                 .level_for("avrio_database", log::LevelFilter::Error)
                 .level_for("avrio_config", log::LevelFilter::Error)
-                .level_for("daemon", log::LevelFilter::Error)
+                .level_for("avrio_daemon", log::LevelFilter::Error)
                 .level_for("avrio_core", log::LevelFilter::Error)
                 .level_for("avrio_crypto", log::LevelFilter::Error)
                 .level_for("avrio_blockchain", log::LevelFilter::Error)
