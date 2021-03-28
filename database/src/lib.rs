@@ -56,8 +56,10 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
             // it does; now check if the databases hashmap contains our path (eg is this db cached)
             if databases.contains_key(&path) {
                 //  we have this database cached, read from it
+                trace!("Open database: Database cached (path={})", path);
                 let mut return_databases: HashMap<String, String> = HashMap::new();
                 for (key, (val, _)) in databases[&path].0.clone() {
+                    trace!("OD: key={}, val={}", key, val);
                     return_databases.insert(key, val);
                 }
                 return Ok(return_databases);
@@ -80,8 +82,10 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
         _ => {
             let db_hashmap = &mut *db_file_lock;
             if db_hashmap.contains_key(&path) {
+                trace!("OD: db lock cached in hashmap");
                 db = &db_hashmap[&path];
             } else {
+                trace!("OD: db lock not cached in hashmap");
                 let mut opts = Options::default();
                 opts.create_if_missing(true);
                 opts.set_skip_stats_update_on_db_open(false);
@@ -113,9 +117,12 @@ fn reload_cache(db_paths: Vec<String>) -> Result<(), Box<dyn std::error::Error>>
     debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
     let mut db_file_lock = DATABASEFILES.lock()?;
+    let mut db_lock = DATABASES.lock()?;
     trace!("Got lock on DBFILES");
     let mut additions = 0;
     let mut unchanged = 0;
+    let mut databases_hashmap: HashMap<String, (HashMap<String, (String, u16)>, u16)> =
+        HashMap::new();
     for path in db_paths {
         // iterate over all the new paths to add
         trace!("Recaching {}", path);
@@ -148,36 +155,70 @@ fn reload_cache(db_paths: Vec<String>) -> Result<(), Box<dyn std::error::Error>>
                 }
             }
         };
+        // now we use the opened db to load all values into values_hashmap
+        let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
+
+        {
+            let db_iter = db.raw_iterator();
+            while db_iter.valid() {
+                if let Some(key_bytes) = db_iter.key() {
+                    if let Ok(key) = String::from_utf8(Vec::from(key_bytes)) {
+                        // now get the value
+                        if let Some(value_bytes) = db_iter.value() {
+                            if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
+                                trace!("(DB={}) Got key={} for value={}", path, key, value);
+                                // now put that into a hashmap
+                                values_hashmap.insert(key, (value, 0));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // we now add values_hashmap to databases_hashmap
+
+        databases_hashmap.insert(path.to_owned(), (values_hashmap, 0));
+        // now add the db object into the db locks hashmap
         new_db_hashmap.insert(path, db); //  add DB lock file to new_db_hashmap
     }
+    // now we iterate over all the keys left over in the DATABASES lazy static, in other owrds we move the existing DBs into the new hashmap
     let mut keys: Vec<String> = vec![];
     {
+        // open a closure to drop the immutable borrow of db_file_lock created by the keys() function
         // now we iterate over all the other open DBs
         let local_keys = db_file_lock.keys().clone();
         for key in local_keys {
+            // iterate over the vec of keys
             keys.push(key.to_string());
         }
     }
     for key in keys {
         if db_file_lock.contains_key(&key) {
+            // thi should always be true, it checks if the key is contained in the db locks hashmap. If this ever returns false; its a bug
             trace!("Moving DB lock file (key={}) to new hashmap", key);
-            let moved_db = db_file_lock.remove(&key).unwrap();
-            unchanged += 1;
-            new_db_hashmap.insert(key, moved_db);
+            let moved_db = db_file_lock.remove(&key).unwrap(); // get the DB object by key
+            unchanged += 1; // for logging purposes
+            new_db_hashmap.insert(key, moved_db); // insert it into the new ahshmap
         } else {
             error!(
-                "Unexpected error. Key listed in hm.keys() is not contained, key={}",
+                "Unexpected error. Key listed in hm.keys() is not contained, key={}. THIS IS A BUG, please open a bug report at github",
                 key
             );
         }
     }
-    let new_size = std::mem::size_of_val(&new_db_hashmap);
-    // now we need to set the lazy_static to new_hashmap
+    let new_size = std::mem::size_of_val(&new_db_hashmap); // get the current size of the db_locks hashmap
+                                                           // now we need to set the lazy_static to new_hashmap
     *db_file_lock = new_db_hashmap;
     debug!(
-        "Updated db_file_lock to new db hashmap, additions_count={}, unchanged_count={}, new_cache_size={}",
+        "Updated db_file_lock to new db hashmap, additions_count={}, unchanged_count={}, new_lock_cache_size={}",
         additions, unchanged, new_size
     );
+    trace!(
+        "Cached new valuess into global hashmap, new_values_cache_size={}",
+        std::mem::size_of_val(&databases_hashmap)
+    );
+    *db_lock = Some(databases_hashmap);
+    trace!("Set db global varible to the database_hashmap");
     return Ok(());
 }
 pub fn init_cache(
@@ -284,14 +325,12 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
             let db_lock = DATABASES.lock()?; // get a lock
             if let Some(mut db_lock_val) = db_lock.clone() {
                 for (path, db_tuple) in db_lock_val.clone() {
-                    let dirty = db_tuple.1 != 0;
-                    trace!(
-                        /*target="dirty flush loop", */
-                        "path={}, dirty={}",
-                        path,
-                        dirty
-                    );
-                    if dirty {
+                    if db_tuple.1 != 0 {
+                        trace!(
+                            /*target="dirty flush loop", */
+                            "path={}, dirty=true",
+                            path,
+                        );
                         // we need to write to disc
                         let mut db_file_lock = DATABASEFILES.lock()?;
                         let db_deref: DB;
@@ -347,6 +386,12 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                         }
                         // set per-database dirty flag to 0 (clean)
                         *db_lock_val.get_mut(&path).unwrap() = (db_lock_val[&path].0.clone(), 0);
+                    } else {
+                        trace!(
+                            /*target="dirty flush loop", */
+                            "path={}, dirty=false",
+                            path,
+                        );
                     }
                 }
             }
