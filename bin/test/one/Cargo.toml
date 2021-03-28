@@ -50,4 +50,4 @@ serenity = { version = "0.10.4", default-features = false, features = [
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 fern = { version = "0.6", features = ["colored"] }
 chrono = "0.4"
-
+ctrlc = "3.1.8"

@@ -2,7 +2,7 @@ use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use serenity::{
     async_trait,
-    model::{channel::Message, gateway::Ready, id::ChannelId},
+    model::{gateway::Ready, id::ChannelId},
     prelude::*,
 };
 use std::io::{self, Write};
@@ -35,7 +35,7 @@ use avrio_blockchain::{
 };
 
 extern crate avrio_database;
-use avrio_database::{get_data, get_iterator, get_peerlist, open_database, save_data};
+use avrio_database::{get_data, get_peerlist, open_database, save_data};
 
 #[macro_use]
 extern crate log;
@@ -67,6 +67,7 @@ pub async fn recieved_block(block: avrio_blockchain::Block) {
         return;
     }
     debug!("Discord hook: {:?}", block);
+
     unsafe {
         if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
             .send_message(&CTX_HOLDER.clone().unwrap(), |m| {
@@ -173,6 +174,7 @@ pub fn safe_exit() {
 
     info!("Goodbye!");
     avrio_p2p::core::close_all();
+    avrio_database::close_flush_stream();
     std::process::exit(0);
 }
 fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
@@ -258,8 +260,8 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 ))
             } else {
                 out.finish(format_args!(
-                    "[{}][{}][{}] {}",
-                    chrono::Local::now().format("%H:%M"),
+                    "{}[{}][{}] {}",
+                    chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
                     record.target(),
                     colors.color(record.level()),
                     message
@@ -310,6 +312,7 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
     create_dir_all(config().db_path + &"/wallets".to_string())?;
     create_dir_all(config().db_path + &"/accounts".to_string())?;
     create_dir_all(config().db_path + &"/usernames".to_string())?;
+    info!("Created datadir folder structure");
     return Ok(());
 }
 
@@ -361,8 +364,8 @@ fn save_wallet(keypair: &Vec<String>) -> std::result::Result<(), Box<dyn std::er
         aead.encrypt(nonce, keypair[1].as_bytes().as_ref())
             .expect("wallet private key encryption failure!"),
     );
-    let _ = save_data(publickey_en, path.clone(), "pubkey".to_owned());
-    let _ = save_data(privatekey_en, path.clone(), "privkey".to_owned());
+    let _ = save_data(&publickey_en, &path, "pubkey".to_owned());
+    let _ = save_data(&privatekey_en, &path, "privkey".to_owned());
     info!("Saved wallet to {}", path);
     conf.chain_key = keypair[0].clone();
     conf.create()?;
@@ -416,6 +419,10 @@ fn open_wallet(key: String, address: bool) -> Wallet {
 }
 
 fn main() {
+    ctrlc::set_handler(move || {
+        safe_exit();
+    })
+    .expect("Error setting Ctrl-C handler");
     let matches = App::new("Avrio Daemon")
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
@@ -451,35 +458,39 @@ fn main() {
             std::process::exit(1);
         }
     }
-    let art = "
-   #    #     # ######  ### #######
-  # #   #     # #     #  #  #     #
- #   #  #     # #     #  #  #     #
-#     # #     # ######   #  #     #
-#######  #   #  #   #    #  #     #
-#     #   # #   #    #   #  #     #
-#     #    #    #     # ### ####### ";
+    let art = " 
+     ▄▄▄▄▄▄▄▄▄▄▄  ▄               ▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄ 
+    ▐░░░░░░░░░░░▌▐░▌             ▐░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+    ▐░█▀▀▀▀▀▀▀█░▌ ▐░▌           ▐░▌ ▐░█▀▀▀▀▀▀▀█░▌ ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌
+    ▐░▌       ▐░▌  ▐░▌         ▐░▌  ▐░▌       ▐░▌     ▐░▌     ▐░▌       ▐░▌
+    ▐░█▄▄▄▄▄▄▄█░▌   ▐░▌       ▐░▌   ▐░█▄▄▄▄▄▄▄█░▌     ▐░▌     ▐░▌       ▐░▌
+    ▐░░░░░░░░░░░▌    ▐░▌     ▐░▌    ▐░░░░░░░░░░░▌     ▐░▌     ▐░▌       ▐░▌
+    ▐░█▀▀▀▀▀▀▀█░▌     ▐░▌   ▐░▌     ▐░█▀▀▀▀█░█▀▀      ▐░▌     ▐░▌       ▐░▌
+    ▐░▌       ▐░▌      ▐░▌ ▐░▌      ▐░▌     ▐░▌       ▐░▌     ▐░▌       ▐░▌
+    ▐░▌       ▐░▌       ▐░▐░▌       ▐░▌      ▐░▌  ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌
+    ▐░▌       ▐░▌        ▐░▌        ▐░▌       ▐░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+     ▀         ▀          ▀          ▀         ▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀ 
+                                                                           ";
     let mut chain_key: Vec<String> = vec![]; // 0 = pubkey, 1 = privkey
     println!("{}", art);
     info!("Avrio Seednode Daemon Testnet v1.0.0 (pre-alpha)");
     let conf = config();
     conf.create().unwrap();
+    if !database_present() {
+        create_file_structure().unwrap();
+    }
+    avrio_database::init_cache(1000000000).expect("Failed to init db cache"); // 1 gb db cache // TODO: Move this number (cache size) to config
     info!("Launching API server");
     let _api_server_handle = thread::spawn(|| {
         start_server();
     });
     let synced: bool;
-
-    if !database_present() {
-        create_file_structure().unwrap();
-    }
     info!("Avrio Seednode Daemon successfully launched");
     if config().chain_key == "".to_owned() {
         generate_chains().unwrap();
-        let chainsdigest: String = avrio_blockchain::form_state_digest(
-            &open_database(config().db_path + &"/chaindigest".to_owned()).unwrap(),
-        )
-        .unwrap_or_default();
+        let chainsdigest: String =
+            avrio_blockchain::form_state_digest(config().db_path + &"/chaindigest".to_owned())
+                .unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
     }
     if config().discord_token != "DISCORD_TOKEN" {
@@ -675,8 +686,16 @@ fn main() {
             &"txncount".to_owned(),
         )
     );
-    let ouracc = avrio_core::account::getAccount(&wall.public_key).unwrap();
-    info!("Our balance: {}", ouracc.balance_ui().unwrap());
+    let try_get_acc = avrio_core::account::getAccount(&wall.public_key);
+    if let Ok(ouracc) = try_get_acc {
+        info!("Our balance: {}", ouracc.balance_ui().unwrap());
+    } else {
+        error!(
+            "Failed to get account, wallet_public_key={}, error={}",
+            wall.public_key,
+            try_get_acc.unwrap_err()
+        );
+    }
     loop {
         // Now we loop until shutdown
         let _ = io::stdout().flush();
@@ -735,22 +754,15 @@ fn main() {
                     + &"-chainindex".to_string(),
             )
             .unwrap();
-            let mut inv_iter = get_iterator(&inv_db);
             let mut highest_so_far: u64 = 0;
-            inv_iter.seek_to_first();
-            while inv_iter.valid() {
-                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                    .unwrap()
-                    .parse::<u64>()
-                {
+
+            for (key, _) in inv_db.iter() {
+                if let Ok(height) = key.parse::<u64>() {
                     if height > highest_so_far {
                         highest_so_far = height
                     }
                 }
-                inv_iter.next();
             }
-            drop(inv_iter);
-            drop(inv_db);
             let height: u64 = highest_so_far;
             let mut blk = Block {
                 header: Header {
@@ -982,7 +994,6 @@ fn main() {
                                 i += 1;
                                 info!("txn {}/{}", i, txnamount);
                             }
-                            // TODO: FIX!!
                             let inv_db = open_database(
                                 config().db_path
                                     + &"/chains/".to_string()
@@ -990,24 +1001,15 @@ fn main() {
                                     + &"-chainindex".to_string(),
                             )
                             .unwrap();
-                            let mut inv_iter = get_iterator(&inv_db);
                             let mut highest_so_far: u64 = 0;
-                            inv_iter.seek_to_first();
-                            while inv_iter.valid() {
-                                if let Ok(height) =
-                                    String::from_utf8(inv_iter.key().unwrap().into())
-                                        .unwrap()
-                                        .parse::<u64>()
-                                {
+                            for (key, _) in inv_db.iter() {
+                                if let Ok(height) = key.parse::<u64>() {
                                     if height > highest_so_far {
                                         highest_so_far = height
                                     }
                                 }
-                                inv_iter.next();
                             }
                             let height: u64 = highest_so_far;
-                            drop(inv_iter);
-                            drop(inv_db);
                             let mut blk = Block {
                                 header: Header {
                                     version_major: 0,
@@ -1106,30 +1108,24 @@ fn main() {
             .unwrap_or(0);
             txn.hash();
             let _ = txn.sign(&wall.private_key);
-            let inv_db = open_database(
-                config().db_path
-                    + &"/chains/".to_string()
-                    + &wall.public_key
-                    + &"-chainindex".to_string(),
-            )
-            .unwrap();
-            let mut inv_iter = get_iterator(&inv_db);
             let mut highest_so_far: u64 = 0;
-            inv_iter.seek_to_first();
-            while inv_iter.valid() {
-                if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                    .unwrap()
-                    .parse::<u64>()
-                {
-                    if height > highest_so_far {
-                        highest_so_far = height
-                    }
+            loop {
+                let try_new_heighest = get_data(
+                    config().db_path
+                        + &"/chains/".to_string()
+                        + &wall.public_key
+                        + &"-chainindex".to_string(),
+                    &(highest_so_far + 1).to_string(),
+                );
+                if try_new_heighest != "-1" {
+                    highest_so_far += 1;
+                    trace!("New highest: {}", highest_so_far);
+                } else {
+                    break;
                 }
-                inv_iter.next();
             }
-            drop(inv_iter);
-            drop(inv_db);
             let height: u64 = highest_so_far;
+            trace!("Higest height: {}", height);
             let mut blk = Block {
                 header: Header {
                     version_major: 0,
@@ -1238,22 +1234,14 @@ fn main() {
                                 + &"-chainindex".to_string(),
                         )
                         .unwrap();
-                        let mut inv_iter = get_iterator(&inv_db);
                         let mut highest_so_far: u64 = 0;
-                        inv_iter.seek_to_first();
-                        while inv_iter.valid() {
-                            if let Ok(height) = String::from_utf8(inv_iter.key().unwrap().into())
-                                .unwrap()
-                                .parse::<u64>()
-                            {
+                        for (key, _) in inv_db.iter() {
+                            if let Ok(height) = key.parse::<u64>() {
                                 if height > highest_so_far {
                                     highest_so_far = height
                                 }
                             }
-                            inv_iter.next();
                         }
-                        drop(inv_iter);
-                        drop(inv_db);
                         let height: u64 = highest_so_far;
                         let mut blk = Block {
                             header: Header {

@@ -253,18 +253,13 @@ pub fn launch_handle_client(
                                 );
                     
                                 if let Ok(db) = open_database(config().db_path + &"/chainlist".to_owned()) {
-                                    let mut iter = db.raw_iterator();
-                                    iter.seek_to_first();
+                                    
                                     let mut chains: Vec<String> = vec![];
                     
-                                    while iter.valid() {
-                                        if let Some(key_utf8) = iter.key() {
-                                            if let Ok(key) = String::from_utf8(key_utf8.to_vec()) {
-                                                chains.push(key);
-                                            }
-                                        }
-                                        iter.next();
+                                    for (key, _) in db.iter() {
+                                        chains.push(key.to_owned());
                                     }
+                                   
                     
                                     log::trace!("Our chain list: {:#?}", chains);
                                     let s = serde_json::to_string(&chains).unwrap_or_default();
