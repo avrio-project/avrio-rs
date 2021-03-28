@@ -13,16 +13,10 @@ description = "Testnet one, aimed at P2P, block and transaction code testing"
 name = "avrio-daemon"
 path = "src/daemon/main.rs"
 
-[[bin]]
-name = "seednode"
-path = "src/daemon/seednode/main.rs"
-
 #[[bin]]
 #name = "avrio-wallet"
 #path = "src/wallet/main.rs"
-[[bin]]
-name = "avrio-discord-bot"
-path = "src/discord/main.rs"
+
 
 [dependencies]
 simple_logger = "1.5.0"
