@@ -1108,21 +1108,20 @@ fn main() {
             .unwrap_or(0);
             txn.hash();
             let _ = txn.sign(&wall.private_key);
-            let inv_db = open_database(
-                config().db_path
-                    + &"/chains/".to_string()
-                    + &wall.public_key
-                    + &"-chainindex".to_string(),
-            )
-            .unwrap();
             let mut highest_so_far: u64 = 0;
-
-            for (key, val) in inv_db.iter() {
-                if let Ok(height) = key.parse::<u64>() {
-                    trace!("key={}, val={} (height?)", key, val);
-                    if height > highest_so_far {
-                        highest_so_far = height
-                    }
+            loop {
+                let try_new_heighest = get_data(
+                    config().db_path
+                        + &"/chains/".to_string()
+                        + &wall.public_key
+                        + &"-chainindex".to_string(),
+                    &(highest_so_far + 1).to_string(),
+                );
+                if try_new_heighest != "-1" {
+                    highest_so_far += 1;
+                    trace!("New highest: {}", highest_so_far);
+                } else {
+                    break;
                 }
             }
             let height: u64 = highest_so_far;
