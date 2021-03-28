@@ -130,9 +130,6 @@ fn reload_cache(
         Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>,
     >,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !CACHE_VALUES {
-        return Ok(());
-    }
     debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
     let mut additions = 0;
