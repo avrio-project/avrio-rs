@@ -63,6 +63,9 @@ impl EventHandler for Handler {
 }
 
 pub async fn recieved_block(block: avrio_blockchain::Block) {
+    if config().discord_token == "DISCORD_TOKEN" {
+        return;
+    }
     debug!("Discord hook: {:?}", block);
     unsafe {
         if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
@@ -113,6 +116,9 @@ pub async fn username_registered(
     block: avrio_blockchain::Block,
     account: avrio_core::account::Account,
 ) {
+    if config().discord_token == "DISCORD_TOKEN" {
+        return;
+    }
     debug!("Discord hook: {:?} {:?}", block, account);
     unsafe {
         if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
