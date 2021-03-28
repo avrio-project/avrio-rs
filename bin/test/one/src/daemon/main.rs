@@ -188,7 +188,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 .level_for("avrio_blockchain", log::LevelFilter::Error)
                 .level_for("avrio_database", log::LevelFilter::Error)
                 .level_for("avrio_config", log::LevelFilter::Error)
-                .level_for("seednode", log::LevelFilter::Error)
+                .level_for("daemon", log::LevelFilter::Error)
                 .level_for("avrio_core", log::LevelFilter::Error)
                 .level_for("avrio_crypto", log::LevelFilter::Error)
                 .level_for("avrio_blockchain", log::LevelFilter::Error)
@@ -489,6 +489,7 @@ fn main() {
     let mut chain_key: Vec<String> = vec![]; // 0 = pubkey, 1 = privkey
     println!("{}", art);
     info!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
+    warn!("Warning, this software is not stable");
     if seednode {
         warn!("Running in seednode mode, if you don't know what you are doing this is a mistake");
     }
@@ -544,7 +545,9 @@ fn main() {
         seednode_ip = seednode_ip_string
             .parse()
             .expect("Failed to parse seednode addr into a SocketAddr");
-        info!("Our ip={}", seednode_ip);
+        info!("Our ip={}, string={}", seednode_ip, seednode_ip_string);
+    } else if seednode {
+        warn!("Running in seednode mode, but have not set seednode-addr. This may cause issues");
     }
 
     for node in seednodes {
