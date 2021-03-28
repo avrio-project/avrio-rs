@@ -544,10 +544,12 @@ fn main() {
         seednode_ip = seednode_ip_string
             .parse()
             .expect("Failed to parse seednode addr into a SocketAddr");
+        info!("Our ip={}", seednode_ip);
     }
 
     for node in seednodes {
-        if node != seednode_ip { //dont connect to ourself
+        if node != seednode_ip {
+            //dont connect to ourself
             trace!("Adding seednode with addr={} to peerlist", node);
             pl.push(node);
         } else {
