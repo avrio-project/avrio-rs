@@ -1117,14 +1117,16 @@ fn main() {
             .unwrap();
             let mut highest_so_far: u64 = 0;
 
-            for (key, _) in inv_db.iter() {
+            for (key, val) in inv_db.iter() {
                 if let Ok(height) = key.parse::<u64>() {
+                    trace!("key={}, val={} (height?)", key, val);
                     if height > highest_so_far {
                         highest_so_far = height
                     }
                 }
             }
             let height: u64 = highest_so_far;
+            trace!("Higest height: {}", height);
             let mut blk = Block {
                 header: Header {
                     version_major: 0,
