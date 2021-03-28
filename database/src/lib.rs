@@ -16,7 +16,7 @@ use std::mem::size_of_val;
 use std::net::SocketAddr;
 
 use avrio_config::config;
-static cache_values: bool = false; // should we use a memtable to store database values in memory (NO, this is not yet working)
+static CACHE_VALUES: bool = false; // should we use a memtable to store database values in memory (NO, this is not yet working)
                                    // a lazy static muxtex (essentially a 'global' variable)
                                    // The first hashmap is wrapped in Option (either None, or Some) for startup saftey
                                    // It is indexed by hashes of paths of db. eg to get the db at path "~/leocornelius/some_db"
@@ -53,7 +53,7 @@ pub fn close_flush_stream() {
 
 pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     //  gain a lock on the DATABASES lazy_sataic
-    if cache_values {
+    if CACHE_VALUES {
         if let Ok(database_lock) = DATABASES.lock() {
             // check if it contains a Some(x) value
             if let Some(databases) = database_lock.clone() {
@@ -125,11 +125,11 @@ fn reload_cache(
         Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>,
     >,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if !CACHE_VALUES {
+        return Ok(());
+    }
     debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
-    // let mut db_file_lock = DATABASEFILES.lock()?;
-    //let mut db_lock = DATABASES.lock()?;
-    trace!("Got lock on DBFILES");
     let mut additions = 0;
     let mut unchanged = 0;
     let mut databases_hashmap: HashMap<String, (HashMap<String, (String, u16)>, u16)> =
@@ -166,7 +166,7 @@ fn reload_cache(
                 }
             }
         };
-        if cache_values {
+        if CACHE_VALUES {
             // now we use the opened db to load all values into values_hashmap
             let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
 
@@ -226,7 +226,7 @@ fn reload_cache(
         "Updated db_file_lock to new db hashmap, additions_count={}, unchanged_count={}, new_lock_cache_size={}",
         additions, unchanged, new_size
     );
-    if cache_values {
+    if CACHE_VALUES {
         trace!(
             "Cached new valuess into global hashmap, new_values_cache_size={}",
             std::mem::size_of_val(&databases_hashmap)
@@ -261,7 +261,7 @@ pub fn init_cache(
         opts.set_skip_stats_update_on_db_open(false);
         opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
         let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
-        if cache_values {
+        if CACHE_VALUES {
             let db = DB::open(&opts, final_path.to_owned())?;
             let db_iter = db.raw_iterator();
             while db_iter.valid() {
@@ -323,16 +323,16 @@ pub fn init_cache(
     // all done, launch the dirty data flush thread
     let (send, recv) = std::sync::mpsc::channel();
     let flush_handler = std::thread::spawn(move || {
-        if cache_values {
+        if CACHE_VALUES {
             debug!(
-                "Rrunning flush_dirty_data_to_disk, cache_values={}",
-                cache_values
+                "Rrunning flush_dirty_data_to_disk, CACHE_VALUES={}",
+                CACHE_VALUES
             );
             let _ = flush_dirty_to_disk(recv).expect("Flush dirty page function returned an error");
         } else {
             debug!(
-                "Not running flush_dirty_data_to_disk, cache_values={}",
-                cache_values
+                "Not running flush_dirty_data_to_disk, CACHE_VALUES={}",
+                CACHE_VALUES
             );
         }
     });
@@ -436,7 +436,7 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
 }
 
 pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
-    if cache_values {
+    if CACHE_VALUES {
         //  gain a lock on the DATABASES lazy_sataic
         if let Ok(mut database_lock) = DATABASES.lock() {
             // check if it contains a Some(x) value
@@ -568,7 +568,7 @@ pub fn save_peerlist(
 }
 
 pub fn get_data(dbpath: String, key: &str) -> String {
-    if cache_values {
+    if CACHE_VALUES {
         //  gain a lock on the DATABASES lazy_sataic
         if let Ok(database_lock) = DATABASES.lock() {
             // check if it contains a Some(x) value
@@ -662,7 +662,8 @@ pub fn get_data(dbpath: String, key: &str) -> String {
     return data;
 }
 
-pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String { // TODO: legacy function, move evrything to stop using it
+pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String {
+    // TODO: legacy function, move evrything to stop using it
     let data: String;
 
     match db.contains_key(key) {
