@@ -7,27 +7,23 @@ license = "MIT OR Apache-2.0"
 homepage = "http://testnet.avrio.network"
 repository = "https://github.com/avrio-project/avrio-core"
 readme = "README.md"
-description = """
-Testnet one, aimed at P2p + block/ txn code testing
-"""
+description = "Testnet one, aimed at P2P, block and transaction code testing"
 
 [[bin]]
 name = "avrio-daemon"
 path = "src/daemon/main.rs"
 
-[[bin]]
-name = "seednode"
-path = "src/daemon/seednode/main.rs"
-
 #[[bin]]
 #name = "avrio-wallet"
 #path = "src/wallet/main.rs"
+
+
 [dependencies]
 simple_logger = "1.5.0"
 log = "0.4"
 avrio_core = { path = "../../../core" }
 avrio_database = { path = "../../../database" }
-avrio_config = "0.2.3"
+avrio_config = { path = "../../../config" }
 avrio_blockchain = { path = "../../../blockchain" }
 avrio_p2p = { path = "../../../p2p" }
 avrio_crypto = { path = "../../../crypto" }
@@ -38,4 +34,14 @@ aes-gcm = "0.5.0"
 aead = "0.2.0"
 hex = "0.4.2"
 text_io = "0.1.8"
-avrio_rpc = { path = "../../../rpc" }
+avrio_api = { path = "../../../api" }
+serenity = { version = "0.10.4", default-features = false, features = [
+    "client",
+    "gateway",
+    "rustls_backend",
+    "model"
+] }
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+fern = { version = "0.6", features = ["colored"] }
+chrono = "0.4"
+ctrlc = "3.1.8"

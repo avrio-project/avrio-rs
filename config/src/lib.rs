@@ -16,7 +16,7 @@ lazy_static! {
 }
 
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
-/// This is the struct that holds the built in , network params that are set by the core devs and the same for everyone
+/// This is the struct that holds the built in network params that are set by the core devs and the same for everyone
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NetworkConfig {
     pub version_major: u8,
@@ -46,6 +46,7 @@ pub struct NetworkConfig {
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
 }
+
 /// This is what is saved in a file, the stuff the user can change and edit to fit their needs
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ConfigSave {
@@ -58,7 +59,7 @@ pub struct ConfigSave {
     pub seednodes: Vec<String>,
     pub ignore_minor_updates: bool,
     pub p2p_port: u16,
-    pub rpc_port: u16,
+    pub api_port: u16,
     pub allow_cors: char,
     pub node_type: char,
     pub identitiy: String,
@@ -66,7 +67,9 @@ pub struct ConfigSave {
     pub log_level: u8,
     pub wallet_password: String,
     pub time_beetween_sync: u64,
+    pub discord_token: String,
 }
+
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, PartialOrd)]
 pub struct Config {
@@ -85,7 +88,7 @@ pub struct Config {
     pub seednodes: Vec<String>,
     pub ignore_minor_updates: bool,
     pub p2p_port: u16,
-    pub rpc_port: u16,
+    pub api_port: u16,
     pub allow_cors: char,
     pub buffer_bytes: u16,
     pub network_id: Vec<u8>,
@@ -113,21 +116,26 @@ pub struct Config {
     pub time_beetween_sync: u64,
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
+    pub discord_token: String,
 }
 
 pub fn config_read() -> Config {
     log::trace!("Reading config from disk");
+
     if let Ok(mut file) = File::open("node.conf") {
         let mut data: String = String::from("");
+
         if let Err(_) = file.read_to_string(&mut data) {
-            return Config::default();
+            Config::default()
         } else {
             let conf: ConfigSave = serde_json::from_str(&data).unwrap_or_default();
-            return conf.to_config();
+
+            conf.to_config()
         }
     } else {
         log::trace!("Failed to read from disk");
-        return Config::default();
+
+        Config::default()
     }
 }
 
@@ -137,7 +145,9 @@ pub fn config() -> Config {
 
 fn hash_id(id: u64) -> String {
     let mut hasher = Sha256::new();
+
     hasher.input(format!("{}", id).as_bytes());
+
     return hex::encode(hasher.result());
 }
 
@@ -151,11 +161,11 @@ impl Default for ConfigSave {
                     max_threads: 4,
                     chain_key: "".to_string(),
                     state: 0,
-                    ip_host: "127.0.0.1".to_string(),
+                    ip_host: "0.0.0.0".to_string(),
                     seednodes: vec!["35.230.157.42:56789".to_string()],
                     ignore_minor_updates: false,
                     p2p_port: 56789,
-                    rpc_port: 54321,
+                    api_port: 54321,
                     allow_cors: 'n',
                     node_type: 'n',
                     identitiy: hash_id(rand::random::<u64>()),
@@ -163,6 +173,7 @@ impl Default for ConfigSave {
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
+                    discord_token: "DISCORD_TOKEN".to_string(),
                 };
             } else {
                 return ConfigSave {
@@ -171,11 +182,11 @@ impl Default for ConfigSave {
                     max_threads: 4,
                     chain_key: "".to_string(),
                     state: 0,
-                    ip_host: "127.0.0.1".to_string(),
+                    ip_host: "0.0.0.0".to_string(),
                     seednodes: vec!["35.230.157.42:56789".to_string()],
                     ignore_minor_updates: false,
                     p2p_port: 56789,
-                    rpc_port: 54321,
+                    api_port: 54321,
                     allow_cors: 'n',
                     node_type: 'n',
                     identitiy: hash_id(rand::random::<u64>()),
@@ -183,6 +194,7 @@ impl Default for ConfigSave {
                     log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
+                    discord_token: "DISCORD_TOKEN".to_string(),
                 };
             }
         } else {
@@ -192,11 +204,11 @@ impl Default for ConfigSave {
                 max_threads: 4,
                 chain_key: "".to_string(),
                 state: 0,
-                ip_host: "127.0.0.1".to_string(),
+                ip_host: "0.0.0.0".to_string(),
                 seednodes: vec!["35.230.157.42:56789".to_string()],
                 ignore_minor_updates: false,
                 p2p_port: 56789,
-                rpc_port: 54321,
+                api_port: 54321,
                 allow_cors: 'n',
                 node_type: 'n',
                 identitiy: hash_id(rand::random::<u64>()),
@@ -204,6 +216,7 @@ impl Default for ConfigSave {
                 log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
                 wallet_password: "wallet_password_123".to_string(),
                 time_beetween_sync: 5 * 60000,
+                discord_token: "DISCORD_TOKEN".to_string(),
             };
         }
     }
@@ -212,6 +225,7 @@ impl Default for ConfigSave {
 impl ConfigSave {
     pub fn to_config(&self) -> Config {
         let nconf = NetworkConfig::default();
+
         return Config {
             db_path: self.db_path.to_owned(),
             max_connections: self.max_connections,
@@ -222,7 +236,7 @@ impl ConfigSave {
             seednodes: self.seednodes.to_owned(),
             ignore_minor_updates: self.ignore_minor_updates,
             p2p_port: self.p2p_port,
-            rpc_port: self.rpc_port,
+            api_port: self.api_port,
             allow_cors: self.allow_cors,
             node_type: self.node_type,
             identitiy: self.identitiy.to_owned(),
@@ -256,9 +270,11 @@ impl ConfigSave {
             assessor_node_count: nconf.assessor_node_count,
             min_suported_version: nconf.min_suported_version,
             max_supported_version: nconf.max_supported_version,
+            discord_token: self.discord_token.to_owned(),
         };
     }
 }
+
 impl Default for Config {
     fn default() -> Config {
         return ConfigSave::default().to_config();
@@ -313,7 +329,7 @@ impl Config {
             seednodes: self.seednodes,
             ignore_minor_updates: self.ignore_minor_updates,
             p2p_port: self.p2p_port,
-            rpc_port: self.rpc_port,
+            api_port: self.api_port,
             allow_cors: self.allow_cors,
             node_type: self.node_type,
             identitiy: self.identitiy,
@@ -321,20 +337,27 @@ impl Config {
             log_level: self.log_level,
             wallet_password: self.wallet_password,
             time_beetween_sync: self.time_beetween_sync,
+            discord_token: self.discord_token,
         }
     }
+
     /// This creates a config file from the provided struct, if the file exists it does the same thing as save()
     pub fn create(self) -> io::Result<()> {
         // create file
         let mut file = File::create("node.conf")?;
+
         file.write_all(serde_json::to_string(&self.to_save()).unwrap().as_bytes())?;
+
         Ok(())
     }
+
     /// This is how you save the config, it is a expensive function on devices with slow storage as it opens and writes to the file
     pub fn save(self) -> io::Result<()> {
         // save to exisiting/ update
         let mut file = File::open("node.conf")?;
+
         file.write_all(serde_json::to_string(&self.to_save()).unwrap().as_bytes())?;
+
         Ok(())
     }
 }
