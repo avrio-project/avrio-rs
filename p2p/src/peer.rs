@@ -14,7 +14,7 @@ lazy_static! {
 }
 
 #[deprecated(
-    since = "0",
+    since = "0.0.0",
     note = "Please use the get peer addr function and call lock() on the ones you need"
 )]
 pub fn get_peers() -> Result<Vec<TcpStream>, Box<dyn Error>> {
@@ -32,7 +32,7 @@ pub fn get_peers() -> Result<Vec<TcpStream>, Box<dyn Error>> {
         peers.push(peer.try_clone()?)
     }
 
-    return Ok(peers);
+    Ok(peers)
 }
 
 /// Returns a result, vector of the SocketAddrs of the peers we are connected to
@@ -51,7 +51,7 @@ pub fn get_peers_addr() -> Result<Vec<SocketAddr>, Box<dyn Error>> {
         peers.push(peer.peer_addr()?)
     }
 
-    return Ok(peers);
+    Ok(peers)
 }
 
 /// # in_peers
@@ -63,7 +63,7 @@ pub fn in_peers(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
             return Ok(true);
         }
     }
-    return Ok(false);
+    Ok(false)
 }
 
 pub fn add_peer(
@@ -81,18 +81,18 @@ pub fn add_peer(
     } else {
         let _ = (*OUTGOING.lock()?).push(peer);
     }
-    return Ok(());
+    Ok(())
 }
 
 pub fn locked(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
     if !in_peers(peer)? {
-        return Err("not in peer list".into());
+        Err("not in peer list".into())
     } else {
         let map = PEERS.lock()?;
         if let Some(x) = map.get(&strip_port(&peer)) {
-            return Ok(x.1);
+            Ok(x.1)
         } else {
-            return Err("cant find peer".into());
+            Err("cant find peer".into())
         }
     }
 }
@@ -129,7 +129,7 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
         for p in get_peers()? {
             if strip_port(
                 &p.peer_addr()
-                    .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
+                    .unwrap_or_else(|_| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
             ) == strip_port(peer)
             {
                 std::thread::sleep(std::time::Duration::from_millis(350)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
@@ -137,9 +137,9 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
                 return Ok(p);
             }
         }
-        return Err("cant find peer".into());
+        Err("cant find peer".into())
     } else {
-        return Err("cant find peer".into());
+        Err("cant find peer".into())
     }
 }
 
@@ -154,11 +154,11 @@ pub fn unlock_peer(peer: TcpStream) -> Result<(), Box<dyn Error>> {
         return Err("peer not locked".into());
     } else {
         let mut map = PEERS.lock()?;
-        if let Some(x) = map.get_mut(&strip_port(
-            &peer
-                .peer_addr()
-                .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
-        )) {
+        if let Some(x) =
+            map.get_mut(&strip_port(&peer.peer_addr().unwrap_or_else(|_| {
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
+            })))
+        {
             x.1 = false;
             if let Some(tx) = x.2.clone() {
                 tx.send("run".to_string())?;
@@ -170,15 +170,16 @@ pub fn unlock_peer(peer: TcpStream) -> Result<(), Box<dyn Error>> {
         }
         drop(peer);
     }
-    return Ok(());
+    Ok(())
 }
+
 /// # strip_port
 /// Takes a SocketAddr and returns the ip address along of a peer, as a string.
 /// Eg: 123.45.678:5679 becomes "123.45.678"
 pub fn strip_port(peer: &SocketAddr) -> String {
     return peer
         .to_string()
-        .split(":")
+        .split(':')
         .to_owned()
         .collect::<Vec<&str>>()[0]
         .to_owned();
@@ -187,9 +188,9 @@ pub fn strip_port(peer: &SocketAddr) -> String {
 pub fn get_invalid_block_count(peer: &SocketAddr) -> Result<u64, Box<dyn std::error::Error>> {
     let map = PEERS.lock()?;
     if let Some(x) = map.get(&strip_port(&peer)) {
-        return Ok(x.3);
+        Ok(x.3)
     } else {
-        return Err("cant find peer".into());
+        Err("cant find peer".into())
     }
 }
 
@@ -200,8 +201,8 @@ pub fn set_invalid_block_count(
     let mut map = PEERS.lock()?;
     if let Some(x) = map.get_mut(&strip_port(&peer)) {
         x.3 = new;
-        return Ok(());
+        Ok(())
     } else {
-        return Err("cant find peer".into());
+        Err("cant find peer".into())
     }
 }

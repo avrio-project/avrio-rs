@@ -44,7 +44,7 @@ impl Epoch {
         self.hash = self.hash_item();
     }
     pub fn hash_return(&self) -> String {
-        return self.hash_item();
+        self.hash_item()
     }
     pub fn new() -> Epoch {
         let mut rng = rand::thread_rng();
@@ -65,5 +65,5 @@ impl Epoch {
 }
 
 pub fn get_top_epoch() -> Epoch {
-    return Epoch::default();
+    Epoch::default()
 }

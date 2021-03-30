@@ -6,8 +6,8 @@
     This file handles the JSON API version 1 of the Daemon.
 */
 
-use avrio_blockchain::getBlockFromRaw;
-use avrio_core::account::{getAccount, Account};
+use avrio_blockchain::get_block_from_raw;
+use avrio_core::account::{get_account, Account};
 
 use rocket::{routes, Route};
 
@@ -24,7 +24,7 @@ fn must_provide_method() -> &'static str {
 
 #[get("/balances/<chain>")]
 pub fn get_balance_v1(chain: String) -> String {
-    let acc: Account = getAccount(&chain).unwrap_or(Account::default());
+    let acc: Account = get_account(&chain).unwrap_or_else(|_| Account::default());
     let balance: u64 = acc.balance;
     let locked: u64 = acc.locked;
 
@@ -42,7 +42,7 @@ pub fn get_balance_v1(chain: String) -> String {
 
 #[get("/blocks/<hash>")]
 pub fn get_block_v1(hash: String) -> String {
-    let block = getBlockFromRaw(hash);
+    let block = get_block_from_raw(hash);
     let block_str = serde_json::to_string(&block).unwrap_or_default();
 
     "{ \"success\": true, \"response\": { \"block\": ".to_owned() + &block_str + " } }"

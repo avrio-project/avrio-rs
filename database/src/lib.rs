@@ -10,7 +10,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-use rocksdb::{DBRawIterator, Options, DB, IteratorMode};
+use rocksdb::{DBRawIterator, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 use std::mem::size_of_val;
 use std::net::SocketAddr;
@@ -24,13 +24,21 @@ static CACHE_VALUES: bool = false; // should we use a memtable to store database
                                    // This returns a tuple (HashMap, u16), the u16 acts a modified tag. If tha value is != 0 the database is marked as 'dirty'
                                    // and a flush to disk operation is queued, the HashMap is the database itself, to get a value simply look up the corrosponding key in this hashmap
                                    // NOTE: this is dev docs, for writing avrio_db functions, to get data from the databases please use the get_data and save_data wrappers
+
+// Complex types to satisfy most of clippy's nagging
+type Databases = Mutex<Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>>;
+type FlushStreamHandler = Mutex<Option<std::sync::mpsc::Sender<String>>>;
+type DatabaseFiles = Mutex<HashMap<String, rocksdb::DB>>;
+type DatabaseHashmap = HashMap<String, (HashMap<String, (String, u16)>, u16)>;
+type DatabaseLock<'a> =
+    std::sync::MutexGuard<'a, Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>>;
+
 lazy_static! {
-    static ref DATABASES: Mutex<Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>> =
-        Mutex::new(None);
-    static ref FLUSH_STREAM_HANDLER: Mutex<Option<std::sync::mpsc::Sender<String>>> =
-        Mutex::new(None);
-    static ref DATABASEFILES: Mutex<HashMap<String, rocksdb::DB>> = Mutex::new(HashMap::new());
+    static ref DATABASES: Databases = Mutex::new(None);
+    static ref FLUSH_STREAM_HANDLER: FlushStreamHandler = Mutex::new(None);
+    static ref DATABASEFILES: DatabaseFiles = Mutex::new(HashMap::new());
 }
+
 #[derive(Debug, Serialize, Deserialize)]
 struct PeerlistSave {
     peers: Vec<String>,
@@ -80,7 +88,7 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
             let mut opts = Options::default();
             opts.create_if_missing(true);
             opts.set_skip_stats_update_on_db_open(false);
-            opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+            opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
             db_deref = DB::open(&opts, path).unwrap();
             db = &db_deref;
         }
@@ -94,7 +102,7 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
                 let mut opts = Options::default();
                 opts.create_if_missing(true);
                 opts.set_skip_stats_update_on_db_open(false);
-                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
                 db_deref = DB::open(&opts, &path).unwrap();
                 db = &db_deref;
                 let cloned_path = path.clone();
@@ -117,25 +125,23 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
             String::from_utf8(value.to_vec())?,
         );
     }
-    return Ok(return_databases);
+    Ok(return_databases)
 }
 
-pub fn get_iterator<'a>(db: &'a rocksdb::DB) -> DBRawIterator<'a> {
-    return db.raw_iterator();
+pub fn get_iterator(db: &rocksdb::DB) -> DBRawIterator {
+    db.raw_iterator()
 }
+
 fn reload_cache(
     db_paths: Vec<String>,
     db_file_lock: &mut std::sync::MutexGuard<HashMap<String, rocksdb::DB>>,
-    db_lock: &mut std::sync::MutexGuard<
-        Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>,
-    >,
+    db_lock: &mut DatabaseLock,
 ) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
     let mut additions = 0;
     let mut unchanged = 0;
-    let mut databases_hashmap: HashMap<String, (HashMap<String, (String, u16)>, u16)> =
-        HashMap::new();
+    let mut databases_hashmap: DatabaseHashmap = HashMap::new();
     for path in db_paths {
         // iterate over all the new paths to add
         trace!("Recaching {}", path);
@@ -146,7 +152,7 @@ fn reload_cache(
                 let mut opts = Options::default();
                 opts.create_if_missing(true);
                 opts.set_skip_stats_update_on_db_open(false);
-                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
                 db = DB::open(&opts, &path)?;
                 additions += 1;
             }
@@ -162,7 +168,7 @@ fn reload_cache(
                     let mut opts = Options::default();
                     opts.create_if_missing(true);
                     opts.set_skip_stats_update_on_db_open(false);
-                    opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                    opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
                     db = DB::open(&opts, &path)?;
                     additions += 1;
                 }
@@ -236,7 +242,7 @@ fn reload_cache(
         *(*db_lock) = Some(databases_hashmap);
         trace!("Set db global varible to the database_hashmap");
     }
-    return Ok(());
+    Ok(())
 }
 pub fn init_cache(
     max_size: usize,
@@ -252,8 +258,7 @@ pub fn init_cache(
         max_size,
         to_cache_paths.len()
     );
-    let mut databases_hashmap: HashMap<String, (HashMap<String, (String, u16)>, u16)> =
-        HashMap::new();
+    let mut databases_hashmap: DatabaseHashmap = HashMap::new();
     let mut database_lock_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
     for raw_path in to_cache_paths {
         let final_path = config().db_path + raw_path;
@@ -261,7 +266,7 @@ pub fn init_cache(
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.set_skip_stats_update_on_db_open(false);
-        opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+        opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
         let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
         if CACHE_VALUES {
             let db = DB::open(&opts, final_path.to_owned())?;
@@ -339,7 +344,7 @@ pub fn init_cache(
         }
     });
     *FLUSH_STREAM_HANDLER.lock().unwrap() = Some(send.clone()); // set global var
-    return Ok((send, flush_handler));
+    Ok((send, flush_handler))
 }
 
 fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::Error>> {
@@ -371,7 +376,9 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                                 let mut opts = Options::default();
                                 opts.create_if_missing(true);
                                 opts.set_skip_stats_update_on_db_open(false);
-                                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                                opts.increase_parallelism(
+                                    ((1.0 / 3.0) * num_cpus::get() as f64) as i32,
+                                );
                                 db_deref = DB::open(&opts, &path)?;
                                 db = &db_deref;
                             }
@@ -383,7 +390,9 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                                     let mut opts = Options::default();
                                     opts.create_if_missing(true);
                                     opts.set_skip_stats_update_on_db_open(false);
-                                    opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                                    opts.increase_parallelism(
+                                        ((1.0 / 3.0) * num_cpus::get() as f64) as i32,
+                                    );
                                     db_deref = DB::open(&opts, &path)?;
                                     db = &db_deref;
                                     let cloned_path = path.clone();
@@ -434,10 +443,10 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
             }
         }
     }
-    return Ok(());
+    Ok(())
 }
 
-pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
+pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
     if CACHE_VALUES {
         //  gain a lock on the DATABASES lazy_sataic
         if let Ok(mut database_lock) = DATABASES.lock() {
@@ -474,7 +483,7 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
             let mut opts = Options::default();
             opts.create_if_missing(true);
             opts.set_skip_stats_update_on_db_open(false);
-            opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+            opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
             db_deref = DB::open(&opts, path).unwrap();
             db = &db_deref;
         }
@@ -487,10 +496,10 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
                 let mut opts = Options::default();
                 opts.create_if_missing(true);
                 opts.set_skip_stats_update_on_db_open(false);
-                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
                 db_deref = DB::open(&opts, &path).unwrap();
                 db = &db_deref;
-                let cloned_path = path.clone();
+                let cloned_path = path.to_string();
                 let try_lock = DATABASES.lock();
                 if let Ok(mut db_lock) = try_lock {
                     trace!("Save data, reloading cache");
@@ -503,10 +512,10 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
         }
     };
 
-    if let Err(e) = db.put(key.clone(), serialized.clone()) {
+    if let Err(e) = db.put(key.clone(), serialized.to_string()) {
         error!("Failed to save data to db, gave error: {}", e);
 
-        return 0;
+        0
     } else {
         trace!(
             "set data to db: {}, key: {}, value, {}",
@@ -515,7 +524,7 @@ pub fn save_data(serialized: &String, path: &String, key: String) -> u8 {
             serialized
         );
 
-        return 1;
+        1
     }
 }
 
@@ -525,8 +534,8 @@ pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error
 
     drop(peers_db);
 
-    if s == "-1".to_owned() {
-        return Err("peerlist not found".into());
+    if s == *"-1" {
+        Err("peerlist not found".into())
     } else {
         let peerlist: PeerlistSave = serde_json::from_str(&s)?;
         let mut as_socket_addr: Vec<SocketAddr> = vec![];
@@ -549,12 +558,10 @@ pub fn add_peer(peer: SocketAddr) -> std::result::Result<(), Box<dyn std::error:
     save_peerlist(&current_peer_list)
 }
 
-pub fn save_peerlist(
-    _list: &Vec<SocketAddr>,
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
+pub fn save_peerlist(list: &[SocketAddr]) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut as_string: Vec<String> = vec![];
 
-    for peer in _list {
+    for peer in list {
         as_string.push(peer.to_string());
     }
 
@@ -605,7 +612,7 @@ pub fn get_data(dbpath: String, key: &str) -> String {
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.set_skip_stats_update_on_db_open(false);
-    opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+    opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
     let data: String;
     // we need to write to disc
     let mut db_file_lock = DATABASEFILES.lock().unwrap();
@@ -616,7 +623,7 @@ pub fn get_data(dbpath: String, key: &str) -> String {
             let mut opts = Options::default();
             opts.create_if_missing(true);
             opts.set_skip_stats_update_on_db_open(false);
-            opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+            opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
             db_deref = DB::open(&opts, &dbpath).unwrap();
             db = &db_deref;
         }
@@ -628,7 +635,7 @@ pub fn get_data(dbpath: String, key: &str) -> String {
                 let mut opts = Options::default();
                 opts.create_if_missing(true);
                 opts.set_skip_stats_update_on_db_open(false);
-                opts.increase_parallelism(((1 / 3) * num_cpus::get()) as i32);
+                opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
                 db_deref = DB::open(&opts, &dbpath).unwrap();
                 db = &db_deref;
                 let cloned_path = dbpath.clone();
@@ -645,7 +652,7 @@ pub fn get_data(dbpath: String, key: &str) -> String {
     };
     match db.get(key) {
         Ok(Some(value)) => {
-            data = String::from_utf8(value).unwrap_or("".to_owned());
+            data = String::from_utf8(value).unwrap_or_else(|_| "".to_owned());
 
             trace!("got data from db={}, data={}, key={}", dbpath, data, key);
         }
@@ -661,7 +668,7 @@ pub fn get_data(dbpath: String, key: &str) -> String {
             error!("Error {} getting data from db", e);
         }
     }
-    return data;
+    data
 }
 
 pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String {
@@ -681,5 +688,5 @@ pub fn get_data_from_database(db: &HashMap<String, String>, key: &str) -> String
         }
     }
 
-    return data;
+    data
 }

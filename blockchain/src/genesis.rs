@@ -8,7 +8,7 @@ use crate::{Block, BlockType, Header};
 use avrio_core::transaction::Transaction;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, PartialEq)]
-pub enum genesisBlockErrors {
+pub enum GenesisBlockErrors {
     BlockNotFound,
     OtherDb,
     Other,
@@ -70,7 +70,7 @@ pub fn get_genesis_txns() -> Vec<Transaction> {
             amount: 0,
             extra: String::from(""),
             flag: 'n',
-            sender_key: hex::encode(vec![0, 32]).to_owned(),
+            sender_key: hex::encode(vec![0, 32]),
             receive_key: String::from(""),
             access_key: String::from(""),
             unlock_time: 0,
@@ -84,14 +84,14 @@ pub fn get_genesis_txns() -> Vec<Transaction> {
     ];
 }
 
-pub fn generateGenesisBlock(
-    chainKey: String,
-    privKey: String,
-) -> Result<Block, genesisBlockErrors> {
+pub fn generate_genesis_block(
+    chain_key: String,
+    priv_key: String,
+) -> Result<Block, GenesisBlockErrors> {
     let mut my_genesis_txns: Vec<Transaction> = vec![];
     let genesis_txns = get_genesis_txns();
     for tx in genesis_txns {
-        if tx.receive_key == chainKey {
+        if tx.receive_key == chain_key {
             my_genesis_txns.push(tx);
         }
     }
@@ -101,7 +101,7 @@ pub fn generateGenesisBlock(
             version_major: 0,
             version_breaking: 0,
             version_minor: 1,
-            chain_key: chainKey,
+            chain_key,
             prev_hash: "00000000000".to_owned(),
             height: 0,
             timestamp: SystemTime::now()
@@ -120,15 +120,15 @@ pub fn generateGenesisBlock(
     };
 
     genesis_block.hash();
-    genesis_block.sign(&privKey);
-    return Ok(genesis_block);
+    genesis_block.sign(&priv_key).unwrap();
+    Ok(genesis_block)
 }
 /// Reads the genesis block for this chain from the list of blocks
-pub fn getGenesisBlock(chainkey: &String) -> Result<Block, genesisBlockErrors> {
+pub fn get_genesis_block(chainkey: &str) -> Result<Block, GenesisBlockErrors> {
     for block in genesis_blocks() {
         if block.header.chain_key == *chainkey {
             return Ok(block);
         }
     }
-    return Err(genesisBlockErrors::BlockNotFound);
+    Err(GenesisBlockErrors::BlockNotFound)
 }

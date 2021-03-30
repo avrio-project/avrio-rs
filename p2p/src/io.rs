@@ -9,6 +9,7 @@ use rust_crypto::{
     aes_gcm::AesGcm,
 };
 use std::error::Error;
+use std::fmt;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
@@ -16,7 +17,7 @@ const MAX_PEAK_BUFFER_SIZE: usize = 1000000; // 1 Mb, if the message is longer t
 
 pub fn peek(peer: &mut TcpStream) -> Result<usize, std::io::Error> {
     let mut buf = [0; MAX_PEAK_BUFFER_SIZE]; // create a buffer of MAX_BUFFER_SIZE 0s to peak into
-    return peer.peek(&mut buf);
+    peer.peek(&mut buf)
 }
 
 pub trait Sendable {
@@ -25,7 +26,7 @@ pub trait Sendable {
     fn encode(&self) -> Result<String, Box<dyn Error>>;
     /// # decode
     /// Should take a reference to a String and return T
-    fn decode(s: &String) -> Result<Box<Self>, Box<dyn Error>>;
+    fn decode(s: &str) -> Result<Box<Self>, Box<dyn Error>>;
     /// # send_raw
     /// Encodes T into a string and sends it to the peer
     /// # Params
@@ -41,12 +42,12 @@ pub trait Sendable {
     fn send_raw(&self, peer: &mut TcpStream, _flush: bool) -> Result<(), Box<dyn Error>> {
         let en = self.encode()?;
         let buf = en.as_bytes();
-        peer.write(&buf)?;
+        peer.write_all(&buf)?;
         if true {
             // TEMP FIX, always flush stream                  flush {
             peer.flush()?;
         }
-        return Ok(());
+        Ok(())
     }
 }
 /// A struct to allow you to easly use strings with the Sendable trait
@@ -56,10 +57,10 @@ struct S {
 
 impl Sendable for S {
     fn encode(&self) -> Result<String, Box<dyn Error>> {
-        return Ok(self.c.clone());
+        Ok(self.c.clone())
     }
-    fn decode(s: &String) -> Result<Box<Self>, Box<dyn Error>> {
-        return Ok(S { c: s.clone() }.into());
+    fn decode(s: &str) -> Result<Box<Self>, Box<dyn Error>> {
+        Ok(S { c: s.into() }.into())
     }
 }
 
@@ -67,8 +68,11 @@ impl S {
     pub fn from_string(s: String) -> Self {
         S { c: s }
     }
-    pub fn to_string(self) -> String {
-        self.c
+}
+
+impl fmt::Display for S {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.c)
     }
 }
 
@@ -98,15 +102,13 @@ pub fn send(
     let data: String = msg;
     let s: S;
     let mut k: AesGcm;
-    if key.is_some() {
+    if let Some(key_unwrapped) = key {
         // did the function get called with a custom key?
-        let mut key_unwraped = &[0u8; 32];
-        key_unwraped = key.unwrap();
-        trace!("KEY: {:?}, LEN: {}", key_unwraped, key_unwraped.len());
+        trace!("KEY: {:?}, LEN: {}", key_unwrapped, key_unwrapped.len());
         let mut k = AesGcm::new(
             // create a new decoder (AesGcm) object using passed key
             KeySize::KeySize128,
-            key_unwraped,
+            key_unwrapped,
             &[0; 12],
             &[0; 1], //p2p_dat.length().to_string().as_bytes(),
         );
@@ -158,7 +160,7 @@ pub fn send(
         }
     }
     trace!("s={}", s.c);
-    return s.send_raw(peer, flush); // send the string form of the formed P2P data struct.
+    s.send_raw(peer, flush) // send the string form of the formed P2P data struct.
 }
 
 /// # Read
@@ -183,15 +185,15 @@ pub fn read(
 ) -> Result<P2pData, Box<dyn Error>> {
     let start = std::time::SystemTime::now();
     loop {
-        if timeout.is_some() {
-            if std::time::SystemTime::now()
+        if timeout.is_some()
+            && std::time::SystemTime::now()
                 .duration_since(start)?
                 .as_millis() as u64 // get time, im MS, since the calling of the function. If it is over timeout, return Err
                 > timeout.unwrap()
-            {
-                return Err("Timed out".into());
-            }
+        {
+            return Err("Timed out".into());
         }
+
         let mut lenbuf = [0u8; LEN_DECL_BYTES]; // create a buffer to store the LEN BYTES tag which is preappended to every message (which tells us the size of the incoming message)
         if let Ok(a) = peer.peek(&mut lenbuf) {
             // peek to see if there is LEN_DECL_BYTES or more of data ready for us
@@ -203,18 +205,18 @@ pub fn read(
                 // convert the LEN_DECL_BYTES bytes into a string
                 trace!("Read exactly {} bytes into LEN BYTES buffer", a);
                 let len_s = String::from_utf8(lenbuf.to_vec())?; // turn read bytes into a UTF-8 string
-                let len_striped: String = len_s.trim_start_matches("0").to_string(); // trims 0 which pad the LEN BYTES number to make it always LEN_DECL_BYTES long
+                let len_striped: String = len_s.trim_start_matches('0').to_string(); // trims 0 which pad the LEN BYTES number to make it always LEN_DECL_BYTES long
                 let len: usize = len_striped.parse()?; // turn string (eg 129) into a usize (unsized int)
                 trace!("LEN_S={}", len_s);
                 let mut k: AesGcm;
-                if key.is_some() {
+                if let Some(key_unwrapped) = key {
                     // if we were passed a custom key use that
                     k = AesGcm::new(
                         // create a decoder object from cusstom passed key
                         KeySize::KeySize128,
-                        key.unwrap(), // Key must be 16 or 32 bytes
-                        &[0; 12],     // nonce must be 96 bits, or 12 bytes
-                        &[0; 1],      // AAD
+                        key_unwrapped, // Key must be 16 or 32 bytes
+                        &[0; 12],      // nonce must be 96 bits, or 12 bytes
+                        &[0; 1],       // AAD
                     );
                 } else {
                     // if not get it from the PEERS lazy static
@@ -260,8 +262,8 @@ pub fn read(
                 };
                 p2p_dat.log();
                 s = p2p_dat.message.clone(); // the message being sent, can be block data, peerlist etc depnsing on the p2p_dat.type
-                let s_split: Vec<&str> = s.split("@").collect(); // split the AES_GCM encoded string by the delimmiter token ("@")
-                if s_split.len() < 1 {
+                let s_split: Vec<&str> = s.split('@').collect(); // split the AES_GCM encoded string by the delimmiter token ("@")
+                if s_split.is_empty() {
                     // there should be 2 values: tag and message (eg len > 1)
                     return Err("No auth tag".into());
                 } else {
