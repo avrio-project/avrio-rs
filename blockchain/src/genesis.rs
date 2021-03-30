@@ -70,7 +70,7 @@ pub fn get_genesis_txns() -> Vec<Transaction> {
             amount: 0,
             extra: String::from(""),
             flag: 'n',
-            sender_key: hex::encode(vec![0, 32]).to_owned(),
+            sender_key: hex::encode(vec![0, 32]),
             receive_key: String::from(""),
             access_key: String::from(""),
             unlock_time: 0,
@@ -101,7 +101,7 @@ pub fn generate_genesis_block(
             version_major: 0,
             version_breaking: 0,
             version_minor: 1,
-            chain_key: chain_key,
+            chain_key,
             prev_hash: "00000000000".to_owned(),
             height: 0,
             timestamp: SystemTime::now()
@@ -121,14 +121,14 @@ pub fn generate_genesis_block(
 
     genesis_block.hash();
     genesis_block.sign(&priv_key).unwrap();
-    return Ok(genesis_block);
+    Ok(genesis_block)
 }
 /// Reads the genesis block for this chain from the list of blocks
-pub fn get_genesis_block(chainkey: &String) -> Result<Block, GenesisBlockErrors> {
+pub fn get_genesis_block(chainkey: &str) -> Result<Block, GenesisBlockErrors> {
     for block in genesis_blocks() {
         if block.header.chain_key == *chainkey {
             return Ok(block);
         }
     }
-    return Err(GenesisBlockErrors::BlockNotFound);
+    Err(GenesisBlockErrors::BlockNotFound)
 }

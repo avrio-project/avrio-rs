@@ -14,7 +14,7 @@ extern crate avrio_config;
 use avrio_config::config;
 
 pub fn per_epoch_limit(nodes: u64) -> u64 {
-    return (1 / 3) * (nodes / 2);
+    ((1.0 / 3.0) * (nodes / 2) as f64) as u64
 }
 
 /// Generates the public private key pair for a new invite, returns a tupe (publickey, privatekey)
@@ -30,63 +30,51 @@ pub fn generate_invite() -> (String, String) {
 }
 
 /// Returns true if the invite is in existance and not spent.
-pub fn unspent(invite: &String) -> bool {
-    if get_data(config().db_path + &"/invites".to_owned(), invite) != "u".to_owned() {
-        return false;
-    } else {
-        return true;
-    }
+pub fn unspent(invite: &str) -> bool {
+    get_data(config().db_path + &"/invites".to_owned(), invite) == *"u"
 }
 
 /// Returns true if the invite is in existance and spent.
 // TODO: Phase out, duplicate of unspent() above
-pub fn is_spent(invite: &String) -> bool {
-    if get_data(config().db_path + &"/invites".to_owned(), invite) != "s".to_owned() {
-        return false;
-    } else {
-        return true;
-    }
+pub fn is_spent(invite: &str) -> bool {
+    get_data(config().db_path + &"/invites".to_owned(), invite) == *"s"
 }
 
 /// Marks the invite as spent
-pub fn mark_spent(invite: &String) -> Result<(), ()> {
+pub fn mark_spent(invite: &str) -> Result<(), &str> {
     if !unspent(invite) {
-        return Err(());
+        Err("Invite has already been spent")
     } else if save_data(
         &"s".to_string(),
         &(config().db_path + &"/invites".to_owned()),
         invite.to_owned(),
     ) != 1
     {
-        return Err(());
+        Err("Error marking invite as spent")
     } else {
-        return Ok(());
+        Ok(())
     }
 }
 
-/// Saves the public key into our innvites db (and sets to unspent)
-pub fn new(invite: &String) -> Result<(), ()> {
-    if get_data(config().db_path + &"/invites".to_owned(), invite) != "-1".to_owned() {
-        return Err(());
+/// Saves the public key into our invites db (and sets to unspent)
+pub fn new(invite: &str) -> Result<(), &str> {
+    if get_data(config().db_path + &"/invites".to_owned(), invite) != *"-1" {
+        Err("Error creating invite")
     } else if save_data(
         &"u".to_owned(),
         &(config().db_path + &"/invites".to_owned()),
         invite.to_owned(),
     ) != 1
     {
-        return Err(());
+        Err("Error saving invite")
     } else {
-        return Ok(());
+        Ok(())
     }
 }
 
 /// Returns true if:
 /// * 1) The invite format is valid
 /// * 2) It is on the blockchain and unspent.
-pub fn valid(invite: &String) -> bool {
-    if is_spent(invite) {
-        return false;
-    } else {
-        return true;
-    }
+pub fn valid(invite: &str) -> bool {
+    !is_spent(invite)
 }

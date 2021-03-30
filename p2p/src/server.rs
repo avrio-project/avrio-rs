@@ -1,10 +1,9 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-extern crate rand_os;
+extern crate rand;
 extern crate x25519_dalek;
 
 use avrio_config::config;
-use rand_os::OsRng;
 
 use x25519_dalek::EphemeralSecret;
 use x25519_dalek::PublicKey;
@@ -52,18 +51,20 @@ fn from_slice(bytes: &[u8]) -> [u8; 32] {
 
 impl P2pServer {
     pub fn new(ip: String, port: String, accept_in: bool) -> P2pServer {
-        return P2pServer {
+        P2pServer {
             state: P2pServerState::Uninitialized,
             connections: 0,
             ip,
             port,
             accept_in,
             tx: None,
-        };
+        }
     }
+
     fn set_state(&mut self, state: P2pServerState) {
         self.state = state;
     }
+
     fn increment_connections(&mut self) {
         if self.state != P2pServerState::DenyNewConnections
             && self.state != P2pServerState::Uninitialized
@@ -72,6 +73,7 @@ impl P2pServer {
             self.connections += 1;
         }
     }
+
     fn deincrement_connections(&mut self) {
         if self.state != P2pServerState::DenyNewConnections
             && self.state != P2pServerState::Uninitialized
@@ -80,17 +82,19 @@ impl P2pServer {
             self.connections -= 1;
         }
     }
+
     pub fn set_bind_addr(&mut self, bind: &std::net::SocketAddr) -> Result<(), &'static str> {
         let bind_addr_as_string: String = bind.to_string();
-        let bind_addr_split = bind_addr_as_string.split(":").collect::<Vec<&str>>();
+        let bind_addr_split = bind_addr_as_string.split(':').collect::<Vec<&str>>();
         if bind_addr_split.len() <= 1 {
-            return Err("resultant string too short when split");
+            Err("resultant string too short when split")
         } else {
             self.ip = bind_addr_split[0].to_string();
             self.port = bind_addr_split[1].to_string();
-            return Ok(());
+            Ok(())
         }
     }
+
     pub fn launch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if self.state == P2pServerState::Uninitialized {
             let bind_res = std::net::TcpListener::bind(format!("{}:{}", self.ip, self.port));
@@ -106,17 +110,16 @@ impl P2pServer {
                                 Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
                             );
                             if let Ok(read_msg) = read_store {
-                                let addr = stream.peer_addr().unwrap_or(SocketAddr::new(
-                                    IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                                    0,
-                                ));
+                                let addr = stream.peer_addr().unwrap_or_else(|_| {
+                                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
+                                });
                                 if let Ok(in_peers) = crate::peer::in_peers(&addr) {
-                                    if in_peers == false {
-                                        let mut local_cspring = OsRng::new().unwrap();
+                                    if !in_peers {
+                                        let mut local_cspring = rand::rngs::OsRng;
                                         let local_sec = EphemeralSecret::new(&mut local_cspring);
                                         let local_pub = PublicKey::from(&local_sec);
                                         let d_split =
-                                            read_msg.message.split("*").collect::<Vec<&str>>();
+                                            read_msg.message.split('*').collect::<Vec<&str>>();
                                         log::trace!(
                                             "D_SPLIT: {:?}, len: {}",
                                             d_split,
@@ -126,19 +129,19 @@ impl P2pServer {
                                         if hex::encode(config().network_id) != d_split[0] {
                                             log::debug!("Peer tried to handshake with wrong network id. Expecting: {}, got: {}. Ignoring...", hex::encode(config().network_id), d_split[0]);
                                             // TODO: send shutdown type first!
-                                            stream.shutdown(std::net::Shutdown::Both);
+                                            stream.shutdown(std::net::Shutdown::Both).unwrap();
                                         } else {
                                             let addr_s = addr.to_string();
-                                            let ip_s = addr_s.split(":").collect::<Vec<&str>>()[0];
+                                            let ip_s = addr_s.split(':').collect::<Vec<&str>>()[0];
                                             let addr_s = format!("{}:{}", ip_s, d_split[3]);
                                             let mut save_res: Result<(), &'static str> = Ok(());
-                                            let _ = avrio_database::add_peer(addr_s.parse().unwrap_or(SocketAddr::new(
+                                            let _ = avrio_database::add_peer(addr_s.parse().unwrap_or_else(|_| SocketAddr::new(
                                             IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                                             0,
                                         ))).unwrap_or_else(|e| {
                                             log::error!("Saving peer gave error: {}, dropping connection", e);
                                             // TODO: send shutdown type first!
-                                            stream.shutdown(std::net::Shutdown::Both);
+                                            stream.shutdown(std::net::Shutdown::Both).unwrap();
                                             save_res = Err("Saving peer gave error");
                                         });
                                             if let Err(e) = save_res {
@@ -279,9 +282,9 @@ impl P2pServer {
         } else {
             return Err("already running".into());
         }
-        return Ok(());
+        Ok(())
     }
     pub fn shutdown(self) -> Result<(), Box<dyn std::error::Error>> {
-        return Ok(());
+        Ok(())
     }
 }

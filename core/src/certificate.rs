@@ -47,30 +47,30 @@ pub struct Certificate {
     pub signature: String,
 }
 
-pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
-    ((v[31] as u128) << 0xf * 8)
-        | ((v[30] as u128) << 0xe * 8)
-        | ((v[29] as u128) << 0xd * 8)
-        | ((v[28] as u128) << 0xc * 8)
-        | ((v[27] as u128) << 0xb * 8)
-        | ((v[26] as u128) << 0xa * 8)
-        | ((v[25] as u128) << 0x9 * 8)
-        | ((v[24] as u128) << 0x8 * 8)
-        | ((v[23] as u128) << 0x7 * 8)
-        | ((v[22] as u128) << 0x6 * 8)
-        | ((v[21] as u128) << 0x5 * 8)
-        | ((v[20] as u128) << 0x4 * 8)
-        | ((v[19] as u128) << 0x3 * 8)
-        | ((v[18] as u128) << 0x2 * 8)
-        | ((v[17] as u128) << 0x1 * 8)
-        | ((v[18] as u128) << 0x0 * 8)
-        | ((v[19] as u128) << 0x0 * 8)
-        | ((v[20] as u128) << 0x0 * 8)
-        | ((v[21] as u128) << 0x0 * 8)
-        | ((v[22] as u128) << 0x0 * 8)
-        | ((v[23] as u128) << 0x0 * 8)
-        | ((v[24] as u128) << 0x0 * 8)
-        | ((v[25] as u128) << 0x0 * 8)
+pub fn difficulty_bytes_as_u128(v: &[u8]) -> u128 {
+    ((v[31] as u128) << (0xf * 8))
+        | ((v[30] as u128) << (0xe * 8))
+        | ((v[29] as u128) << (0xd * 8))
+        | ((v[28] as u128) << (0xc * 8))
+        | ((v[27] as u128) << (0xb * 8))
+        | ((v[26] as u128) << (0xa * 8))
+        | ((v[25] as u128) << (0x9 * 8))
+        | ((v[24] as u128) << (0x8 * 8))
+        | ((v[23] as u128) << (0x7 * 8))
+        | ((v[22] as u128) << (0x6 * 8))
+        | ((v[21] as u128) << (0x5 * 8))
+        | ((v[20] as u128) << (0x4 * 8))
+        | ((v[19] as u128) << (0x3 * 8))
+        | ((v[18] as u128) << (0x2 * 8))
+        | ((v[17] as u128) << 8)
+        | v[18] as u128
+        | v[19] as u128
+        | v[20] as u128
+        | v[21] as u128
+        | v[22] as u128
+        | v[23] as u128
+        | v[24] as u128
+        | v[25] as u128
 }
 
 pub fn number_of_proceding_a(s: String) -> u8 {
@@ -168,9 +168,9 @@ mod tests {
 }
 
 pub fn generate_certificate(
-    pk: &String,
-    private_key: &String,
-    txn_hash: &String,
+    pk: &str,
+    private_key: &str,
+    txn_hash: &str,
     diff: u128,
     invite: String,
 ) -> Result<Certificate, CertificateErrors> {
@@ -224,11 +224,10 @@ pub fn generate_certificate(
         }
     }
 
-    drop(diff_cert);
     if let Err(_e) = cert.sign(&private_key, invite) {
-        return Err(CertificateErrors::SignatureError);
+        Err(CertificateErrors::SignatureError)
     } else {
-        return Ok(cert);
+        Ok(cert)
     }
 }
 
@@ -294,7 +293,7 @@ impl Certificate {
             &(cert.public_key.to_owned() + &"-cert".to_owned()),
         );
 
-        if got_data != "-1".to_string() {
+        if got_data != *"-1" {
             let exisiting_cert: Certificate = serde_json::from_str(&got_data).unwrap_or_default();
             if exisiting_cert.valid_until
                 > (SystemTime::now()
@@ -328,13 +327,13 @@ impl Certificate {
 
     pub fn sign(
         &mut self,
-        private_key: &String,
+        private_key: &str,
         invite: String,
     ) -> Result<(), ring::error::KeyRejected> {
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(
             bs58::decode(private_key)
                 .into_vec()
-                .unwrap_or(vec![0])
+                .unwrap_or_else(|_| vec![0])
                 .as_ref(),
         )?;
 
@@ -344,14 +343,17 @@ impl Certificate {
 
         // now sign with the invite
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(
-            bs58::decode(invite).into_vec().unwrap_or(vec![0]).as_ref(),
+            bs58::decode(invite)
+                .into_vec()
+                .unwrap_or_else(|_| vec![0])
+                .as_ref(),
         )?;
 
         let msg: &[u8] = self.public_key.as_bytes();
 
         self.invite_sig = bs58::encode(key_pair.sign(msg)).into_string();
 
-        return Ok(());
+        Ok(())
     }
 
     pub fn valid_signature(&self) -> bool {
@@ -386,9 +388,7 @@ impl Certificate {
                     })
                     .as_ref(),
             )
-            .unwrap_or_else(|_e| {
-                return ();
-            });
+            .unwrap_or_else(|_e| {});
 
         // now invite sig
 
@@ -423,22 +423,16 @@ impl Certificate {
                     })
                     .as_ref(),
             )
-            .unwrap_or_else(|_e| {
-                return ();
-            });
+            .unwrap_or_else(|_e| {});
         // ^ wont unwrap if sig is invalid
 
-        return true;
+        true
     }
 
     pub fn check_diff(&self, diff: &u128) -> bool {
         let _fufilled: u8 = 0;
 
-        if number_of_proceding_a(self.hash.clone()) as u128 == diff.to_owned() {
-            true
-        } else {
-            false
-        }
+        number_of_proceding_a(self.hash.clone()) as u128 == *diff
     }
 
     pub fn hash(&mut self) {
@@ -493,5 +487,5 @@ fn get_block_from_raw(hash: String) -> BlockClone {
 
     let _ = file.read_to_string(&mut contents);
 
-    return serde_json::from_str(&contents).unwrap_or_default();
+    serde_json::from_str(&contents).unwrap_or_default()
 }

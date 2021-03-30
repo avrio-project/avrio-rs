@@ -1,18 +1,18 @@
 use crate::{
-    format::P2pData,
+    // format::P2pData,
     io::{peek, read, send},
-    peer::add_peer,
+    // peer::add_peer,
 };
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use avrio_blockchain::{getBlock, getBlockFromRaw, Block};
+use avrio_blockchain::{get_block, get_block_from_raw, Block};
 use avrio_config::config;
 use avrio_database::{get_data, open_database};
 use lazy_static::lazy_static;
 use std::net::TcpStream;
 use std::sync::Mutex;
-extern crate rand_os;
+extern crate rand;
 extern crate x25519_dalek;
 
 static MAX_SYNCING_PEERS: u64 = 8;
@@ -27,13 +27,13 @@ fn get_syncing_peers_count() -> Result<u64, Box<dyn std::error::Error>> {
 
 fn set_syncing_peers_count(new: u64) -> Result<(), Box<dyn std::error::Error>> {
     SYNCING_PEERS.lock()?.0 = new;
-    return Ok(());
+    Ok(())
 }
 
 fn increment_sync_count() -> Result<(), Box<dyn std::error::Error>> {
     let new = get_syncing_peers_count()? + 1;
     SYNCING_PEERS.lock()?.0 = new;
-    return Ok(());
+    Ok(())
 }
 
 fn add_peer_to_sync_list(peer: &SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
@@ -44,7 +44,7 @@ fn add_peer_to_sync_list(peer: &SocketAddr) -> Result<(), Box<dyn std::error::Er
     } else {
         return Err("Peer already in syncing peers list".into());
     }
-    return Ok(());
+    Ok(())
 }
 fn peer_syncing(peer: &SocketAddr) -> Result<bool, Box<dyn std::error::Error>> {
     return Ok(SYNCING_PEERS
@@ -62,7 +62,7 @@ fn remove_peer_from_sync_list(peer: &SocketAddr) -> Result<(), Box<dyn std::erro
     } else {
         return Err("Peer not in syncing peers list".into());
     }
-    return Ok(());
+    Ok(())
 }
 
 fn deincrement_sync_count() -> Result<(), Box<dyn std::error::Error>> {
@@ -75,7 +75,7 @@ fn deincrement_sync_count() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     SYNCING_PEERS.lock()?.0 = new;
-    return Ok(());
+    Ok(())
 }
 
 pub fn launch_handle_client(
@@ -130,12 +130,12 @@ pub fn launch_handle_client(
                                 let slots_left = MAX_SYNCING_PEERS - used_slots;
                                 log::trace!("Recieved sync request from peer, current syncing peers: {}, slots left: {}", used_slots, slots_left);
                                 if slots_left > 0 {
-                                    if let Ok(_) = add_peer_to_sync_list(
-                                        &stream.peer_addr().unwrap_or(SocketAddr::new(
+                                    if add_peer_to_sync_list(
+                                        &stream.peer_addr().unwrap_or_else(|_| SocketAddr::new(
                                             IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                                             0,
                                         )),
-                                    ) {
+                                    ).is_ok() {
                                         let _ =
                                             send("syncack".into(), &mut stream, 0x01, true, None);
                                     } else {
@@ -148,7 +148,7 @@ pub fn launch_handle_client(
                             }
                             0x23 => {
                                 // end syncing
-                                let _ = remove_peer_from_sync_list(&stream.peer_addr().unwrap_or(
+                                let _ = remove_peer_from_sync_list(&stream.peer_addr().unwrap_or_else(|_| 
                                     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
                                 ));
                             }
@@ -156,7 +156,7 @@ pub fn launch_handle_client(
                                 // send the peer our chain digest
                                 log::trace!("Sending chain digest to peer");
                                 let chain_digest = avrio_database::get_data(
-                                    avrio_config::config().db_path + &"/chaindigest",
+                                    avrio_config::config().db_path + "/chaindigest",
                                     "master",
                                 );
                                 let _ = send(chain_digest, &mut stream, 0xcd, true, None);
@@ -177,26 +177,24 @@ pub fn launch_handle_client(
                                 if block.is_default() {
                                     log::trace!("Could not decode block");
                                     let _ = send("dsf".to_owned(), &mut stream, 0x0c, true, None);
-                                } else {
-                                    if let Err(e) = avrio_blockchain::check_block(block.clone()) {
+                                } else if let Err(e) = avrio_blockchain::check_block(block.clone()) {
                                         let curr_invalid_block_count =
                                             crate::peer::get_invalid_block_count(
-                                                &stream.peer_addr().unwrap_or(SocketAddr::new(
+                                                &stream.peer_addr().unwrap_or_else(|_| SocketAddr::new(
                                                     IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                                                     0,
                                                 )),
                                             )
                                             .unwrap_or_default();
                                         let _ = crate::peer::set_invalid_block_count(
-                                            &stream.peer_addr().unwrap_or(SocketAddr::new(
+                                            &stream.peer_addr().unwrap_or_else(|_| SocketAddr::new(
                                                 IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                                                 0,
                                             )),
                                             curr_invalid_block_count + 1,
                                         );
                                         log::debug!("Got invalid block from peer. New invalid block count: {}. Invalid because: {:?}", curr_invalid_block_count +1, e);
-                                    } else {
-                                        if let Err(e) = avrio_blockchain::saveBlock(block.clone()) {
+                                    } else if let Err(e) = avrio_blockchain::save_block(block.clone()) {
                                             log::debug!("Saving block gave error: {}", e);
                                             let _ = send(
                                                 "sbf".to_owned(),
@@ -243,8 +241,8 @@ pub fn launch_handle_client(
                                                 );
                                             }
                                         }
-                                    }
-                                }
+                                    
+                                
                             }
                             0x60 => {
                                 log::trace!(
@@ -283,7 +281,7 @@ pub fn launch_handle_client(
                                 );
                                 log::trace!("Blockcount={} for chain={}", bc, read_msg.message);
 
-                                if bc == "-1".to_owned() {
+                                if bc == *"-1" {
                                     let _ = send("0".into(), &mut stream, 0x46, true, None);
                                 } else {
                                     let _ = send(bc, &mut stream, 0x46, true, None);
@@ -304,10 +302,10 @@ pub fn launch_handle_client(
                     
                                     if hash == "0" {
                                         log::trace!("Getting genesis block for chain: {}", chain);
-                                        block_from = getBlock(&chain, 0);
+                                        block_from = get_block(&chain, 0);
                                         log::trace!("Block from: {:#?}", block_from);
                                     } else {
-                                        block_from = getBlockFromRaw(hash.clone());
+                                        block_from = get_block_from_raw(hash.clone());
                                     }
                     
                                     if block_from == Default::default() {
@@ -318,24 +316,22 @@ pub fn launch_handle_client(
                                         let mut blks: Vec<Block> = vec![];
                     
                                         while prev != Default::default() {
-                                            if prev == block_from && hash == "0" {
-                                                blks.push(prev);
-                                            } else if prev != block_from {
+                                            if (prev == block_from && hash == "0") || prev != block_from {
                                                 blks.push(prev);
                                             }
                     
                                             got += 1;
                                             log::trace!("Sent block at height: {}", got);
-                                            prev = getBlock(&chain, got);
+                                            prev = get_block(&chain, got);
                                         }
                     
-                                        if let Ok(_) = send(
+                                        if send(
                                             serde_json::to_string(&blks).unwrap_or_default(),
                                             &mut stream,
                                             0x0a,
                                             true,
                                             None
-                                        ) {
+                                        ).is_ok() {
                                             log::trace!(
                                                 "Sent all blocks (amount: {}) for chain: {} to peer",
                                                 got,
@@ -350,7 +346,6 @@ pub fn launch_handle_client(
                             0xcd => log::error!("Read chain digest response. This means something has not locked properly. Will likley cause failed sync"),
                             _ => {
                                 log::debug!("Got unsupported message type: \"0x{:x}\", please check for updates", read_msg.message_type);
-                                ();
                             }
                         }
                     }
@@ -360,5 +355,5 @@ pub fn launch_handle_client(
             }
         },
     );
-    return Ok(());
+    Ok(())
 }
