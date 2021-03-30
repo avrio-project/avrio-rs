@@ -1,5 +1,6 @@
 use avrio_crypto::raw_hash;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 pub const LEN_DECL_BYTES: usize = 9; // 000 000 000
 const CHECKSUM_BYTES: usize = 5;
@@ -74,25 +75,6 @@ impl P2pData {
         raw_hash(&self.message)[0..CHECKSUM_BYTES].to_string()
     }
 
-    /// # to_string
-    /// Takes a P2pData struct and turns it into a string that can be decoded on the other end of the stream
-    pub fn to_string(&self) -> String {
-        let s = match serde_json::to_string(self) {
-            Ok(s) => s,
-            Err(e) => {
-                debug!("Failed to encode P2pData to json, gave error: {}", e);
-                "error".to_string()
-            }
-        };
-        let checksum: String = self.checksum();
-        let len: usize = s.len() + CHECKSUM_BYTES + LEN_DECL_BYTES;
-        let mut len_s: String = len.to_string();
-        while len_s.len() != LEN_DECL_BYTES {
-            len_s = format!("0{}", len_s);
-        }
-        format!("{}{}{}{}", len_s, s, checksum, len_s)
-    }
-
     /// # from_string
     /// Takes a string encoded P2pData (as outputed by to_string) and returns a P2pData struct
     /// On failure it will return a P2pData::default()
@@ -117,5 +99,25 @@ impl P2pData {
             return P2pData::default();
         }
         d
+    }
+}
+
+impl fmt::Display for P2pData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match serde_json::to_string(self) {
+            Ok(s) => s,
+            Err(e) => {
+                debug!("Failed to encode P2pData to json, gave error: {}", e);
+                "error".to_string()
+            }
+        };
+        let checksum: String = self.checksum();
+        let len: usize = s.len() + CHECKSUM_BYTES + LEN_DECL_BYTES;
+        let mut len_s: String = len.to_string();
+        while len_s.len() != LEN_DECL_BYTES {
+            len_s = format!("0{}", len_s);
+        }
+        let string = format!("{}{}{}{}", len_s, s, checksum, len_s);
+        write!(f, "{}", string)
     }
 }

@@ -9,6 +9,7 @@ use rust_crypto::{
     aes_gcm::AesGcm,
 };
 use std::error::Error;
+use std::fmt;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
@@ -67,8 +68,11 @@ impl S {
     pub fn from_string(s: String) -> Self {
         S { c: s }
     }
-    pub fn to_string(self) -> String {
-        self.c
+}
+
+impl fmt::Display for S {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.c)
     }
 }
 

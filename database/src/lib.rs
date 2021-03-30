@@ -25,11 +25,13 @@ static CACHE_VALUES: bool = false; // should we use a memtable to store database
                                    // and a flush to disk operation is queued, the HashMap is the database itself, to get a value simply look up the corrosponding key in this hashmap
                                    // NOTE: this is dev docs, for writing avrio_db functions, to get data from the databases please use the get_data and save_data wrappers
 
-// Complex types
+// Complex types to satisfy most of clippy's nagging
 type Databases = Mutex<Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>>;
 type FlushStreamHandler = Mutex<Option<std::sync::mpsc::Sender<String>>>;
 type DatabaseFiles = Mutex<HashMap<String, rocksdb::DB>>;
 type DatabaseHashmap = HashMap<String, (HashMap<String, (String, u16)>, u16)>;
+type DatabaseLock<'a> =
+    std::sync::MutexGuard<'a, Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>>;
 
 lazy_static! {
     static ref DATABASES: Databases = Mutex::new(None);
@@ -133,9 +135,7 @@ pub fn get_iterator(db: &rocksdb::DB) -> DBRawIterator {
 fn reload_cache(
     db_paths: Vec<String>,
     db_file_lock: &mut std::sync::MutexGuard<HashMap<String, rocksdb::DB>>,
-    db_lock: &mut std::sync::MutexGuard<
-        Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>,
-    >,
+    db_lock: &mut DatabaseLock,
 ) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
