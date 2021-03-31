@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 extern crate avrio_blockchain;
 use avrio_blockchain::Block;
-use log::{debug, error, info, trace, warn};
+use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::mpsc;
