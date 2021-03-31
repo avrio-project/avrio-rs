@@ -527,7 +527,7 @@ fn main() {
     let connections_mut: Vec<&mut TcpStream> = connections.iter_mut().collect();
     let mut new_peers: Vec<SocketAddr> = vec![];
     for connection in &connections_mut {
-        for peer in avrio_p2p::helper::get_peerlist_from_peer(&mut connection.try_clone().unwrap())
+        for peer in avrio_p2p::helper::get_peerlist_from_peer(&connection.peer_addr().unwrap())
             .unwrap_or_default()
         {
             new_peers.push(peer);
