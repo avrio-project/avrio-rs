@@ -4,7 +4,7 @@ use crate::{
     // peer::add_peer,
 };
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use avrio_blockchain::{get_block, get_block_from_raw, Block};
 use avrio_config::config;
@@ -25,7 +25,7 @@ fn get_syncing_peers_count() -> Result<u64, Box<dyn std::error::Error>> {
     return Ok(SYNCING_PEERS.lock()?.0);
 }
 
-fn set_syncing_peers_count(new: u64) -> Result<(), Box<dyn std::error::Error>> {
+fn _set_syncing_peers_count(new: u64) -> Result<(), Box<dyn std::error::Error>> {
     SYNCING_PEERS.lock()?.0 = new;
     Ok(())
 }
@@ -46,7 +46,7 @@ fn add_peer_to_sync_list(peer: &SocketAddr) -> Result<(), Box<dyn std::error::Er
     }
     Ok(())
 }
-fn peer_syncing(peer: &SocketAddr) -> Result<bool, Box<dyn std::error::Error>> {
+fn _peer_syncing(peer: &SocketAddr) -> Result<bool, Box<dyn std::error::Error>> {
     return Ok(SYNCING_PEERS
         .lock()?
         .1
