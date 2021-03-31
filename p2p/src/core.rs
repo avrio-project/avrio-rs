@@ -55,7 +55,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
         Err("wrong network id".into())
     } else if d_split[1] == config().identitiy {
         return Err("tried to connect to peer with the same identity (self)".into());
-    } else {
+    }else {
         let addr_s = addr.to_string();
         let ip_s = addr_s.split(':').collect::<Vec<&str>>()[0];
         let addr_s = format!("{}:{}", ip_s, d_split[3]);
@@ -77,7 +77,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
                 )
                 .into());
             } else if data.message != "ack" {
-                Err("peer did not understand our message; key derivitation failed".into())
+                Err("peer did not understand our message; key derivation failed".into())
             } else {
                 log::info!("Handshook with peer. Adding to peer list and launching handler stream");
                 let (tx, rx) = std::sync::mpsc::channel::<String>();
