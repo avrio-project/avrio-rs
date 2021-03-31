@@ -426,6 +426,7 @@ fn main() {
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical daemon for the avrio network.")
         .author("Leo Cornelius")
+        .subcommand(App::new("seednode").about("Runs the node as a seednode"))
         .arg(
             Arg::with_name("conf")
                 .short("c")
@@ -444,21 +445,6 @@ fn main() {
                     "Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: Debug, 4: Trace",
                 ),
         )
-        .arg(
-            Arg::with_name("seednode")
-                .long("seednode")
-                .short("s")
-                .value_name("is-seednode")
-                .takes_value(false)
-                .help("Run in seednode mode?"),
-        )
-        .arg(
-            Arg::with_name("seednode ip address")
-                .long("seednode-addr")
-                .value_name("seednode-ip")
-                .takes_value(true)
-                .help("The public ip address of this seednode, prevents the seednode from connecting to itself"),
-        )
         .get_matches();
     match matches.value_of("loglev").unwrap_or(&"2") {
         "0" => setup_logging(0).unwrap(),
@@ -472,7 +458,7 @@ fn main() {
             std::process::exit(1);
         }
     }
-    let seednode: bool = matches.is_present("is-seednode");
+    let seednode: bool = matches.is_present("seednode");
     let art = " 
      ▄▄▄▄▄▄▄▄▄▄▄  ▄               ▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄ 
     ▐░░░░░░░░░░░▌▐░▌             ▐░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
@@ -539,25 +525,11 @@ fn main() {
         IpAddr::V4(Ipv4Addr::new(5, 189, 172, 54)),
         56789,
     )];
-    let mut seednode_ip: SocketAddr =
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    if let Some(seednode_ip_string) = matches.value_of("seednode-ip") {
-        seednode_ip = seednode_ip_string
-            .parse()
-            .expect("Failed to parse seednode addr into a SocketAddr");
-        info!("Our ip={}, string={}", seednode_ip, seednode_ip_string);
-    } else if seednode {
-        warn!("Running in seednode mode, but have not set seednode-addr. This may cause issues");
-    }
+    info!("P2P identity={}", config().identitiy);
 
     for node in seednodes {
-        if node != seednode_ip {
-            //dont connect to ourself
-            trace!("Adding seednode with addr={} to peerlist", node);
-            pl.push(node);
-        } else {
-            info!("Found own IP in seednode list not adding to peerlist");
-        }
+        trace!("Adding seednode with addr={} to peerlist", node);
+        pl.push(node);
     }
     let mut connections: Vec<TcpStream> = vec![];
     connect(pl, &mut connections);
