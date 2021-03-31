@@ -68,6 +68,7 @@ pub struct ConfigSave {
     pub wallet_password: String,
     pub time_beetween_sync: u64,
     pub discord_token: String,
+    pub max_syncing_peers: u64,
 }
 
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
@@ -117,6 +118,7 @@ pub struct Config {
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
     pub discord_token: String,
+    pub max_syncing_peers: u64,
 }
 
 pub fn config_read() -> Config {
@@ -174,6 +176,7 @@ impl Default for ConfigSave {
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
                     discord_token: "DISCORD_TOKEN".to_string(),
+                    max_syncing_peers: 8,
                 }
             } else {
                 ConfigSave {
@@ -195,6 +198,7 @@ impl Default for ConfigSave {
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
                     discord_token: "DISCORD_TOKEN".to_string(),
+                    max_syncing_peers: 8,
                 }
             }
         } else {
@@ -217,6 +221,7 @@ impl Default for ConfigSave {
                 wallet_password: "wallet_password_123".to_string(),
                 time_beetween_sync: 5 * 60000,
                 discord_token: "DISCORD_TOKEN".to_string(),
+                max_syncing_peers: 8,
             }
         }
     }
@@ -271,6 +276,7 @@ impl ConfigSave {
             min_suported_version: nconf.min_suported_version,
             max_supported_version: nconf.max_supported_version,
             discord_token: self.discord_token.to_owned(),
+            max_syncing_peers: self.max_syncing_peers,
         }
     }
 }
@@ -338,6 +344,7 @@ impl Config {
             wallet_password: self.wallet_password,
             time_beetween_sync: self.time_beetween_sync,
             discord_token: self.discord_token,
+            max_syncing_peers: self.max_syncing_peers,
         }
     }
 
