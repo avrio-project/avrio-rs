@@ -56,6 +56,9 @@ pub fn new_connection(addr: &String) -> Result<std::net::TcpStream, Box<dyn std:
         if hex::encode(config().network_id) != d_split[0] {
             return Err("wrong network id".into());
         } else {
+            if d_split[1] == config().identitiy {
+                return Err("tried to connect to peer with the same identity (self)".into());
+            }
             let addr_s = addr.to_string();
             let ip_s = addr_s.split(":").collect::<Vec<&str>>()[0];
             let addr_s = format!("{}:{}", ip_s, d_split[3]);
