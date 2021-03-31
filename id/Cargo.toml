@@ -1,18 +1,18 @@
 [package]
-name = "avrio_id"
-version = "0.1.0"
 authors = ["Leo Cornelius <leocornelius019@gmail.com>", "TheDevMinerTV <tobigames200@gmail.com>"]
 edition = "2018"
+name = "avrio_id"
+version = "0.1.0"
 [lib]
 name = "avrio_id"
 path = "src/lib.rs"
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-avrio_blockchain = { path = "../blockchain/" }
-avrio_database = { path = "../database" }
-rand = "0.7"
-cryptonight-rs = { path = "../crypto/cn-rs"}
+avrio_blockchain = {path = "../blockchain/"}
+avrio_crypto = {path = "../crypto"}
+avrio_database = {path = "../database"}
 hex = "0.4"
 log = "0.4"
+rand = "0.7"
 ring = "0.16.11"
+serde = {version = "1.0", features = ["derive"]}
+serde_json = "1.0"

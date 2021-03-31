@@ -125,7 +125,7 @@ pub fn config_read() -> Config {
     if let Ok(mut file) = File::open("node.conf") {
         let mut data: String = String::from("");
 
-        if let Err(_) = file.read_to_string(&mut data) {
+        if file.read_to_string(&mut data).is_err() {
             Config::default()
         } else {
             let conf: ConfigSave = serde_json::from_str(&data).unwrap_or_default();
@@ -140,7 +140,7 @@ pub fn config_read() -> Config {
 }
 
 pub fn config() -> Config {
-    return CONFIG_STACK.clone();
+    CONFIG_STACK.clone()
 }
 
 fn hash_id(id: u64) -> String {
@@ -148,14 +148,14 @@ fn hash_id(id: u64) -> String {
 
     hasher.input(format!("{}", id).as_bytes());
 
-    return hex::encode(hasher.result());
+    hex::encode(hasher.result())
 }
 
 impl Default for ConfigSave {
     fn default() -> ConfigSave {
         if let Some(dir) = home_dir() {
             if let Some(dir_str) = dir.to_str() {
-                return ConfigSave {
+                ConfigSave {
                     db_path: dir_str.to_string() + &"/.avrio-datadir".to_string(),
                     max_connections: 50,
                     max_threads: 4,
@@ -174,9 +174,9 @@ impl Default for ConfigSave {
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
                     discord_token: "DISCORD_TOKEN".to_string(),
-                };
+                }
             } else {
-                return ConfigSave {
+                ConfigSave {
                     db_path: ".avrio-datadir".to_string(),
                     max_connections: 50,
                     max_threads: 4,
@@ -195,10 +195,10 @@ impl Default for ConfigSave {
                     wallet_password: "wallet_password_123".to_string(),
                     time_beetween_sync: 5 * 60000,
                     discord_token: "DISCORD_TOKEN".to_string(),
-                };
+                }
             }
         } else {
-            return ConfigSave {
+            ConfigSave {
                 db_path: ".avrio-datadir".to_string(),
                 max_connections: 50,
                 max_threads: 4,
@@ -217,7 +217,7 @@ impl Default for ConfigSave {
                 wallet_password: "wallet_password_123".to_string(),
                 time_beetween_sync: 5 * 60000,
                 discord_token: "DISCORD_TOKEN".to_string(),
-            };
+            }
         }
     }
 }
@@ -226,7 +226,7 @@ impl ConfigSave {
     pub fn to_config(&self) -> Config {
         let nconf = NetworkConfig::default();
 
-        return Config {
+        Config {
             db_path: self.db_path.to_owned(),
             max_connections: self.max_connections,
             max_threads: self.max_threads,
@@ -271,13 +271,13 @@ impl ConfigSave {
             min_suported_version: nconf.min_suported_version,
             max_supported_version: nconf.max_supported_version,
             discord_token: self.discord_token.to_owned(),
-        };
+        }
     }
 }
 
 impl Default for Config {
     fn default() -> Config {
-        return ConfigSave::default().to_config();
+        ConfigSave::default().to_config()
     }
 }
 
@@ -318,7 +318,7 @@ impl Default for NetworkConfig {
 }
 
 impl Config {
-    pub fn to_save(self) -> ConfigSave {
+    pub fn prep_save(self) -> ConfigSave {
         ConfigSave {
             db_path: self.db_path,
             max_connections: self.max_connections,
@@ -346,7 +346,7 @@ impl Config {
         // create file
         let mut file = File::create("node.conf")?;
 
-        file.write_all(serde_json::to_string(&self.to_save()).unwrap().as_bytes())?;
+        file.write_all(serde_json::to_string(&self.prep_save()).unwrap().as_bytes())?;
 
         Ok(())
     }
@@ -356,7 +356,7 @@ impl Config {
         // save to exisiting/ update
         let mut file = File::open("node.conf")?;
 
-        file.write_all(serde_json::to_string(&self.to_save()).unwrap().as_bytes())?;
+        file.write_all(serde_json::to_string(&self.prep_save()).unwrap().as_bytes())?;
 
         Ok(())
     }

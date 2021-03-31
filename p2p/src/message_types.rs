@@ -34,15 +34,12 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x9f, "Get Peer List (response)");
     message_types.insert(0xff, "Shutdown");
 
-    return message_types;
+    message_types
 }
 
 pub fn get_message_type(message_type: &u16) -> &str {
     let message_types = &MSG_TYPES;
     let message_type_option = message_types.get(message_type);
 
-    match message_type_option {
-        None => return "Unknown",
-        Some(m) => return m,
-    }
+    message_type_option.unwrap_or(&"Unknown")
 }

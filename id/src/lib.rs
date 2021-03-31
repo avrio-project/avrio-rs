@@ -1,19 +1,14 @@
 // This lib deals with the generation of ID's based off the random strings provided by the consensius commitee at the end of the last round
 
 use std::time::{SystemTime, UNIX_EPOCH};
-extern crate cryptonight;
-extern crate rand;
-use cryptonight::cryptonight;
 
 extern crate hex;
+extern crate rand;
 #[macro_use]
 extern crate log;
-use ring::{
-    rand as randc,
-    signature::{self, KeyPair},
-};
+use avrio_crypto::raw_hash;
+use ring::signature;
 use serde::{Deserialize, Serialize};
-
 pub struct HashParams {
     pub iterations: u32,
     pub memory: u32,
@@ -28,39 +23,38 @@ pub struct IdDetails {
     pub end_t: u64,
 }
 
-pub fn difficulty_bytes_as_u128(v: &Vec<u8>) -> u128 {
+pub fn difficulty_bytes_as_u128(v: &[u8]) -> u128 {
     return v.iter().sum::<u8>() as u128;
 }
 
-pub fn check_difficulty(hash: &String, difficulty: u128) -> bool {
+pub fn check_difficulty(hash: &str, difficulty: u128) -> bool {
     difficulty > difficulty_bytes_as_u128(&hash.as_bytes().to_vec())
 }
 
-fn calculate_hash_params(PrevBlockHash: String) -> HashParams {
-    let cu = PrevBlockHash.as_bytes();
-    let b: Vec<u8> = cu.iter().cloned().collect();
+fn _calculate_hash_params(prev_block_hash: String) -> HashParams {
+    let cu = prev_block_hash.as_bytes();
+    let b: Vec<u8> = cu.to_vec();
     let mut a: u32 = 0;
     let _i = 0;
 
     for x in &b {
-        a = a + *x as u32;
+        a += *x as u32;
     }
-    return HashParams {
+    HashParams {
         iterations: a * 10,
         memory: a * 20,
-    };
-}
-
-fn hash_string(params: &HashParams, s: &String) -> String {
-    unsafe {
-        let input = s.as_bytes();
-        cryptonight::set_params(params.memory as u64, params.iterations as u64);
-        let out = cryptonight(&input, input.len(), 0);
-        return hex::encode(out);
     }
 }
 
-pub fn generateId(
+fn hash_string(params: &HashParams, s: &str) -> String {
+    let mut out: String = s.to_owned();
+    for _ in 0..params.iterations {
+        out = raw_hash(&out);
+    }
+    out
+}
+
+pub fn generate_id(
     k: String,
     public_key: String,
     private_key: String,
@@ -80,7 +74,7 @@ pub fn generateId(
         .as_millis() as u64;
 
     loop {
-        nonce = nonce + 1;
+        nonce += 1;
         hashed = hash_string(&params, &(k.clone() + &public_key + &nonce.to_string()));
 
         // check difficulty
@@ -103,7 +97,7 @@ pub fn generateId(
 
     struct_.signed = sign(hashed, private_key);
 
-    return struct_;
+    struct_
 }
 
 fn sign(s: String, pk: String) -> String {
@@ -112,11 +106,11 @@ fn sign(s: String, pk: String) -> String {
         Ok(out) => {
             let key_pair = signature::Ed25519KeyPair::from_pkcs8(out.as_ref()).unwrap();
             let msg: &[u8] = s.as_bytes();
-            return hex::encode(key_pair.sign(msg));
+            hex::encode(key_pair.sign(msg))
         }
         Err(e) => {
             warn!("failed to decode hex, gave error: {}", e);
-            return "failed to hex decode".to_string();
+            "failed to hex decode".to_string()
         }
     }
 }

@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-extern crate cryptonight;
 extern crate hex;
 use avrio_crypto::Hashable;
 extern crate avrio_config;
@@ -12,7 +11,7 @@ use ring::signature;
 extern crate avrio_database;
 
 use crate::{
-    account::{getAccount, getByUsername, open_or_create, Accesskey, Account},
+    account::{get_account, get_by_username, open_or_create, Accesskey, Account},
     certificate::Certificate,
     gas::*,
 };
@@ -65,6 +64,7 @@ pub struct Transaction {
     pub timestamp: u64,
     pub signature: String,
 }
+
 impl Hashable for Transaction {
     fn bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
@@ -82,9 +82,10 @@ impl Hashable for Transaction {
         bytes
     }
 }
+
 impl Transaction {
-    pub fn typeTransaction(&self) -> String {
-        return match self.flag {
+    pub fn type_transaction(&self) -> String {
+        match self.flag {
             'n' => "normal".to_string(),
             'r' => "reward".to_string(),
             'f' => "fullnode registration".to_string(),
@@ -96,18 +97,18 @@ impl Transaction {
             'c' => "claim".to_owned(), // This is only availble on the testnet it will be removed before the mainet
             'i' => "create invite".to_owned(),
             _ => "unknown".to_string(),
-        };
+        }
     }
 
     pub fn enact(
         &self,
         chain_index_db: String,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let txn_type: String = self.typeTransaction();
-        if txn_type == "normal".to_owned() {
+        let txn_type: String = self.type_transaction();
+        if txn_type == *"normal" {
             trace!("Opening senders account");
             let mut sendacc = open_or_create(&self.sender_key);
-            if &self.sender_key != &self.receive_key {
+            if self.sender_key != self.receive_key {
                 trace!("Opening recievers account");
                 let mut reqacc: Account = open_or_create(&self.receive_key);
 
@@ -141,7 +142,7 @@ impl Transaction {
                 );
             }
         // TODO: Check we are on the testnet
-        } else if txn_type == "claim".to_owned() {
+        } else if txn_type == *"claim" {
             // »!testnet only!«
             trace!("Getting sender acc");
             let mut acc: Account = open_or_create(&self.sender_key);
@@ -167,19 +168,19 @@ impl Transaction {
                     txn_count + 1
                 );
             }
-        } else if txn_type == "username registraion".to_string() {
+        } else if txn_type == *"username registraion" {
             trace!("Getting acc (uname reg)");
-            let mut acc = getAccount(&self.sender_key).unwrap_or_default();
+            let mut acc = get_account(&self.sender_key).unwrap_or_default();
             if acc == Account::default() {
                 return Err("failed to get account for username addition".into());
-            } else if acc.username != "".to_owned() {
+            } else if acc.username != *"" {
                 return Err("account has username already".into());
             } else {
                 acc.username = self.extra.clone();
                 acc.balance -= self.amount;
                 acc.balance -= self.gas * self.gas_price;
                 trace!("Saving acc");
-                if let Err(_) = acc.save() {
+                if acc.save().is_err() {
                     return Err("failed to save account (after username addition)".into());
                 }
                 trace!("Get txn count");
@@ -206,7 +207,7 @@ impl Transaction {
             return Err("unsupported txn type".into());
         }
         trace!("Done");
-        return Ok(());
+        Ok(())
     }
 
     pub fn valid(&self, recieve: bool) -> Result<(), TransactionValidationErrors> {
@@ -219,7 +220,7 @@ impl Transaction {
                 + &"-chainindex".to_owned(),
             &"txncount".to_owned(),
         );
-        if self.nonce.to_string() != txn_count && recieve == false {
+        if self.nonce.to_string() != txn_count && !recieve {
             return Err(TransactionValidationErrors::BadNonce);
         } else if self.hash_return() != self.hash {
             return Err(TransactionValidationErrors::BadHash);
@@ -262,25 +263,23 @@ impl Transaction {
             } else {
                 let mut certificate: Certificate =
                     serde_json::from_str(&self.extra).unwrap_or_default();
-                if let Err(_) = certificate.validate() {
+                if certificate.validate().is_err() {
                     return Err(TransactionValidationErrors::InvalidCertificate);
                 }
             }
         }
-        if self.receive_key.len() == 0 && self.flag != 'm' && self.flag != 'c' {
+        if self.receive_key.is_empty() && self.flag != 'm' && self.flag != 'c' {
             return Err(TransactionValidationErrors::NonMessageWithoutRecipitent);
         }
         match self.flag {
             'n' => {
                 if self.max_gas
                     < (TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64))
-                        .into()
                 {
                     return Err(TransactionValidationErrors::MaxGasExpended);
                 }
                 if self.gas
                     < (TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64))
-                        .into()
                 {
                     return Err(TransactionValidationErrors::LowGas);
                 }
@@ -289,14 +288,12 @@ impl Transaction {
                 if self.max_gas
                     < (TX_GAS as u64
                         + (GAS_PER_EXTRA_BYTE_MESSAGE as u64 * self.extra.len() as u64))
-                        .into()
                 {
                     return Err(TransactionValidationErrors::MaxGasExpended);
                 }
                 if self.gas
                     < (TX_GAS as u64
                         + (GAS_PER_EXTRA_BYTE_MESSAGE as u64 * self.extra.len() as u64))
-                        .into()
                 {
                     return Err(TransactionValidationErrors::LowGas);
                 }
@@ -326,7 +323,7 @@ impl Transaction {
         {
             return Err(TransactionValidationErrors::BadTimestamp);
         }
-        if self.access_key == "" {
+        if self.access_key.is_empty() {
             if acc.balance < (self.amount + (self.gas * self.gas_price)) && self.flag != 'c' {
                 return Err(TransactionValidationErrors::InsufficentBalance);
             } else if self.extra.len() > 100 {
@@ -342,12 +339,12 @@ impl Transaction {
                     // a public key will never be this short
                     // this is probably a username rather than a publickey
                     peer_public_key_bytes = bs58::decode(
-                        getByUsername(&self.sender_key)
+                        get_by_username(&self.sender_key)
                             .unwrap_or_default()
                             .public_key,
                     )
                     .into_vec()
-                    .unwrap_or(vec![5]);
+                    .unwrap_or_else(|_| vec![5]);
                     if peer_public_key_bytes.len() < 2 {
                         return Err(TransactionValidationErrors::AccountMissing);
                     }
@@ -400,42 +397,40 @@ impl Transaction {
             }
         }
         trace!("Finished validating txn");
-        return Ok(());
+        Ok(())
     }
 
     pub fn validate_transaction(&self) -> bool {
-        if let Err(_) = self.valid(false) {
-            return false;
-        } else {
-            return true;
-        }
+        self.valid(false).is_ok()
     }
+
     pub fn hash(&mut self) {
         self.hash = self.hash_item();
     }
+
     pub fn hash_return(&self) -> String {
-        return self.hash_item();
+        self.hash_item()
     }
-    pub fn sign(
-        &mut self,
-        private_key: &String,
-    ) -> std::result::Result<(), ring::error::KeyRejected> {
+
+    pub fn sign(&mut self, private_key: &str) -> std::result::Result<(), ring::error::KeyRejected> {
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(
             bs58::decode(private_key).into_vec().unwrap().as_ref(),
         )?;
         let msg: &[u8] = self.hash.as_bytes();
         self.signature = bs58::encode(key_pair.sign(msg)).into_string();
-        return Ok(());
+        Ok(())
     }
 }
 pub struct Item {
     pub cont: String,
 }
+
 impl Hashable for Item {
     fn bytes(&self) -> Vec<u8> {
         self.cont.as_bytes().to_vec()
     }
 }
+
 pub fn hash(subject: String) -> String {
-    return Item { cont: subject }.hash_item();
+    Item { cont: subject }.hash_item()
 }
