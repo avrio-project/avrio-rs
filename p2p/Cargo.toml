@@ -8,7 +8,7 @@ authors = [
 edition = "2018"
 
 [dependencies]
-avrio_config = { path = "../config" }
+avrio_config = { path = "../config/" }
 avrio_database = { path = "../database" }
 avrio_blockchain = { path = "../blockchain" }
 avrio_core = { path = "../core" }
