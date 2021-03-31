@@ -4,7 +4,7 @@ use crate::{
     // peer::add_peer,
 };
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 
 use avrio_blockchain::{get_block, get_block_from_raw, Block};
 use avrio_config::config;
@@ -359,6 +359,14 @@ pub fn launch_handle_client(
                                             peers.len()
                                         );
                                     }
+                                }
+                            },
+                            0x9a => {
+                                log::debug!("Recieved announce peer message, addr={}", read_msg.message);
+                                let parsed: Result<SocketAddr, _> = read_msg.message.parse();
+                                if let Ok(socket) = parsed {
+                                    let _ = avrio_database::add_peer(socket);
+                                    // TODO: Check if peer was in peer list and if we are over 25 peer connections, if not then connect to this new peer. Also relay this message to all connected peers
                                 }
                             },
                             0xcd => log::error!("Read chain digest response. This means something has not locked properly. Will likley cause failed sync"),
