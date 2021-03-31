@@ -167,7 +167,7 @@ pub fn sync() -> Result<u64, String> {
     }
     drop(_peers); // destroy all remaining streams
 
-    let try_ack = syncack_peer(&mut peer_to_use_unwraped, false);
+    let try_ack = syncack_peer(&mut peer_to_use_unwraped);
     if let Err(e) = try_ack {
         error!("Got error: {} when sync acking peer. Releasing lock", e);
         unlock_peer(peer_to_use_unwraped).unwrap();
@@ -497,7 +497,7 @@ pub fn send_block_with_hash(hash: String, peer: &mut TcpStream) -> Result<(), Bo
 // these should all be private, DO NOT PUBLICIZE THEM //
 
 /// This function asks the peer to sync, if they accept you can begin syncing
-pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box<dyn Error>> {
+fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     //lock(&peer.peer_addr().unwrap(), 10000);
 
     let syncreqres = send(
@@ -531,11 +531,6 @@ pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box
     // There are now bytes waiting in the stream
     let deformed: P2pData = read(peer, Some(10000), None).unwrap_or_default();
 
-    if unlock {
-        debug!("Releasing lock on peer");
-        //unlock_peer(peer).unwrap();
-    }
-
     if deformed.message == *"syncack" {
         info!("Got syncack from selected peer. Continuing");
 
@@ -550,7 +545,7 @@ pub fn syncack_peer(peer: &mut TcpStream, unlock: bool) -> Result<TcpStream, Box
         info!("Retrying syncack with same peer...");
 
         // try again
-        syncack_peer(&mut peer.try_clone()?, unlock)
+        syncack_peer(&mut peer.try_clone()?)
     }
 }
 
