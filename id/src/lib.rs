@@ -7,7 +7,10 @@ extern crate rand;
 #[macro_use]
 extern crate log;
 use avrio_crypto::raw_hash;
-use ring::signature;
+use ring::{
+    rand as randc,
+    signature::{self, KeyPair},
+};
 use serde::{Deserialize, Serialize};
 pub struct HashParams {
     pub iterations: u32,
@@ -46,12 +49,12 @@ fn _calculate_hash_params(prev_block_hash: String) -> HashParams {
     }
 }
 
-fn hash_string(params: &HashParams, s: &str) -> String {
+fn hash_string(params: &HashParams, s: &String) -> String {
     let mut out: String = s.to_owned();
     for _ in 0..params.iterations {
         out = raw_hash(&out);
     }
-    out
+    return out;
 }
 
 pub fn generate_id(
