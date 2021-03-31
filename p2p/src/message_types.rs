@@ -32,6 +32,7 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x6f, "Get Block Above Hash");
     message_types.insert(0x99, "Get Peer List (ask)");
     message_types.insert(0x9f, "Get Peer List (response)");
+    message_types.insert(0x9a, "Announce peer");
     message_types.insert(0xff, "Shutdown");
 
     message_types
