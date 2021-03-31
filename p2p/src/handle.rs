@@ -342,7 +342,25 @@ pub fn launch_handle_client(
                                 }
                     
                             }
-                            0x1a => log::debug!("Got handshake from handshook peer, ignoring"),
+                            0x1a => log::debug!("Got handshake from handshook peer, ignoring"), // TODO: rehandshake with peers to allow people who have restarted to recconect
+                            0x9f => {
+                                log::debug!("Peer=asked for peer list");
+                                if let Ok(peers) = avrio_database::get_peerlist() {
+                                    log::trace!("Got peerlist from DB");
+                                    if send(
+                                        serde_json::to_string(&peers).unwrap_or_default(),
+                                        &mut stream,
+                                        0x0a,
+                                        true,
+                                        None
+                                    ).is_ok() {
+                                        log::trace!(
+                                            "Sent all peers (amount: {})d to peer",
+                                            peers.len()
+                                        );
+                                    }
+                                }
+                            },
                             0xcd => log::error!("Read chain digest response. This means something has not locked properly. Will likley cause failed sync"),
                             _ => {
                                 log::debug!("Got unsupported message type: \"0x{:x}\", please check for updates", read_msg.message_type);
