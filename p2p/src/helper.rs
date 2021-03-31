@@ -14,14 +14,16 @@ use avrio_database::get_data;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::thread;
 
-/// TODO: implment this
-pub fn get_peerlist_from_peer(
-    _peer: &mut TcpStream,
-) -> Result<Vec<std::net::SocketAddr>, Box<dyn Error>> {
-    Ok(vec![])
+pub fn get_peerlist_from_peer(peer: &SocketAddr) -> Result<Vec<SocketAddr>, Box<dyn Error>> {
+    let mut peer_lock = lock(peer, 1000)?;
+    send("".to_string(), &mut peer_lock, 0x9f, true, None)?;
+    let peerlist_ser = read(&mut peer_lock, Some(20000), None)?; // wait for 20 secs
+    let peerlist: Vec<SocketAddr> = serde_json::from_str(&peerlist_ser.message)?;
+    unlock_peer(peer_lock).unwrap();
+    Ok(peerlist)
 }
 
 pub fn sync_needed() -> Result<bool, Box<dyn Error>> {
