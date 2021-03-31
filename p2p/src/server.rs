@@ -74,7 +74,7 @@ impl P2pServer {
         }
     }
 
-    fn deincrement_connections(&mut self) {
+    fn decrement_connections(&mut self) {
         if self.state != P2pServerState::DenyNewConnections
             && self.state != P2pServerState::Uninitialized
             && self.state != P2pServerState::ShuttingDown
