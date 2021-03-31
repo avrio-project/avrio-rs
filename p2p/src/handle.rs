@@ -15,8 +15,6 @@ use std::sync::Mutex;
 extern crate rand;
 extern crate x25519_dalek;
 
-static MAX_SYNCING_PEERS: u64 = 8;
-
 lazy_static! {
     static ref SYNCING_PEERS: Mutex<(u64, Vec<String>)> = Mutex::new((0, vec![]));
 }
@@ -126,8 +124,8 @@ pub fn launch_handle_client(
                             // sync req message
                             0x22 => {
                                 let used_slots =
-                                    get_syncing_peers_count().unwrap_or(MAX_SYNCING_PEERS);
-                                let slots_left = MAX_SYNCING_PEERS - used_slots;
+                                    get_syncing_peers_count().unwrap_or(config().max_syncing_peers);
+                                let slots_left = config().max_syncing_peers - used_slots;
                                 log::trace!("Recieved sync request from peer, current syncing peers: {}, slots left: {}", used_slots, slots_left);
                                 if slots_left > 0 {
                                     if add_peer_to_sync_list(
