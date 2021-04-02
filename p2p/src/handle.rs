@@ -343,7 +343,8 @@ pub fn launch_handle_client(
                             0x1a => log::debug!("Got handshake from handshook peer, ignoring"), // TODO: rehandshake with peers to allow people who have restarted to recconect
                             0x9f => {
                                 log::debug!("Peer=asked for peer list");
-                                if let Ok(peers) = avrio_database::get_peerlist() {
+                                let peerlist_get = avrio_database::get_peerlist();
+                                if let Ok(peers) = peerlist_get {
                                     log::trace!("Got peerlist from DB");
                                     if send(
                                         serde_json::to_string(&peers).unwrap_or_default(),
@@ -357,6 +358,21 @@ pub fn launch_handle_client(
                                             peers.len()
                                         );
                                     }
+                                } else {
+                                    log::warn!("Failed to get peerlist (context=p2p_get_peerlist_msg), error={}; sending blank", peerlist_get.unwrap_err());
+                                    let blank_vec: Vec<String> = vec![];
+                                    if send(
+                                        serde_json::to_string(&blank_vec).unwrap_or_default(),
+                                        &mut stream,
+                                        0x0a,
+                                        true,
+                                        None
+                                    ).is_ok() {
+                                        log::trace!(
+                                            "Sent blank vec as peerlist to peer"
+                                        );
+                                    }
+                                
                                 }
                             },
                             0x9a => {
