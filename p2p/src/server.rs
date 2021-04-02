@@ -129,17 +129,18 @@ impl P2pServer {
                                         if hex::encode(config().network_id) != d_split[0] {
                                             log::debug!("Peer tried to handshake with wrong network id. Expecting: {}, got: {}. Ignoring...", hex::encode(config().network_id), d_split[0]);
                                             // TODO: send shutdown type first!
-                                            let _ =stream.shutdown(std::net::Shutdown::Both);
+                                            let _ = stream.shutdown(std::net::Shutdown::Both);
                                         } else if d_split[1] == config().identitiy {
-                                            let _ =crate::io::send(
+                                            let _ = crate::io::send(
                                                 "cancel".to_string(),
                                                 &mut stream,
-                                                0x00,
+                                                0x1a,
                                                 true,
                                                 None,
                                             );
-                                            let _ =stream.shutdown(std::net::Shutdown::Both);
-                                            
+                                            log::debug!("Sent cancel to peer");
+                                            let _ = stream.shutdown(std::net::Shutdown::Both);
+                                            log::debug!("Shutdown stream");
                                         } else {
                                             let addr_s = addr.to_string();
                                             let ip_s = addr_s.split(':').collect::<Vec<&str>>()[0];

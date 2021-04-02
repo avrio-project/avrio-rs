@@ -45,7 +45,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
         Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
     )?;
     if d.message == "cancel" {
-        return Err("canceled by peer".into())
+        return Err("canceled by peer".into());
     }
     if d.message_type != 0x1a {
         return Err("wrong first response type".into());
@@ -58,7 +58,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
         Err("wrong network id".into())
     } else if d_split[1] == config().identitiy {
         return Err("tried to connect to peer with the same identity (self)".into());
-    }else {
+    } else {
         let addr_s = addr.to_string();
         let ip_s = addr_s.split(':').collect::<Vec<&str>>()[0];
         let addr_s = format!("{}:{}", ip_s, d_split[3]);
