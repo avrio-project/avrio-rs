@@ -62,7 +62,6 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             // let's not include them.
             base_config
                 .level(log::LevelFilter::Error)
-                .level_for("avrio_blockchain", log::LevelFilter::Error)
                 .level_for("avrio_database", log::LevelFilter::Error)
                 .level_for("avrio_config", log::LevelFilter::Error)
                 .level_for("avrio_daemon", log::LevelFilter::Error)
@@ -74,7 +73,6 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
         1 => base_config
             .level(log::LevelFilter::Warn)
             .level(log::LevelFilter::Error)
-            .level_for("avrio_blockchain", log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Warn)
             .level_for("avrio_config", log::LevelFilter::Warn)
             .level_for("seednode", log::LevelFilter::Warn)
@@ -85,7 +83,6 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_blockchain", log::LevelFilter::Warn),
         2 => base_config
             .level(log::LevelFilter::Warn)
-            .level_for("avrio_blockchain", log::LevelFilter::Info)
             .level_for("avrio_database", log::LevelFilter::Info)
             .level_for("avrio_config", log::LevelFilter::Info)
             .level_for("seednode", log::LevelFilter::Info)
@@ -96,7 +93,6 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_blockchain", log::LevelFilter::Info),
         3 => base_config
             .level(log::LevelFilter::Warn)
-            .level_for("avrio_blockchain", log::LevelFilter::Debug)
             .level_for("avrio_database", log::LevelFilter::Debug)
             .level_for("avrio_config", log::LevelFilter::Debug)
             .level_for("seednode", log::LevelFilter::Debug)
@@ -107,7 +103,6 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_blockchain", log::LevelFilter::Debug),
         _ => base_config
             .level(log::LevelFilter::Warn)
-            .level_for("avrio_blockchain", log::LevelFilter::Trace)
             .level_for("avrio_database", log::LevelFilter::Trace)
             .level_for("avrio_config", log::LevelFilter::Trace)
             .level_for("seednode", log::LevelFilter::Trace)
