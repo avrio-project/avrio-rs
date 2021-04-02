@@ -9,5 +9,6 @@ members = [
   "api",
   "crypto",
   "bin/test/one",
-  "node"
+  "node",
+  "rpc"
 ]
