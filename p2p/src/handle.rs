@@ -1,8 +1,4 @@
-use crate::{
-    // format::P2pData,
-    io::{peek, read, send},
-    // peer::add_peer,
-};
+use crate::io::{peek, read, send};
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
@@ -82,39 +78,47 @@ pub fn launch_handle_client(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = stream.try_clone()?;
     let _handler: std::thread::JoinHandle<Result<(), &'static str>> = std::thread::spawn(
-        move || loop {
-            if let Ok(msg) = rx.try_recv() {
-                if msg == "pause" {
-                    log::trace!("Pausing stream for peer");
-                    loop {
-                        if let Ok(msg) = rx.try_recv() {
-                            if msg == "run" {
-                                log::trace!("Resuming stream for peer");
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            if let Ok(a) = peek(&mut stream) {
+        move || {
+            let mut paused = false;
+            loop {
                 if let Ok(msg) = rx.try_recv() {
+                    log::debug!("Read msg={}", msg);
                     if msg == "pause" {
                         log::trace!("Pausing stream for peer");
                         loop {
                             if let Ok(msg) = rx.try_recv() {
                                 if msg == "run" {
                                     log::trace!("Resuming stream for peer");
+                                    paused = true;
                                     break;
                                 }
                             }
+                            std::thread::sleep(std::time::Duration::from_millis(10));
                         }
                     }
                 }
-                if a != 0 {
-                    let read_data = read(&mut stream, Some(1000), None);
-                    if let Ok(read_msg) = read_data {
-                        read_msg.log();
-                        match read_msg.message_type {
+                if let Ok(a) = peek(&mut stream) {
+                    if let Ok(msg) = rx.try_recv() {
+                        log::debug!("Read msg={}", msg);
+                        if msg == "pause" {
+                            log::trace!("Pausing stream for peer");
+                            loop {
+                                if let Ok(msg) = rx.try_recv() {
+                                    if msg == "run" {
+                                        log::trace!("Resuming stream for peer");
+                                        paused = true;
+                                        break;
+                                    }
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(10));
+                            }
+                        }
+                    }
+                    if a != 0 && !paused {
+                        let read_data = read(&mut stream, Some(1000), None);
+                        if let Ok(read_msg) = read_data {
+                            read_msg.log();
+                            match read_msg.message_type {
                             // zero type msg
                             0 => {
                                 log::debug!(
@@ -388,10 +392,13 @@ pub fn launch_handle_client(
                                 log::debug!("Got unsupported message type: \"0x{:x}\", please check for updates", read_msg.message_type);
                             }
                         }
+                        }
                     }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                } else {
+                    return Err("failed to peek peer");
                 }
-            } else {
-                return Err("failed to peek peer");
+                paused = false;
             }
         },
     );
