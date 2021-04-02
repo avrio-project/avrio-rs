@@ -375,7 +375,7 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
         } else {
             let blocks: Vec<Block> = serde_json::from_str(&deformed.message).unwrap_or_default();
 
-            if blocks.is_empty() {
+            if !blocks.is_empty() {
                 trace!(
                     "Got: {} blocks from peer. Hash: {} up to: {}",
                     blocks.len(),
@@ -406,6 +406,8 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
                         );
                     }
                 }
+            } else {
+                warn!("Got empty block vec from peer");
             }
         }
 
