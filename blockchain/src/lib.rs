@@ -342,7 +342,10 @@ pub fn form_state_digest(cd_db: String) -> std::result::Result<String, Box<dyn s
                                                     //iter.seek_to_first();
     let _chains_list: Vec<String> = Vec::new();
     for (chain_key_string, chain_digest_string) in open_database(cd_db.to_owned())?.iter() {
-        if chain_key_string != "master" && chain_key_string != "blockcount" && chain_key_string != "topblockhash" {
+        if chain_key_string != "master"
+            && chain_key_string != "blockcount"
+            && chain_key_string != "topblockhash"
+        {
             _roots.push((chain_key_string.to_owned(), chain_digest_string.to_owned()));
         } else {
             log::trace!(
@@ -590,7 +593,7 @@ impl Block {
             }
             trace!("our_height={}", our_height);
             blk_clone.header.chain_key = chain_key_value;
-            blk_clone.header.height = our_height + 1;
+            blk_clone.header.height = our_height; // we DONT need to add 1 to the blockcount as it is the COUNT of blocks on a chain which starts on 1, and block height starts from 0, this means there is already a +1 delta between the two
             blk_clone.send_block = Some(self.hash.to_owned());
             blk_clone.header.prev_hash = top_block_hash;
             blk_clone.hash();
