@@ -79,6 +79,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("seednode", log::LevelFilter::Warn)
             .level_for("avrio_core", log::LevelFilter::Warn)
             .level_for("avrio_crypto", log::LevelFilter::Warn)
+            .level_for("avrio_daemon", log::LevelFilter::Warn)
             .level_for("avrio_blockchain", log::LevelFilter::Warn),
         2 => base_config
             .level(log::LevelFilter::Warn)
@@ -88,6 +89,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("seednode", log::LevelFilter::Info)
             .level_for("avrio_core", log::LevelFilter::Info)
             .level_for("avrio_crypto", log::LevelFilter::Info)
+            .level_for("avrio_daemon", log::LevelFilter::Info)
             .level_for("avrio_blockchain", log::LevelFilter::Info),
         3 => base_config
             .level(log::LevelFilter::Warn)
@@ -97,6 +99,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("seednode", log::LevelFilter::Debug)
             .level_for("avrio_core", log::LevelFilter::Debug)
             .level_for("avrio_crypto", log::LevelFilter::Debug)
+            .level_for("avrio_daemon", log::LevelFilter::Debug)
             .level_for("avrio_blockchain", log::LevelFilter::Debug),
         _ => base_config
             .level(log::LevelFilter::Warn)
@@ -105,6 +108,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_config", log::LevelFilter::Trace)
             .level_for("seednode", log::LevelFilter::Trace)
             .level_for("avrio_core", log::LevelFilter::Trace)
+            .level_for("avrio_daemon", log::LevelFilter::Trace)
             .level_for("avrio_crypto", log::LevelFilter::Trace)
             .level_for("avrio_blockchain", log::LevelFilter::Trace),
     };
@@ -307,6 +311,12 @@ fn main() {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("no-sync")
+                .help("Don't try and sync the node")
+                .long("--no-sync")
+                .takes_value(false),
+        )
+        .arg(
             Arg::with_name("loglev")
                 .long("log-level")
                 .short("v")
@@ -418,36 +428,39 @@ fn main() {
     for peer in pl_u {
         let _ = new_connection(&peer.to_string());
     }
-    let syncneed = sync_needed();
+    if !matches.is_present("no-sync") {
+        let syncneed = sync_needed();
 
-    match syncneed {
-        // do we need to sync
-        Ok(val) => match val {
-            true => {
-                info!("Starting sync (this will take some time)");
-                if sync().is_ok() {
-                    info!("Successfully synced with the network!");
-                    synced = true;
-                } else {
-                    error!("Syncing failed");
-                    process::exit(1);
+        match syncneed {
+            // do we need to sync
+            Ok(val) => match val {
+                true => {
+                    info!("Starting sync (this will take some time)");
+                    if sync().is_ok() {
+                        info!("Successfully synced with the network!");
+                        synced = true;
+                    } else {
+                        error!("Syncing failed");
+                        process::exit(1);
+                    }
                 }
+                false => {
+                    info!("No sync needed");
+                    synced = true;
+                }
+            },
+            Err(e) => {
+                error!("Failed to ask peers if we need to sync, gave error: {}", e);
+                process::exit(1);
             }
-            false => {
-                info!("No sync needed");
-                synced = true;
-            }
-        },
-        Err(e) => {
-            error!("Failed to ask peers if we need to sync, gave error: {}", e);
-            process::exit(1);
         }
-    }
 
-    if synced {
-        info!("Your avrio daemon is now synced and up to date with the network!");
-    } else {
-        return;
+        if synced {
+            info!("Your avrio daemon is now synced and up to date with the network!");
+        } else {
+            safe_exit();
+            return;
+        }
     }
     info!("Launching RPC server");
     let _ = std::thread::spawn(move || {
@@ -1160,7 +1173,6 @@ fn main() {
                             if let Ok(_) = block_announce(rec_blk.clone()) {
                                 info!("Sent new block to subscribed RPC peers");
                             }
-                            
                         }
                     }
                     // all done;
