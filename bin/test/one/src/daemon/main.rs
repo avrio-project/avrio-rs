@@ -618,15 +618,19 @@ fn main() {
             let rec_wall;
             if avrio_crypto::valid_address(&addr) {
                 rec_wall = Wallet::from_address(addr);
+                txn.receive_key = rec_wall.public_key;
             } else {
-                rec_wall = Wallet::new(
-                    avrio_core::account::get_by_username(&addr)
-                        .unwrap()
-                        .public_key,
-                    "".to_owned(),
-                );
+                debug!("Could not find acc with addr={}, trying as username", addr);
+                if let Ok(acc) = avrio_core::account::get_by_username(&addr) {
+                    rec_wall = Wallet::new(acc.public_key, "".to_owned());
+                    txn.receive_key = rec_wall.public_key;
+                } else {
+                    error!(
+                        "Could not find an account with address or username = {}",
+                        addr
+                    );
+                }
             }
-            txn.receive_key = rec_wall.public_key;
             txn.nonce = avrio_database::get_data(
                 config().db_path
                     + &"/chains/".to_owned()
@@ -687,12 +691,13 @@ fn main() {
                 info!("Sent new block to subscribed RPC peers");
             }
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
-            let proccessed_accs: Vec<String> = vec![];
+            let mut proccessed_accs: Vec<String> = vec![];
             for txn in &blk.txns {
                 if !proccessed_accs.contains(&txn.receive_key) {
                     let rec_blk = blk
                         .form_receive_block(Some(txn.receive_key.to_owned()))
                         .unwrap();
+                    trace!("Created rec block={:#?}", rec_blk);
                     let _ = check_block(rec_blk.clone()).unwrap();
                     let _ = save_block(rec_blk.clone()).unwrap();
                     let _ = prop_block(&rec_blk).unwrap();
@@ -700,6 +705,7 @@ fn main() {
                     if let Ok(_) = block_announce(rec_blk.clone()) {
                         info!("Sent new block to subscribed RPC peers");
                     }
+                    proccessed_accs.push(txn.receive_key.clone());
                 }
             }
             // all done
