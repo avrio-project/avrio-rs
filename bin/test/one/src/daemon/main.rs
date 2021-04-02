@@ -1,14 +1,10 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
-use serenity::{
-    async_trait,
-    model::{gateway::Ready, id::ChannelId},
-    prelude::*,
-};
+
 use std::io::{self, Write};
 use std::thread;
-use tokio::runtime::Runtime;
 
+use avrio_rpc::*;
 extern crate clap;
 use clap::{App, Arg};
 
@@ -38,7 +34,6 @@ use avrio_database::{get_data, get_peerlist, open_database, save_data};
 
 #[macro_use]
 extern crate log;
-extern crate simple_logger;
 
 extern crate hex;
 
@@ -49,121 +44,6 @@ use avrio_crypto::Wallet;
 use fern::colors::{Color, ColoredLevelConfig};
 
 use text_io::read;
-struct Handler;
-static TXN_NOTIF_CHANNEL_ID: u64 = 823568815350480916;
-static mut CTX_HOLDER: Option<Context> = None;
-
-#[async_trait]
-impl EventHandler for Handler {
-    async fn ready(&self, ctx: Context, ready: Ready) {
-        info!("{} is connected!", ready.user.name);
-        unsafe { CTX_HOLDER = Some(ctx) }
-    }
-}
-
-pub async fn recieved_block(block: avrio_blockchain::Block) {
-    if config().discord_token == "DISCORD_TOKEN" {
-        return;
-    }
-    debug!("Discord hook: {:?}", block);
-
-    unsafe {
-        if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
-            .send_message(&CTX_HOLDER.clone().unwrap(), |m| {
-                m.embed(|e| {
-                    e.title("New Block recieved");
-                    e.field("Hash", block.hash.to_owned(), false);
-                    e.field("Transaction count", block.txns.len(), true);
-                    let mut total_transfered = 0;
-                    for txn in block.clone().txns {
-                        total_transfered += txn.amount;
-                    }
-                    e.field(
-                        "Total funds change",
-                        avrio_core::account::to_dec(total_transfered),
-                        true,
-                    );
-                    e.field("Timestamp", format!("{} ", block.header.timestamp), false);
-                    if block.block_type == BlockType::Recieve {
-                        e.field("Type", "Recieve", true);
-                        e.field(
-                            "Send block hash",
-                            format!("{} ", block.send_block.clone().unwrap_or_default()),
-                            true,
-                        );
-                    } else {
-                        e.field("Type", "Send", false);
-                    }
-                    //e.field("Signature", format!("{} ", txn.signature), false);
-                    //e.field("Gas, gas price, total fee", format!("{}, {}, {} ", txn.gas, txn.gas_price, txn.gas * txn.gas_price), false);
-                    e.footer(|f| {
-                        f.text("Avro Testnet Bot");
-
-                        f
-                    });
-                    e
-                });
-                m
-            })
-            .await
-        {
-            error!("Error sending message: {:?}", why);
-        };
-    }
-}
-
-pub async fn username_registered(
-    block: avrio_blockchain::Block,
-    account: avrio_core::account::Account,
-) {
-    if config().discord_token == "DISCORD_TOKEN" {
-        return;
-    }
-    debug!("Discord hook: {:?} {:?}", block, account);
-    unsafe {
-        if let Err(why) = ChannelId(TXN_NOTIF_CHANNEL_ID)
-            .send_message(&CTX_HOLDER.clone().unwrap(), |m| {
-                m.embed(|e| {
-                    e.title("New Username registered");
-                    e.field("Username", account.username.to_string(), true);
-                    e.field(
-                        "Address",
-                        avrio_crypto::public_key_to_address(&account.public_key),
-                        true,
-                    );
-                    e.field("In block", block.hash.to_owned(), false);
-                    e.field("Timestamp", format!("{} ", block.header.timestamp), false);
-                    e.footer(|f| {
-                        f.text("Avro Testnet Bot");
-
-                        f
-                    });
-                    e
-                });
-                m
-            })
-            .await
-        {
-            error!("Error sending message: {:?}", why);
-        };
-    }
-}
-
-#[tokio::main]
-async fn main_discord() {
-    let token = avrio_config::config().discord_token;
-    if token != "DISCORD_TOKEN" {
-        info!("Creating discord client");
-        let mut client = Client::builder(&token)
-            .event_handler(Handler)
-            .await
-            .expect("Err creating client");
-
-        if let Err(why) = client.start().await {
-            error!("Client error: {:?}", why);
-        }
-    }
-}
 
 pub fn safe_exit() {
     // TODO: save mempool to disk + send kill to all threads.
@@ -489,12 +369,6 @@ fn main() {
                 .unwrap_or_default();
         info!("Chain digest: {}", chainsdigest);
     }
-    if config().discord_token != "DISCORD_TOKEN" {
-        info!("Launching discord thread");
-        let _discord_thread = thread::spawn(|| {
-            main_discord();
-        });
-    }
     info!(
         "Launching P2p server on {}:{}",
         config().ip_host,
@@ -575,6 +449,11 @@ fn main() {
     } else {
         return;
     }
+    info!("Launching RPC server");
+    let _ = std::thread::spawn(move || {
+        launch(17785);
+    });
+    info!("Launched RPC server on port=17785");
     let wall: Wallet;
     if config().chain_key == *"" {
         info!("Generating a chain for self");
@@ -651,10 +530,9 @@ fn main() {
         let _ = enact_send(genesis_block_clone.clone()).unwrap();
         let _ = prop_block(&genesis_block_clone).unwrap();
         info!("Sent block to network; Generating rec blocks");
-        let runtime = Runtime::new().unwrap();
-        let _ = runtime.block_on(async {
-            recieved_block(genesis_block_clone.clone()).await;
-        });
+        if let Ok(_) = block_announce(genesis_block_clone.clone()) {
+            info!("Sent new block to subscribed RPC peers");
+        }
 
         // recieved_block(genesis_block_clone.clone()).poll();
 
@@ -667,9 +545,9 @@ fn main() {
         let _ = save_block(rec_blk.clone()).unwrap();
         let _ = prop_block(&rec_blk).unwrap();
         let _ = enact_block(rec_blk.clone()).unwrap();
-        let _ = runtime.block_on(async {
-            recieved_block(rec_blk.clone()).await;
-        });
+        if let Ok(_) = block_announce(rec_blk.clone()) {
+            info!("Sent new block to subscribed RPC peers");
+        }
         info!("Propagated recieve block hash={}", rec_blk.hash);
     } else {
         info!("Using chain: {}", config().chain_key);
@@ -791,10 +669,9 @@ fn main() {
             let _ = save_block(blk.clone()).unwrap();
             let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
-            let runtime = Runtime::new().unwrap();
-            let _ = runtime.block_on(async {
-                recieved_block(blk.clone()).await;
-            });
+            if let Ok(_) = block_announce(blk.clone()) {
+                info!("Sent new block to subscribed RPC peers");
+            }
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
             let proccessed_accs: Vec<String> = vec![];
             for txn in &blk.txns {
@@ -806,9 +683,9 @@ fn main() {
                     let _ = save_block(rec_blk.clone()).unwrap();
                     let _ = prop_block(&rec_blk).unwrap();
                     let _ = enact_block(rec_blk.clone()).unwrap();
-                    let _ = runtime.block_on(async {
-                        recieved_block(blk.clone()).await;
-                    });
+                    if let Ok(_) = block_announce(rec_blk.clone()) {
+                        info!("Sent new block to subscribed RPC peers");
+                    }
                 }
             }
             // all done
@@ -1040,10 +917,9 @@ fn main() {
                             let _ = save_block(blk.clone()).unwrap();
                             let _ = enact_send(blk.clone()).unwrap();
                             let _ = prop_block(&blk).unwrap();
-                            let runtime = Runtime::new().unwrap();
-                            let _ = runtime.block_on(async {
-                                recieved_block(blk.clone()).await;
-                            });
+                            if let Ok(_) = block_announce(blk.clone()) {
+                                info!("Sent new block to subscribed RPC peers");
+                            }
                             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
                             let proccessed_accs: Vec<String> = vec![];
                             for txn in &blk.txns {
@@ -1055,10 +931,9 @@ fn main() {
                                     let _ = save_block(rec_blk.clone()).unwrap();
                                     let _ = prop_block(&rec_blk).unwrap();
                                     let _ = enact_block(rec_blk.clone()).unwrap();
-                                    let runtime = Runtime::new().unwrap();
-                                    let _ = runtime.block_on(async {
-                                        recieved_block(rec_blk.clone()).await;
-                                    });
+                                    if let Ok(_) = block_announce(rec_blk.clone()) {
+                                        info!("Sent new block to subscribed RPC peers");
+                                    }
                                 }
                             }
                             // all done
@@ -1153,10 +1028,9 @@ fn main() {
             let _ = save_block(blk.clone()).unwrap();
             let _ = enact_send(blk.clone()).unwrap();
             let _ = prop_block(&blk).unwrap();
-            let runtime = Runtime::new().unwrap();
-            let _ = runtime.block_on(async {
-                recieved_block(blk.clone()).await;
-            });
+            if let Ok(_) = block_announce(blk.clone()) {
+                info!("Sent new block to subscribed RPC peers");
+            }
             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
             let proccessed_accs: Vec<String> = vec![];
             for txn in &blk.txns {
@@ -1168,9 +1042,9 @@ fn main() {
                     let _ = save_block(rec_blk.clone()).unwrap();
                     let _ = prop_block(&rec_blk).unwrap();
                     let _ = enact_block(rec_blk.clone()).unwrap();
-                    let _ = runtime.block_on(async {
-                        recieved_block(rec_blk.clone()).await;
-                    });
+                    if let Ok(_) = block_announce(rec_blk.clone()) {
+                        info!("Sent new block to subscribed RPC peers");
+                    }
                 }
             }
             // all done
@@ -1269,10 +1143,9 @@ fn main() {
                     let _ = save_block(blk.clone()).unwrap();
                     let _ = enact_send(blk.clone()).unwrap();
                     let _ = prop_block(&blk).unwrap();
-                    let runtime = Runtime::new().unwrap();
-                    let _ = runtime.block_on(async {
-                        recieved_block(blk.clone()).await;
-                    });
+                    if let Ok(_) = block_announce(blk.clone()) {
+                        info!("Sent new block to subscribed RPC peers");
+                    }
                     // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
                     let proccessed_accs: Vec<String> = vec![];
                     for txn in &blk.txns {
@@ -1284,18 +1157,10 @@ fn main() {
                             let _ = save_block(rec_blk.clone()).unwrap();
                             let _ = prop_block(&rec_blk).unwrap();
                             let _ = enact_block(rec_blk.clone()).unwrap();
-                            let runtime = Runtime::new().unwrap();
-                            let _ = runtime.block_on(async {
-                                recieved_block(rec_blk.clone()).await;
-                            });
-                            let _ = runtime.block_on(async {
-                                username_registered(
-                                    rec_blk,
-                                    avrio_core::account::get_account(&wall.public_key)
-                                        .unwrap_or_default(),
-                                )
-                                .await;
-                            });
+                            if let Ok(_) = block_announce(rec_blk.clone()) {
+                                info!("Sent new block to subscribed RPC peers");
+                            }
+                            
                         }
                     }
                     // all done;
