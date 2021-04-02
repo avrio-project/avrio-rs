@@ -139,6 +139,7 @@ impl P2pServer {
                                                 None,
                                             );
                                             log::debug!("Sent cancel to peer");
+                                            std::thread::sleep(std::time::Duration::from_millis(100));
                                             let _ = stream.shutdown(std::net::Shutdown::Both);
                                             log::debug!("Shutdown stream");
                                         } else {
