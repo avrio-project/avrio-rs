@@ -198,6 +198,7 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
 fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> u8 {
     let mut conn_count: u8 = 0;
     for peer in seednodes {
+        debug!("Connecting to: {}", peer);
         let error = new_connection(&peer.to_string());
         match error {
             Ok(_) => {
