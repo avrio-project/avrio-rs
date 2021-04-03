@@ -10,11 +10,10 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use avrio_blockchain::{
-    check_block,
     genesis::{generate_genesis_block, get_genesis_block, GenesisBlockErrors},
     Block, BlockType, Header,
 };
-use avrio_config::{config, Config};
+use avrio_config::{config};
 use avrio_core::{account::*, transaction::Transaction};
 use avrio_crypto::Wallet;
 use avrio_database::*;
