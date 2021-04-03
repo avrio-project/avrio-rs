@@ -68,6 +68,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 .level_for("avrio_core", log::LevelFilter::Error)
                 .level_for("avrio_crypto", log::LevelFilter::Error)
                 .level_for("avrio_blockchain", log::LevelFilter::Error)
+                .level_for("avrio_rpc", log::LevelFilter::Error)
                 .level_for("avrio_p2p", log::LevelFilter::Error)
         }
         1 => base_config
@@ -80,6 +81,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_crypto", log::LevelFilter::Warn)
             .level_for("avrio_daemon", log::LevelFilter::Warn)
             .level_for("avrio_p2p", log::LevelFilter::Warn)
+            .level_for("avrio_rpc", log::LevelFilter::Warn)
             .level_for("avrio_blockchain", log::LevelFilter::Warn),
         2 => base_config
             .level(log::LevelFilter::Warn)
@@ -90,6 +92,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_crypto", log::LevelFilter::Info)
             .level_for("avrio_p2p", log::LevelFilter::Info)
             .level_for("avrio_daemon", log::LevelFilter::Info)
+            .level_for("avrio_rpc", log::LevelFilter::Info)
             .level_for("avrio_blockchain", log::LevelFilter::Info),
         3 => base_config
             .level(log::LevelFilter::Warn)
@@ -110,6 +113,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_daemon", log::LevelFilter::Trace)
             .level_for("avrio_p2p", log::LevelFilter::Trace)
             .level_for("avrio_crypto", log::LevelFilter::Trace)
+            .level_for("avrio_rpc", log::LevelFilter::Trace)
             .level_for("avrio_blockchain", log::LevelFilter::Trace),
     };
 
@@ -124,7 +128,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .chain(fern::log_file("program.log")?);
+        .chain(fern::log_file("avrio-daemon.log")?);
 
     let stdout_config = fern::Dispatch::new()
         .format(|out, message, record| {
