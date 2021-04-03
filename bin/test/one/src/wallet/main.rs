@@ -9,7 +9,11 @@
 
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
-use avrio_blockchain::{Block, BlockType};
+use avrio_blockchain::{
+    check_block,
+    genesis::{generate_genesis_block, get_genesis_block, GenesisBlockErrors},
+    Block, BlockType, Header,
+};
 use avrio_config::{config, Config};
 use avrio_core::{account::*, transaction::Transaction};
 use avrio_crypto::Wallet;
@@ -19,15 +23,48 @@ use clap::{App, Arg};
 use fern::colors::{Color, ColoredLevelConfig};
 use lazy_static::*;
 use log::*;
+use reqwest::Client;
+use serde::Deserialize;
 use serde_json;
 use std::sync::Mutex;
-use std::{error::Error, io};
+use std::{
+    error::Error,
+    io,
+    io::prelude::*,
+    process,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use text_io::read;
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct WalletDetails {
     wallet: Option<Wallet>,
     balance: u64,
+    locked: u64,
     top_block_hash: String,
+}
+#[derive(Clone, Deserialize, Debug)]
+struct Blockcount {
+    success: bool,
+    blockcount: u64,
+}
+#[derive(Clone, Deserialize, Debug)]
+struct Transactioncount {
+    success: bool,
+    transaction_count: u64,
+}
+
+#[derive(Clone, Deserialize, Debug)]
+struct HashAtHeight {
+    success: bool,
+    hash: String,
+}
+
+#[derive(Clone, Deserialize)]
+struct Balances {
+    success: bool,
+    chainkey: String,
+    balance: u64,
+    locked: u64,
 }
 lazy_static! {
     static ref WALLET_DETAILS: Mutex<WalletDetails> = Mutex::new(WalletDetails::default());
@@ -159,6 +196,7 @@ pub fn new_ann(ann: Announcement) {
                 if blk.block_type == BlockType::Recieve {
                     let balance_before = locked.balance;
                     for txn in blk.txns {
+                        trace!("Txn: {:#?}", txn);
                         if txn.sender_key == locked.wallet.as_ref().unwrap().public_key {
                             locked.balance -= txn.amount;
                         } else if txn.receive_key == locked.wallet.as_ref().unwrap().public_key {
@@ -168,17 +206,20 @@ pub fn new_ann(ann: Announcement) {
                     if balance_before != locked.balance {
                         info!(
                             "New block {}, old balance: {}, new balance: {}",
-                            blk.hash, balance_before, locked.balance
+                            blk.hash, to_dec(balance_before), to_dec(locked.balance)
                         );
                     } else {
                         debug!("Block contained no transactions affecting us");
                     }
+                } else {
+                    debug!("Block was a send block");
                 }
             }
         }
     }
 }
-fn main() {
+#[tokio::main]
+async fn main() {
     let matches = App::new("Avrio Wallet")
         .version("Testnet Pre-alpha 0.0.1")
         .about("This is the offical CLI wallet for the avrio network.")
@@ -238,8 +279,359 @@ fn main() {
         let caller = Caller {
             callback: Box::new(new_ann),
         };
-        if let Ok(_) = launch_client(17785, vec![], caller) {
-            debug!("Launched RPC listener");
+        if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
+            *locked_ls = WalletDetails {
+                wallet: Some(wall.clone()),
+                balance: 0,
+                locked: 0,
+                top_block_hash: "".to_string(),
+            };
+            drop(locked_ls);
+            let request_url = format!(
+                "http://127.0.0.1:8000/api/v1/blockcount/{}",
+                wall.public_key
+            );
+            let try_get_response = reqwest::get(&request_url).await;
+            if let Ok(response) = try_get_response {
+                let try_decode_json = response.json::<Blockcount>().await;
+                if let Ok(response) = try_decode_json {
+                    let blockcount = response.blockcount;
+                    if blockcount == 0 {
+                        info!("No existing blocks for chain, creating genesis blocks");
+                        // TODO: Create genesis blocks, send to node
+                        let mut genesis_block = get_genesis_block(&wall.public_key);
+                        if let Err(e) = genesis_block {
+                            if e == GenesisBlockErrors::BlockNotFound {
+                                info!(
+                                    "No genesis block found for chain: {}, generating",
+                                    wall.address()
+                                );
+                                genesis_block = generate_genesis_block(
+                                    wall.clone().public_key,
+                                    wall.private_key.clone(),
+                                );
+                            } else {
+                                error!(
+                                "Database error occoured when trying to get genesisblock for chain: {}. (Fatal)",
+                                wall.address()
+                            );
+                                process::exit(1);
+                            }
+                        }
+                        let genesis_block = genesis_block.unwrap();
+                        let genesis_block_clone = genesis_block.clone();
+                        // Now encode block as json and send to daemon
+                        if let Ok(block_json) = serde_json::to_string(&genesis_block_clone) {
+                            // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+
+                            let mut rec_blk = genesis_block_clone
+                                .form_receive_block(Some(
+                                    genesis_block_clone.header.chain_key.to_owned(),
+                                ))
+                                .unwrap();
+                            rec_blk.header.height = 1;
+                            rec_blk.header.prev_hash = genesis_block_clone.hash.clone();
+                            rec_blk.signature = "".to_string();
+                            rec_blk.hash();
+                            if let Ok(rec_block_json) = serde_json::to_string(&rec_blk)
+                            {
+                                info!(
+                                    "Sending genesis blocks to node, hashes=({}, {})",
+                                    genesis_block_clone.hash, rec_blk.hash
+                                );
+                                debug!(
+                                    "Genesis blocks encoded: {}, {}",
+                                    block_json, rec_block_json
+                                );
+                                let request_url = "http://127.0.0.1:8000/api/v1/submit_block";
+                                if let Ok(response) = Client::new()
+                                    .post(request_url)
+                                    .json(&block_json)
+                                    .send()
+                                    .await
+                                {
+                                    if let Ok(response_string) = response.text().await {
+                                        if response_string.contains("error") {
+                                            error!(
+                                                "Failed to submit genesis send block, response={}",
+                                                response_string
+                                            );
+                                            process::exit(1);
+                                        } else {
+                                            info!("Submitted genesis send block to node");
+                                            debug!(
+                                                "Genesis send block response={}",
+                                                response_string
+                                            );
+                                            let request_url =
+                                                "http://127.0.0.1:8000/api/v1/submit_block";
+                                            if let Ok(response) = Client::new()
+                                                .post(request_url)
+                                                .json(&rec_block_json)
+                                                .send()
+                                                .await
+                                            {
+                                                if let Ok(response_string) = response.text().await {
+                                                    if response_string.contains("error") {
+                                                        error!(
+                                                            "Failed to submit genesis rec block, response={}",
+                                                            response_string
+                                                        );
+                                                        process::exit(1);
+                                                    } else {
+                                                        info!(
+                                                            "Submitted genesis rec block to node"
+                                                        );
+                                                        debug!(
+                                                            "Genesis rec block response={}",
+                                                            response_string
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        info!(
+                            "Node has {} blocks for our chain, getting details",
+                            blockcount
+                        );
+                    }
+                    let request_url =
+                        format!("http://127.0.0.1:8000/api/v1/balances/{}", wall.public_key);
+                    if let Ok(response) = reqwest::get(&request_url).await {
+                        if let Ok(response) = response.json::<Balances>().await {
+                            info!("Balance: {}, Locked: {}", response.balance, response.locked);
+                            if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
+                                let mut wallet_details = (*locked_ls).clone();
+                                wallet_details.balance = response.balance;
+                                wallet_details.locked = response.locked;
+                                *locked_ls = wallet_details;
+                                drop(locked_ls);
+                            }
+                        }
+                    }
+                    let request_url = format!(
+                        "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                        wall.public_key
+                    );
+                    if let Ok(response) = reqwest::get(&request_url).await {
+                        if let Ok(transactioncount) = response.json::<Transactioncount>().await {
+                            info!(
+                                "Transaction count for our chain: {}",
+                                transactioncount.transaction_count,
+                            );
+                        }
+                    }
+
+                    if let Ok(walletdetails) = WALLET_DETAILS.lock() {
+                        info!("Our balance: {}", to_dec(walletdetails.balance));
+                    }
+                    if let Ok(_) = launch_client(17785, vec![], caller) {
+                        debug!("Launched RPC listener");
+                    }
+                    loop {
+                        // Now we loop until shutdown
+                        let _ = io::stdout().flush();
+                        let read: String = read!("{}\n");
+                        if read == *"send_txn" {
+                            info!("Please enter the amount");
+                            let amount: f64 = read!("{}\n");
+                            let mut txn = Transaction {
+                                hash: String::from(""),
+                                amount: to_atomc(amount),
+                                extra: String::from(""),
+                                flag: 'n',
+                                sender_key: wall.public_key.clone(),
+                                receive_key: String::from(""),
+                                access_key: String::from(""),
+                                unlock_time: 0,
+                                gas_price: 10, // 0.001 AIO
+                                gas: 20,
+                                max_gas: u64::max_value(),
+                                nonce: 0,
+                                timestamp: SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .expect("Time went backwards")
+                                    .as_millis() as u64,
+                                signature: String::from(""),
+                            };
+                            info!("Please enter the reciever address or username:");
+                            let addr: String = read!();
+                            let rec_wall;
+                            if avrio_crypto::valid_address(&addr) {
+                                rec_wall = Wallet::from_address(addr);
+                                txn.receive_key = rec_wall.public_key;
+                            } else {
+                                debug!("Could not find acc with addr={}, trying as username", addr);
+                                if let Ok(acc) = avrio_core::account::get_by_username(&addr) {
+                                    rec_wall = Wallet::new(acc.public_key, "".to_owned());
+                                    txn.receive_key = rec_wall.public_key;
+                                } else {
+                                    error!(
+                                        "Could not find an account with address or username = {}",
+                                        addr
+                                    );
+                                }
+                            }
+                            let request_url = format!(
+                                "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                                wall.public_key
+                            );
+                            if let Ok(response) = reqwest::get(&request_url).await {
+                                if let Ok(transactioncount) =
+                                    response.json::<Transactioncount>().await
+                                {
+                                    txn.nonce = transactioncount.transaction_count;
+                                    txn.hash();
+                                    let _ = txn.sign(&wall.private_key);
+                                    let request_url = format!(
+                                        "http://127.0.0.1:8000/api/v1/blockcount/{}",
+                                        wall.public_key.clone()
+                                    );
+                                    let try_get_response = reqwest::get(&request_url).await;
+                                    if let Ok(response) = try_get_response {
+                                        let try_decode_json = response.json::<Blockcount>().await;
+                                        if let Ok(response) = try_decode_json {
+                                            let height = response.blockcount;
+                                            let request_url = format!(
+                                                "http://127.0.0.1:8000/api/v1/hash_at_height/{}/{}",
+                                                wall.public_key.clone(),
+                                                height - 1
+                                            );
+                                            let try_get_response = reqwest::get(&request_url).await;
+                                            if let Ok(response) = try_get_response {
+                                                let try_decode_json =
+                                                    response.json::<HashAtHeight>().await;
+                                                if let Ok(response) = try_decode_json {
+                                                    let prev_block_hash = response.hash;
+                                                    let mut blk = Block {
+                                                        header: Header {
+                                                            version_major: 0,
+                                                            version_breaking: 0,
+                                                            version_minor: 0,
+                                                            chain_key: wall.public_key.clone(),
+                                                            prev_hash: prev_block_hash,
+                                                            height: height,
+                                                            timestamp: SystemTime::now()
+                                                                .duration_since(UNIX_EPOCH)
+                                                                .expect("Time went backwards")
+                                                                .as_millis()
+                                                                as u64,
+                                                            network: vec![
+                                                                97, 118, 114, 105, 111, 32, 110,
+                                                                111, 111, 100, 108, 101,
+                                                            ],
+                                                        },
+                                                        block_type: BlockType::Send,
+                                                        send_block: None,
+                                                        txns: vec![txn],
+                                                        hash: "".to_owned(),
+                                                        signature: "".to_owned(),
+                                                        confimed: false,
+                                                        node_signatures: vec![],
+                                                    };
+                                                    blk.hash();
+                                                    let _ = blk.sign(&wall.private_key);
+                                                    let mut blocks: Vec<String> = vec![];
+                                                    if let Ok(block_json) =
+                                                        serde_json::to_string(&blk)
+                                                    {
+                                                        blocks.push(block_json);
+                                                        // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+                                                        let mut proccessed_accs: Vec<String> =
+                                                            vec![];
+
+                                                        let mut failed = false;
+                                                        for txn in &blk.txns {
+                                                            if !proccessed_accs
+                                                                .contains(&txn.receive_key)
+                                                            {
+                                                                let rec_blk = blk
+                                                                    .form_receive_block(Some(
+                                                                        txn.receive_key.to_owned(),
+                                                                    ))
+                                                                    .unwrap();
+                                                                trace!(
+                                                                    "Created rec block={:#?}",
+                                                                    rec_blk
+                                                                );
+
+                                                                proccessed_accs
+                                                                    .push(txn.receive_key.clone());
+                                                                if let Ok(rec_blk_json) =
+                                                                    serde_json::to_string(&rec_blk)
+                                                                {
+                                                                    blocks.push(rec_blk_json);
+                                                                } else {
+                                                                    error!("Failed to encode rec block as json");
+                                                                    failed = true;
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                        if !failed {
+                                                            // now transmit all blocks to node
+                                                            for block_json in blocks {
+                                                                let request_url = "http://127.0.0.1:8000/api/v1/submit_block";
+                                                                if let Ok(response) = Client::new()
+                                                                    .post(request_url)
+                                                                    .json(&block_json)
+                                                                    .send()
+                                                                    .await
+                                                                {
+                                                                    if let Ok(response_string) =
+                                                                        response.text().await
+                                                                    {
+                                                                        if response_string
+                                                                            .contains("error")
+                                                                        {
+                                                                            error!(
+                                                                                "Failed to submit block, response={}",
+                                                                                response_string
+                                                                            );
+                                                                        } else {
+                                                                            debug!(
+                                                                                "Submit response={}",
+                                                                                response_string
+                                                                            );
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            info!("Sent all blocks to node");
+                                                        }
+                                                    } else {
+                                                        error!(
+                                                            "Failed to encode source block as json"
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                error!("Failed to decode recieved response into transactioncount struct");
+                            }
+                        } else if read == *"address" {
+                            info!("Our address: {}", wall.address());
+                        }
+                    }
+                } else {
+                    error!("Failed to decode json, gave error={:?}", try_decode_json);
+                }
+            } else {
+                error!(
+                    "Failed to get blockcount for our chain, error={}",
+                    try_get_response.unwrap_err()
+                );
+            }
+        } else {
+            error!("Failed to gain lock on wallet details LS");
         }
     } else {
         error!("Failed to get wallet");
