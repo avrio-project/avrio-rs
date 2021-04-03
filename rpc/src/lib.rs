@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Mutex;
+use std::error::Error;
 
 lazy_static! {
     static ref CONNECTIONS: Mutex<Vec<(TcpStream, Vec<String>)>> = Mutex::new(vec![]);
@@ -12,12 +13,12 @@ lazy_static! {
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct Announcement {
-    m_type: String,
-    content: String,
+    pub m_type: String,
+    pub content: String,
 }
 unsafe impl Send for Announcement {}
 pub struct Caller<'callback> {
-    callback: Box<dyn FnMut(Announcement) + Send + 'callback>,
+    pub callback: Box<dyn FnMut(Announcement) + Send + 'callback>,
 }
 
 impl Caller<'_> {
@@ -94,7 +95,7 @@ pub fn peer_announce(peer: String) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn launch_client(server_port: u64, services: Vec<String>, mut caller: Caller<'static>) {
+pub fn launch_client(server_port: u64, services: Vec<String>, mut caller: Caller<'static>) -> Result<(), Box<dyn Error>> {
     info!(
         "Launching RPC server client, connecting to server on port={}",
         server_port
@@ -133,10 +134,18 @@ pub fn launch_client(server_port: u64, services: Vec<String>, mut caller: Caller
                                             );
                                         }
                                     }
-                                }
+                                } 
                             }
                         });
+                        info!("Spawned RPC listener thread");
+                        return Ok(());
+                    } else {
+                        error!("Failed to write * register to stream");
+                        return Err("Failed to write * register to stream".into());
                     }
+                } else {
+                    error!("Failed to read avilable services into void ");
+                    return Err("could not read available services into void".into());
                 }
             } else if let Ok(read_bytes) = stream.read(&mut buf) {
                 let buf_trimmed = buf[0..read_bytes].to_vec();
@@ -159,10 +168,45 @@ pub fn launch_client(server_port: u64, services: Vec<String>, mut caller: Caller
                         "Connected to RPC server at 127.0.0.1:{}, registered_services={:#?}",
                         server_port, services_list
                     );
+                    let _loop_thread_handle = std::thread::spawn(move || loop {
+                        let mut buf = [0u8; 2048];
+                        if let Ok(size_of_msg) = stream.peek(&mut buf) {
+                            debug!("Peeked {} bytes into buffer, reading", size_of_msg);
+                            let mut new_buf = vec![0u8; size_of_msg];
+                            if let Ok(read_bytes) = stream.read(&mut new_buf) {
+                                trace!(
+                                    "Read bytes into buffer (read={}, expected={}, parity={})",
+                                    read_bytes,
+                                    size_of_msg,
+                                    read_bytes == size_of_msg
+                                );
+                                if let Ok(message_string) = String::from_utf8(new_buf) {
+                                    if let Ok(announcement) =
+                                        serde_json::from_str::<Announcement>(&message_string)
+                                    {
+                                        debug!("Recieved new announcement from server, announcement={:#?}", announcement);
+                                        caller.call(announcement);
+                                        trace!(
+                                            "Called the caller's callback with announcement"
+                                        );
+                                    }
+                                }
+                            } 
+                        }
+                    });
+                    info!("Spawned RPC listener thread");
+                    return Ok(());
                 }
             }
+        } else {
+            error!("Failed to write init msg");
+            return Err("Failed to write init msg".into());
         }
+    } else {
+        error!("Failed to connect to server");
+        return Err("Failed to connect to server".into());
     }
+    return Err("reached end of function".into());
 }
 
 pub fn launch(port: u64) {
