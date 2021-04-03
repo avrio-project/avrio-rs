@@ -2,10 +2,10 @@ use avrio_blockchain::Block;
 use lazy_static::*;
 use log::*;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Mutex;
-use std::error::Error;
 
 lazy_static! {
     static ref CONNECTIONS: Mutex<Vec<(TcpStream, Vec<String>)>> = Mutex::new(vec![]);
@@ -95,7 +95,11 @@ pub fn peer_announce(peer: String) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn launch_client(server_port: u64, services: Vec<String>, mut caller: Caller<'static>) -> Result<(), Box<dyn Error>> {
+pub fn launch_client(
+    server_port: u64,
+    services: Vec<String>,
+    mut caller: Caller<'static>,
+) -> Result<(), Box<dyn Error>> {
     info!(
         "Launching RPC server client, connecting to server on port={}",
         server_port
@@ -117,6 +121,11 @@ pub fn launch_client(server_port: u64, services: Vec<String>, mut caller: Caller
                                 debug!("Peeked {} bytes into buffer, reading", size_of_msg);
                                 let mut new_buf = vec![0u8; size_of_msg];
                                 if let Ok(read_bytes) = stream.read(&mut new_buf) {
+                                    if read_bytes == 0 {
+                                        // TODO: Ping the client and if they don't respond then disconect the stream like so
+                                        debug!("Read 0 bytes, assuming peer disconect");
+                                        return;
+                                    }
                                     trace!(
                                         "Read bytes into buffer (read={}, expected={}, parity={})",
                                         read_bytes,
@@ -134,7 +143,7 @@ pub fn launch_client(server_port: u64, services: Vec<String>, mut caller: Caller
                                             );
                                         }
                                     }
-                                } 
+                                }
                             }
                         });
                         info!("Spawned RPC listener thread");
@@ -186,12 +195,10 @@ pub fn launch_client(server_port: u64, services: Vec<String>, mut caller: Caller
                                     {
                                         debug!("Recieved new announcement from server, announcement={:#?}", announcement);
                                         caller.call(announcement);
-                                        trace!(
-                                            "Called the caller's callback with announcement"
-                                        );
+                                        trace!("Called the caller's callback with announcement");
                                     }
                                 }
-                            } 
+                            }
                         }
                     });
                     info!("Spawned RPC listener thread");
