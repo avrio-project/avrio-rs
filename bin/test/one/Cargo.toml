@@ -13,9 +13,10 @@ description = "Testnet one, aimed at P2P, block and transaction code testing"
 name = "avrio-daemon"
 path = "src/daemon/main.rs"
 
-#[[bin]]
-#name = "avrio-wallet"
-#path = "src/wallet/main.rs"
+[[bin]]
+name = "avrio-wallet"
+path = "src/wallet/main.rs"
+
 [dependencies]
 log = "0.4"
 avrio_core = { path = "../../../core" }
@@ -36,3 +37,4 @@ fern = { version = "0.6", features = ["colored"] }
 chrono = "0.4"
 ctrlc = "3.1.8"
 avrio_rpc = { path = "../../../rpc" }
+lazy_static = "1.4.0"
