@@ -175,9 +175,10 @@ pub fn launch(port: u64) {
                 Ok(mut stream) => {
                     log::trace!("New incoming stream");
                     let mut hi_buffer = [0u8; 128];
-                    if let Ok(_) = stream.read(&mut hi_buffer) {
+                    if let Ok(read_bytes) = stream.read(&mut hi_buffer) {
                         // turn the buf into a string
-                        let hi_string = String::from_utf8(hi_buffer.to_vec()).unwrap_or_default();
+                        let hi_string = String::from_utf8(hi_buffer[0..read_bytes].to_vec())
+                            .unwrap_or_default();
                         if hi_string == "init" {
                             let services_list = [
                                 "block".to_string(),
@@ -189,9 +190,9 @@ pub fn launch(port: u64) {
                                 serde_json::to_string(&services_list).unwrap_or_default();
                             if let Ok(_) = stream.write(services_list_ser.as_bytes()) {
                                 let mut register_buffer = [0u8; 128];
-                                if let Ok(_) = stream.read(&mut register_buffer) {
+                                if let Ok(read_bytes) = stream.read(&mut register_buffer) {
                                     let register_string =
-                                        String::from_utf8(register_buffer.to_vec())
+                                        String::from_utf8(register_buffer[0..read_bytes].to_vec())
                                             .unwrap_or_default();
                                     let mut registered_services: Vec<String> = vec![];
                                     if register_string == "*" {
@@ -227,7 +228,6 @@ pub fn launch(port: u64) {
                                                 }
                                             }
                                             *connections_lock = new_connections_vec;
-                                            // TODO: Now create a new thread that trys to read from the stream every x secconds to handle api requests
                                         }
                                     }
                                 }
