@@ -129,6 +129,15 @@ pub fn hash_at_height(height: u64, chain: String) -> String {
 pub fn get_usernames_v1() -> String {
     not_supported()
 }
+#[get("/publickey_for_username/<username>")]
+pub fn get_publickey_for_username(username: String) -> String {
+    if let Ok(acc) = avrio_core::account::get_by_username(&username) {
+        return "{ \"success\": true, \"publickey\": \"".to_string() + &acc.public_key + "\" }";
+    } else {
+        error!("Could not find an account with username = {}", username);
+        return "{ \"success\": false, \"publickey\": \"\" }".to_string();
+    }
+}
 
 #[post("/submit_block", format = "application/json", data = "<block_data>")]
 pub fn submit_block_v1(block_data: rocket::Data) -> String {
@@ -221,6 +230,7 @@ pub fn get_middleware() -> Vec<Route> {
         submit_block_v1,
         get_blockcount_v1,
         transaction_count,
+        get_publickey_for_username,
         hash_at_height
     ]
 }
