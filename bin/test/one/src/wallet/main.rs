@@ -40,6 +40,7 @@ struct WalletDetails {
     balance: u64,
     locked: u64,
     top_block_hash: String,
+    username: String,
 }
 #[derive(Clone, Deserialize, Debug)]
 struct Blockcount {
@@ -202,6 +203,7 @@ pub fn new_ann(ann: Announcement) {
                     let balance_before = locked.balance;
                     for txn in blk.txns {
                         trace!("Txn: {:#?}", txn);
+                        // TODO add code to check for username register txns
                         if txn.sender_key == locked.wallet.as_ref().unwrap().public_key
                             && txn.flag != 'c'
                         {
@@ -295,6 +297,7 @@ async fn main() {
                 balance: 0,
                 locked: 0,
                 top_block_hash: "".to_string(),
+                username: "".to_string(),
             };
             drop(locked_ls);
             let request_url = format!(
@@ -689,7 +692,7 @@ async fn main() {
                                                             version_minor: 0,
                                                             chain_key: wall.public_key.clone(),
                                                             prev_hash: prev_block_hash,
-                                                            height: height,
+                                                            height,
                                                             timestamp: SystemTime::now()
                                                                 .duration_since(UNIX_EPOCH)
                                                                 .expect("Time went backwards")
@@ -791,8 +794,48 @@ async fn main() {
                             } else {
                                 error!("Failed to decode recieved response into transactioncount struct");
                             }
-                        } else if read == *"address" {
+                        } else if read == *"address"
+                            || read == *"get_address"
+                            || read == *"get_addr"
+                        {
                             info!("Our address: {}", wall.address());
+                        } else if read == *"balance" || read == *"get_balance" || read == *"bal" {
+                            if let Ok(lock) = WALLET_DETAILS.lock() {
+                                info!("Our balance: {}", lock.balance);
+                            } else {
+                                error!("Failed to get lock on WALLET_DETAILS muxtex (try again)");
+                            }
+                        } else if read == *"register_username" {
+                            if let Ok(lock) = WALLET_DETAILS.lock() {
+                                if lock.username == "" {
+                                    let desired_username: String = read!();
+                                    let request_url = format!(
+                                        "http://127.0.0.1:8000/api/v1/publickey_for_username/{}",
+                                        desired_username
+                                    );
+                                    if let Ok(response) = reqwest::get(&request_url).await {
+                                        if let Ok(publickey_for_username) =
+                                            response.json::<PublickeyForUsername>().await
+                                        {
+                                            if publickey_for_username.publickey != "" {
+                                                error!("Username {} is taken, try another (rerun register_username)", desired_username);
+                                            } else {
+                                                // TODO register username
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    error!(
+                                        "You already have a username, username={}",
+                                        lock.username
+                                    );
+                                    error!("Username deregistering is currently disabled, please create a new wallet to register this username");
+                                }
+                            } else {
+                                error!("Failed to get lock on WALLET_DETAILS muxtex (try again)");
+                            }
+                        } else {
+                            error!("Unknown command: {}", read);
                         }
                     }
                 } else {
