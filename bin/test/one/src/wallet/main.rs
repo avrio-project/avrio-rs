@@ -525,7 +525,7 @@ async fn main() {
                                                             version_minor: 0,
                                                             chain_key: wall.public_key.clone(),
                                                             prev_hash: prev_block_hash,
-                                                            height: height,
+                                                            height,
                                                             timestamp: SystemTime::now()
                                                                 .duration_since(UNIX_EPOCH)
                                                                 .expect("Time went backwards")
