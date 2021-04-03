@@ -165,7 +165,7 @@ impl Hashable for StringHash {
         self.s.as_bytes().to_vec()
     }
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Wallet {
     pub public_key: Publickey,
     pub private_key: Privatekey,
