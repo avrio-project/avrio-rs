@@ -109,7 +109,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .chain(fern::log_file("program.log")?);
+        .chain(fern::log_file("avrio-wallet.log")?);
 
     let stdout_config = fern::Dispatch::new()
         .format(|out, message, record| {
