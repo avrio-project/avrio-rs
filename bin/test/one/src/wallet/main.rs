@@ -202,8 +202,11 @@ pub fn new_ann(ann: Announcement) {
                     let balance_before = locked.balance;
                     for txn in blk.txns {
                         trace!("Txn: {:#?}", txn);
-                        if txn.sender_key == locked.wallet.as_ref().unwrap().public_key {
+                        if txn.sender_key == locked.wallet.as_ref().unwrap().public_key
+                            && txn.flag != 'c'
+                        {
                             locked.balance -= txn.amount;
+                            locked.balance -= txn.gas * txn.gas_price;
                         } else if txn.receive_key == locked.wallet.as_ref().unwrap().public_key {
                             locked.balance += txn.amount;
                         }
