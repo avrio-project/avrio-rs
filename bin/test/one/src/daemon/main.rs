@@ -69,6 +69,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 .level_for("avrio_crypto", log::LevelFilter::Error)
                 .level_for("avrio_blockchain", log::LevelFilter::Error)
                 .level_for("avrio_rpc", log::LevelFilter::Error)
+                .level_for("avrio_api", log::LevelFilter::Error)
                 .level_for("avrio_p2p", log::LevelFilter::Error)
         }
         1 => base_config
@@ -82,6 +83,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_daemon", log::LevelFilter::Warn)
             .level_for("avrio_p2p", log::LevelFilter::Warn)
             .level_for("avrio_rpc", log::LevelFilter::Warn)
+            .level_for("avrio_api", log::LevelFilter::Warn)
             .level_for("avrio_blockchain", log::LevelFilter::Warn),
         2 => base_config
             .level(log::LevelFilter::Warn)
@@ -93,6 +95,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_p2p", log::LevelFilter::Info)
             .level_for("avrio_daemon", log::LevelFilter::Info)
             .level_for("avrio_rpc", log::LevelFilter::Info)
+            .level_for("avrio_api", log::LevelFilter::Info)
             .level_for("avrio_blockchain", log::LevelFilter::Info),
         3 => base_config
             .level(log::LevelFilter::Warn)
@@ -103,6 +106,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_crypto", log::LevelFilter::Debug)
             .level_for("avrio_p2p", log::LevelFilter::Debug)
             .level_for("avrio_daemon", log::LevelFilter::Debug)
+            .level_for("avrio_api", log::LevelFilter::Debug)
             .level_for("avrio_blockchain", log::LevelFilter::Debug),
         _ => base_config
             .level(log::LevelFilter::Warn)
@@ -114,6 +118,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_p2p", log::LevelFilter::Trace)
             .level_for("avrio_crypto", log::LevelFilter::Trace)
             .level_for("avrio_rpc", log::LevelFilter::Trace)
+            .level_for("avrio_api", log::LevelFilter::Trace)
             .level_for("avrio_blockchain", log::LevelFilter::Trace),
     };
 
