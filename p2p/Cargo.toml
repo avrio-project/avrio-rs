@@ -25,3 +25,4 @@ x25519-dalek = "0.6.0"
 hex = "0.4.2"
 rust_crypto = { package = "rust-crypto", version = "^0.2" }
 serde_json = "1"
+avrio_rpc = { path = "../rpc" }
