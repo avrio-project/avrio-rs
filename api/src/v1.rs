@@ -86,9 +86,9 @@ pub fn get_balance_v1(chain: String) -> String {
         let locked: u64 = acc.locked;
 
         "{ \"success\": true, ".to_owned()
-            + "\"chainkey\": "
+            + "\"chainkey\": \""
             + &chain
-            + ", "
+            + "\", "
             + "\"balance\": "
             + &balance.to_string()
             + ", "
