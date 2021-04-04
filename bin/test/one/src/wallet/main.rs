@@ -25,7 +25,7 @@ use log::*;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json;
-use std::sync::Mutex;
+use std::{default::default, sync::Mutex};
 use std::{
     error::Error,
     io,
@@ -65,7 +65,7 @@ struct PublickeyForUsername {
     publickey: String,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Debug)]
 struct Balances {
     success: bool,
     chainkey: String,
@@ -182,8 +182,59 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
         .chain(file_config)
         .chain(stdout_config)
         .apply()?;
-
     Ok(())
+}
+
+async fn form_receive_block(blk: &Block, for_chain: &String) -> Result<Block, Box<dyn Error>> {
+    if blk.block_type == BlockType::Recieve {
+        return Err("Block is recive block already".into());
+    }
+    // else we can get on with forming the rec block for this block
+    let mut blk_clone = blk.clone();
+    blk_clone.block_type = BlockType::Recieve;
+    blk_clone.header.timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as u64;
+    let chain_key_value: String = for_chain.to_owned();
+    let mut txn_iter = 0;
+    for txn in blk_clone.clone().txns {
+        txn_iter += 1;
+        if txn.receive_key != chain_key_value {
+            blk_clone.txns.remove(txn_iter);
+        }
+    }
+    if chain_key_value == blk.header.chain_key {
+        blk_clone.header.height += 1;
+        blk_clone.send_block = Some(blk.hash.to_owned());
+        blk_clone.header.prev_hash = blk.hash.clone();
+        blk_clone.hash();
+        blk_clone.signature = "".to_string();
+        return Ok(blk_clone);
+    } else {
+        let request_url = format!(
+            "http://127.0.0.1:8000/api/v1/blockcount/{}",
+            for_chain.clone()
+        );
+        let response = reqwest::get(&request_url).await?;
+
+        let response_decoded = response.json::<Blockcount>().await?;
+        let height = response_decoded.blockcount;
+        let request_url = format!(
+            "http://127.0.0.1:8000/api/v1/hash_at_height/{}/{}",
+            for_chain.clone(),
+            height - 1
+        );
+        let response = reqwest::get(&request_url).await?;
+        let response_decoded = response.json::<HashAtHeight>().await?;
+        blk_clone.header.chain_key = chain_key_value;
+        blk_clone.header.height = height; // we DONT need to add 1 to the blockcount as it is the COUNT of blocks on a chain which starts on 1, and block height starts from 0, this means there is already a +1 delta between the two
+        blk_clone.send_block = Some(blk.hash.to_owned());
+        blk_clone.header.prev_hash = response_decoded.hash;
+        blk_clone.hash();
+        blk_clone.signature = "".to_string();
+        return Ok(blk_clone);
+    }
 }
 
 fn get_choice() -> u8 {
@@ -286,17 +337,25 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
     let mut failed = false;
     for txn in &blk.txns {
         if !proccessed_accs.contains(&txn.receive_key) {
-            let rec_blk = blk
-                .form_receive_block(Some(txn.receive_key.to_owned()))
-                .unwrap();
-            trace!("Created rec block={:#?}", rec_blk);
+            let try_rec_block = form_receive_block(&blk, &txn.receive_key.to_owned()).await;
+            if let Ok(rec_blk) = try_rec_block {
+                let request_url = format!(
+                    "http://127.0.0.1:8000/api/v1/blockcount/{}",
+                    &txn.receive_key
+                );
+                trace!("Created rec block={:#?}", rec_blk);
 
-            proccessed_accs.push(txn.receive_key.clone());
-            if let Ok(rec_blk_json) = serde_json::to_string(&rec_blk) {
-                blocks.push(rec_blk_json);
+                proccessed_accs.push(txn.receive_key.clone());
+                if let Ok(rec_blk_json) = serde_json::to_string(&rec_blk) {
+                    blocks.push(rec_blk_json);
+                } else {
+                    error!("Failed to encode rec block as json");
+                    failed = true;
+                    break;
+                }
             } else {
-                error!("Failed to encode rec block as json");
                 failed = true;
+                error!("Failed to form rec block, gave error={}", try_rec_block.unwrap_err());
                 break;
             }
         }
@@ -509,8 +568,8 @@ async fn main() {
                     }
                     let request_url =
                         format!("http://127.0.0.1:8000/api/v1/balances/{}", wall.public_key);
-                    if let Ok(response) = reqwest::get(&request_url).await {
-                        if let Ok(response) = response.json::<Balances>().await {
+                    if let Ok(response_undec) = reqwest::get(&request_url).await {
+                        if let Ok(response) = response_undec.json::<Balances>().await {
                             info!("Balance: {}, Locked: {}", response.balance, response.locked);
                             if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
                                 let mut wallet_details = (*locked_ls).clone();
@@ -518,8 +577,14 @@ async fn main() {
                                 wallet_details.locked = response.locked;
                                 *locked_ls = wallet_details;
                                 drop(locked_ls);
+                            } else {
+                                error!("Failed to lock WALLET_DETAILS mutex");
                             }
+                        } else {
+                            error!("Failed to decode recieved 'balances' json");
                         }
+                    } else {
+                        error!("Failed to request {}", request_url);
                     }
                     let request_url = format!(
                         "http://127.0.0.1:8000/api/v1/transactioncount/{}",
@@ -663,6 +728,7 @@ async fn main() {
                         } else if read == *"register_username" {
                             if let Ok(lock) = WALLET_DETAILS.lock() {
                                 if lock.username == "" {
+                                    info!("Enter desired_username:");
                                     let desired_username: String = read!();
                                     let request_url = format!(
                                         "http://127.0.0.1:8000/api/v1/publickey_for_username/{}",
@@ -740,6 +806,20 @@ async fn main() {
                             } else {
                                 error!("Failed to get lock on WALLET_DETAILS muxtex (try again)");
                             }
+                        } else if read == *"get_keypair" {
+                            warn!("WARNING: You are about to be given the private key to your account. This string allows ANYONE (with the key) to send a transaction from your account");
+                            warn!("If someone is telling you to give them this key, you are probably being scammed. The avrio team will never ask your for your private key. ");
+                            warn!("The only time you should enter your private key, is into a wallet to use your funds. HOWEVER, we do not reccomened doing this. Instead create a new wallet, and send the funds to it from here");
+                            warn!("Please remeber the avrio team is not liable for any funds lost");
+                            error!("You can safley ignore this message as testnet coins have no value, but dont go loosing your coins :D");
+                            info!("If you understand these risks please enter: confirm");
+                            let confirm: String = read!();
+                            if confirm.to_uppercase() != "CONFIRM" {
+                                error!("Did not enter confirm, aborting (got {})", confirm);
+                            } else {
+                                println!("Your publickey is: {}", wall.public_key); // println! to prevent it being saved in the logs
+                                println!("Your private key is: {}", wall.private_key);
+                            }
                         } else {
                             error!("Unknown command: {}", read);
                         }
@@ -765,7 +845,7 @@ fn create_wallet() -> Result<Wallet, Box<dyn Error>> {
     info!("Enter new wallet name:");
     let name: String = read!();
     info!("Enter password:");
-    let password: String = read!();
+    let password: String = rpassword::read_password()?;
     if get_data(config().db_path + &"/wallets/".to_owned() + &name, "pubkey") != "-1" {
         error!("Wallet already exists");
         return Err("Wallet path taken".into());
@@ -792,7 +872,7 @@ fn import_wallet() -> Result<Wallet, Box<dyn Error>> {
         return Err("wallet with name already exists".into());
     }
     info!("Please enter wallet password");
-    let password: String = read!();
+    let password: String = rpassword::read_password()?;
     let wallet = Wallet::from_private_key(private_key);
     if let Err(e) = save_wallet(
         &[wallet.private_key.clone(), wallet.private_key.clone()],
@@ -808,7 +888,7 @@ fn open_wallet_gather() -> Result<Wallet, Box<dyn Error>> {
     info!("Enter your wallet name");
     let name: String = read!();
     info!("Enter your wallet password");
-    let pswd: String = read!();
+    let pswd: String = rpassword::read_password()?;
     Ok(open_wallet(name, pswd))
 }
 
