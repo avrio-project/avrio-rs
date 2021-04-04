@@ -186,6 +186,8 @@ pub fn submit_block_v1(block_data: rocket::Data) -> String {
                             return format!(" {{ \"error\" : \" {:?} }}\"", ee);
                         } else if let Err(ep) = prop_block(&blk) {
                             return format!(" {{ \"error\" : \" {:?} }}\"", ep);
+                        } else if let Err(eann) = block_announce(blk) {
+                            return format!(" {{ \"error\" : \" {:?} }}\"", eann);
                         } else {
                             return "{ \"result\" : \"sent block\" }".to_owned();
                         }
