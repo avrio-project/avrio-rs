@@ -8,6 +8,7 @@ use avrio_database::{get_data, open_database};
 use lazy_static::lazy_static;
 use std::net::TcpStream;
 use std::sync::Mutex;
+use avrio_rpc::block_announce;
 extern crate rand;
 extern crate x25519_dalek;
 
@@ -234,6 +235,7 @@ pub fn launch_handle_client(
                                                 log::error!("");
                                             } else {
                                                 log::debug!("Recieved and processed block from peer, sending block ack");
+                                                let _ = block_announce(block);
                                                 let _ = send(
                                                     "".to_owned(),
                                                     &mut stream,
