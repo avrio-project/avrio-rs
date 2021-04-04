@@ -25,7 +25,7 @@ use log::*;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json;
-use std::{default::default, sync::Mutex};
+use std::{default::Default, sync::Mutex};
 use std::{
     error::Error,
     io,
