@@ -153,7 +153,7 @@ pub fn username_for_publickey(publickey: String) -> String {
 #[get("/publickey_to_address/<publickey>")]
 pub fn publickey_to_address(publickey: String) -> String {
     let wall = Wallet::from_private_key(publickey);
-    return "{ \"success\": true, \"username\": \"".to_string() + &wall.address() + "\" }";
+    return "{ \"success\": true, \"address\": \"".to_string() + &wall.address() + "\" }";
 }
 
 #[get("/chainlist")]
