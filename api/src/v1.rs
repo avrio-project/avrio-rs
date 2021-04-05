@@ -12,7 +12,7 @@ use avrio_blockchain::{
 };
 use avrio_config::config;
 use avrio_core::account::get_account;
-use avrio_database::get_data;
+use avrio_database::{get_data, open_database};
 use avrio_p2p::helper::prop_block;
 use avrio_rpc::block_announce;
 use log::*;
@@ -139,6 +139,66 @@ pub fn get_publickey_for_username(username: String) -> String {
     }
 }
 
+#[get("/chainlist")]
+pub fn chainlist() -> String {
+    if let Ok(db) = open_database(config().db_path + &"/chainlist".to_owned()) {
+        let mut chains: Vec<String> = vec![];
+
+        for (key, _) in db.iter() {
+            chains.push(key.to_owned());
+        }
+
+        log::trace!("Our chain list: {:#?}", chains);
+        if let Ok(s) = serde_json::to_string(&chains) {
+            return "{ \"success\": true, \"list\": ".to_owned() + &s + " }";
+        } else {
+            error!("Could not find seralise chainlist");
+            return "{ \"success\": false, \"chain\": \"\" }".to_string();
+        }
+    } else {
+        error!("Could not find open chainslist db");
+        return "{ \"success\": false, \"list\": \"\" }".to_string();
+    }
+}
+
+#[get("/blocksabovehash/<hash>/<chain>/<amount>")]
+pub fn blocks_above_hash(hash: String, chain: String, amount: u64) -> String {
+    let block_from: Block;
+
+    if hash == "0" {
+        log::trace!("Getting genesis block for chain: {}", chain);
+        block_from = get_block(&chain, 0);
+        log::trace!("Block from: {:#?} (api)", block_from);
+    } else {
+        block_from = get_block_from_raw(hash.clone());
+    }
+
+    if block_from == Default::default() {
+        debug!("Cant find block (context blocksabovehash api call)");
+        return "{ \"success\": false, \"blocks\": [] }".to_string();
+    } else {
+        let mut got: u64 = block_from.header.height;
+        let mut prev: Block = block_from.clone();
+        let mut blks: Vec<Block> = vec![];
+
+        while prev != Default::default() {
+            if (prev == block_from && hash == "0") || got == amount {
+                blks.push(prev);
+            }
+
+            got += 1;
+            trace!("Sent block at height: {}", got);
+            prev = get_block(&chain, got);
+        }
+        if let Ok(blks_string) = serde_json::to_string(&blks) {
+            return "{ \"success\": true, \"blocks\":".to_string() + &blks_string + "}";
+        } else {
+            debug!("Could not seralise blocks vec (context getblocksabovehash api call)");
+            return "{ \"success\": false, \"blocks\": [] }".to_string();
+        }
+    }
+}
+
 #[post("/submit_block", format = "application/json", data = "<block_data>")]
 pub fn submit_block_v1(block_data: rocket::Data) -> String {
     let mut bytes_stream = block_data.open();
@@ -233,6 +293,8 @@ pub fn get_middleware() -> Vec<Route> {
         get_blockcount_v1,
         transaction_count,
         get_publickey_for_username,
+        blocks_above_hash,
+        chainlist,
         hash_at_height
     ]
 }
