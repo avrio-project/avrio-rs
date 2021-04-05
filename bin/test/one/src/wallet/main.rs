@@ -630,44 +630,62 @@ async fn main() {
                                     .as_millis() as u64,
                                 signature: String::from(""),
                             };
-                            info!("Please enter the reciever address or username:");
-                            let addr: String = read!();
-                            if avrio_crypto::valid_address(&addr) {
-                                let rec_wall = Wallet::from_address(addr);
-                                txn.receive_key = rec_wall.public_key;
-                            } else {
-                                debug!("Could not find acc with addr={}, trying as username", addr);
-                                let request_url = format!(
-                                    "http://127.0.0.1:8000/api/v1/publickey_for_username/{}",
-                                    addr
-                                );
-                                if let Ok(response) = reqwest::get(&request_url).await {
-                                    if let Ok(publickey_for_username) =
-                                        response.json::<PublickeyForUsername>().await
-                                    {
-                                        txn.receive_key = publickey_for_username.publickey;
-                                    }
-                                }
-                            }
                             let request_url = format!(
-                                "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                                "http://127.0.0.1:8000/api/v1/balances/{}",
                                 wall.public_key
                             );
-                            if let Ok(response) = reqwest::get(&request_url).await {
-                                if let Ok(transactioncount) =
-                                    response.json::<Transactioncount>().await
-                                {
-                                    txn.nonce = transactioncount.transaction_count;
-                                    txn.hash();
-                                    let _ = txn.sign(&wall.private_key);
-                                    if let Err(e) = send_transaction(txn, wall.clone()).await {
-                                        error!("Failed to send txn, got error={}", e);
+                            if let Ok(response_undec) = reqwest::get(&request_url).await {
+                                if let Ok(response) = response_undec.json::<Balances>().await {
+                                    if txn.amount + txn.fee() > response.balance {
+                                        error!("Insufficent balance");
+                                    } else {
+                                        info!("Please enter the reciever address or username:");
+                                        let addr: String = read!();
+                                        if avrio_crypto::valid_address(&addr) {
+                                            let rec_wall = Wallet::from_address(addr);
+                                            txn.receive_key = rec_wall.public_key;
+                                        } else {
+                                            debug!(
+                                        "Could not find acc with addr={}, trying as username",
+                                        addr
+                                    );
+                                            let request_url = format!(
+                                        "http://127.0.0.1:8000/api/v1/publickey_for_username/{}",
+                                        addr
+                                    );
+                                            if let Ok(response) = reqwest::get(&request_url).await {
+                                                if let Ok(publickey_for_username) =
+                                                    response.json::<PublickeyForUsername>().await
+                                                {
+                                                    txn.receive_key =
+                                                        publickey_for_username.publickey;
+                                                }
+                                            }
+                                        }
+                                        let request_url = format!(
+                                            "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                                            wall.public_key
+                                        );
+                                        if let Ok(response) = reqwest::get(&request_url).await {
+                                            if let Ok(transactioncount) =
+                                                response.json::<Transactioncount>().await
+                                            {
+                                                txn.nonce = transactioncount.transaction_count;
+                                                txn.hash();
+                                                let _ = txn.sign(&wall.private_key);
+                                                if let Err(e) =
+                                                    send_transaction(txn, wall.clone()).await
+                                                {
+                                                    error!("Failed to send txn, got error={}", e);
+                                                }
+                                            } else {
+                                                error!("Failed to decode recieved response into transactioncount struct");
+                                            }
+                                        } else {
+                                            error!("Failed to send request={}", request_url);
+                                        }
                                     }
-                                } else {
-                                    error!("Failed to decode recieved response into transactioncount struct");
                                 }
-                            } else {
-                                error!("Failed to send request={}", request_url);
                             }
                         } else if read == *"address" {
                             info!("Our address: {}", wall.address());
@@ -761,36 +779,59 @@ async fn main() {
                                                     signature: String::from(""),
                                                 };
                                                 let request_url = format!(
+                                                    "http://127.0.0.1:8000/api/v1/balances/{}",
+                                                    wall.public_key
+                                                );
+                                                if let Ok(response_undec) =
+                                                    reqwest::get(&request_url).await
+                                                {
+                                                    if let Ok(response) =
+                                                        response_undec.json::<Balances>().await
+                                                    {
+                                                        if txn.amount + txn.fee() > response.balance
+                                                        {
+                                                            error!("Insufficent balance");
+                                                        } else {
+                                                            let request_url = format!(
                                                     "http://127.0.0.1:8000/api/v1/transactioncount/{}",
                                                     wall.public_key
                                                 );
-                                                if let Ok(response) =
-                                                    reqwest::get(&request_url).await
-                                                {
-                                                    if let Ok(transactioncount) =
-                                                        response.json::<Transactioncount>().await
-                                                    {
-                                                        txn.nonce =
-                                                            transactioncount.transaction_count;
-                                                        txn.hash();
-                                                        let _ = txn.sign(&wall.private_key);
-                                                        if let Err(e) =
-                                                            send_transaction(txn, wall.clone())
-                                                                .await
-                                                        {
-                                                            error!(
+                                                            if let Ok(response) =
+                                                                reqwest::get(&request_url).await
+                                                            {
+                                                                if let Ok(transactioncount) =
+                                                                    response
+                                                                        .json::<Transactioncount>()
+                                                                        .await
+                                                                {
+                                                                    txn.nonce = transactioncount
+                                                                        .transaction_count;
+                                                                    txn.hash();
+                                                                    let _ =
+                                                                        txn.sign(&wall.private_key);
+                                                                    if let Err(e) =
+                                                                        send_transaction(
+                                                                            txn,
+                                                                            wall.clone(),
+                                                                        )
+                                                                        .await
+                                                                    {
+                                                                        error!(
                                                                 "Failed to send txn, got error={}",
                                                                 e
                                                             );
+                                                                    }
+                                                                } else {
+                                                                    error!("Failed to decode recieved response into transactioncount struct");
+                                                                }
+                                                            } else {
+                                                                error!(
+                                                                    "Failed to send request={}",
+                                                                    request_url
+                                                                );
+                                                            }
                                                         }
-                                                    } else {
-                                                        error!("Failed to decode recieved response into transactioncount struct");
                                                     }
-                                                } else {
-                                                    error!(
-                                                        "Failed to send request={}",
-                                                        request_url
-                                                    );
                                                 }
                                             }
                                         }
@@ -819,12 +860,69 @@ async fn main() {
                                 println!("Your publickey is: {}", wall.public_key); // println! to prevent it being saved in the logs
                                 println!("Your private key is: {}", wall.private_key);
                             }
+                        } else if read == *"burn" {
+                            info!("Please enter the amount");
+                            let amount: f64 = read!("{}\n");
+                            let mut txn = Transaction {
+                                hash: String::from(""),
+                                amount: to_atomc(amount),
+                                extra: String::from(""),
+                                flag: 'b',
+                                sender_key: wall.public_key.clone(),
+                                receive_key: wall.public_key.clone(),
+                                access_key: String::from(""),
+                                unlock_time: 0,
+                                gas_price: 10, // 0.001 AIO
+                                gas: 20,
+                                max_gas: u64::max_value(),
+                                nonce: 0,
+                                timestamp: SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .expect("Time went backwards")
+                                    .as_millis() as u64,
+                                signature: String::from(""),
+                            };
+                            let request_url = format!(
+                                "http://127.0.0.1:8000/api/v1/balances/{}",
+                                wall.public_key
+                            );
+                            if let Ok(response_undec) = reqwest::get(&request_url).await {
+                                if let Ok(response) = response_undec.json::<Balances>().await {
+                                    if txn.amount + txn.fee() > response.balance {
+                                        error!("Insufficent balance");
+                                    } else {
+                                        let request_url = format!(
+                                            "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                                            wall.public_key
+                                        );
+                                        if let Ok(response) = reqwest::get(&request_url).await {
+                                            if let Ok(transactioncount) =
+                                                response.json::<Transactioncount>().await
+                                            {
+                                                txn.nonce = transactioncount.transaction_count;
+                                                txn.hash();
+                                                let _ = txn.sign(&wall.private_key);
+                                                if let Err(e) =
+                                                    send_transaction(txn, wall.clone()).await
+                                                {
+                                                    error!("Failed to send txn, got error={}", e);
+                                                }
+                                            } else {
+                                                error!("Failed to decode recieved response into transactioncount struct");
+                                            }
+                                        } else {
+                                            error!("Failed to send request={}", request_url);
+                                        }
+                                    }
+                                }
+                            }
                         } else if read == "help" {
                             info!("Commands:");
                             info!("balance : Gets the balance of the currently loaded wallet");
                             info!("get_address : Gets the address assosciated with this wallet");
                             info!("send_txn : Sends a transaction");
                             info!("send_txn_advanced : allows you to send a transaction with advanced options");
+                            info!("burn : allows you to burn funds");
                             info!("exit : Safely shutsdown thr program. PLEASE use instead of ctrl + c");
                             info!("help : shows this help");
                         } else {
