@@ -351,7 +351,10 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
                 }
             } else {
                 failed = true;
-                error!("Failed to form rec block, gave error={}", try_rec_block.unwrap_err());
+                error!(
+                    "Failed to form rec block, gave error={}",
+                    try_rec_block.unwrap_err()
+                );
                 break;
             }
         }
@@ -816,6 +819,14 @@ async fn main() {
                                 println!("Your publickey is: {}", wall.public_key); // println! to prevent it being saved in the logs
                                 println!("Your private key is: {}", wall.private_key);
                             }
+                        } else if read == "help" {
+                            info!("Commands:");
+                            info!("balance : Gets the balance of the currently loaded wallet");
+                            info!("get_address : Gets the address assosciated with this wallet");
+                            info!("send_txn : Sends a transaction");
+                            info!("send_txn_advanced : allows you to send a transaction with advanced options");
+                            info!("exit : Safely shutsdown thr program. PLEASE use instead of ctrl + c");
+                            info!("help : shows this help");
                         } else {
                             error!("Unknown command: {}", read);
                         }
