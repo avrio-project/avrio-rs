@@ -12,7 +12,7 @@ use avrio_blockchain::{
 };
 use avrio_config::config;
 use avrio_core::account::get_account;
-use avrio_crypto::Wallet;
+use avrio_crypto::public_key_to_address;
 use avrio_database::{get_data, open_database};
 use avrio_p2p::helper::prop_block;
 use avrio_rpc::block_announce;
@@ -152,8 +152,7 @@ pub fn username_for_publickey(publickey: String) -> String {
 
 #[get("/publickey_to_address/<publickey>")]
 pub fn publickey_to_address(publickey: String) -> String {
-    let wall = Wallet::from_private_key(publickey);
-    return "{ \"success\": true, \"address\": \"".to_string() + &wall.address() + "\" }";
+    return "{ \"success\": true, \"address\": \"".to_string() + &public_key_to_address(&publickey) + "\" }";
 }
 
 #[get("/chainlist")]
