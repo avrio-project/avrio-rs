@@ -38,6 +38,7 @@ pub enum TransactionValidationErrors {
     NonMessageWithoutRecipitent,
     ExtraTooLarge,
     LowGas,
+    UnsupportedType,
     Other,
 }
 
@@ -203,11 +204,43 @@ impl Transaction {
                     );
                 }
             }
+        } else if txn_type == *"burn" {
+            trace!("Getting sender acc");
+            let mut acc: Account = open_or_create(&self.sender_key);
+            if acc.balance > (self.amount + self.fee()) {
+                acc.balance -= self.amount;
+            } else {
+                return Err("Account balance insufficent".into());
+            }
+            trace!("Saving acc");
+            let _ = acc.save();
+            trace!("Get txn count");
+            let txn_count: u64 =
+                avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
+            trace!("Setting txn count");
+            if avrio_database::save_data(
+                &(txn_count + 1).to_string(),
+                &chain_index_db,
+                "txncount".to_owned(),
+            ) != 1
+            {
+                return Err("failed to update send acc nonce".into());
+            } else {
+                trace!(
+                    "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
+                    self.sender_key,
+                    txn_count,
+                    txn_count + 1
+                );
+            }
         } else {
             return Err("unsupported txn type".into());
         }
         trace!("Done");
         Ok(())
+    }
+    pub fn fee(&self) -> u64 {
+        self.gas * self.gas_price
     }
 
     pub fn valid(&self, recieve: bool) -> Result<(), TransactionValidationErrors> {
@@ -220,6 +253,9 @@ impl Transaction {
                 + &"-chainindex".to_owned(),
             &"txncount".to_owned(),
         );
+        if !['c', 'n', 'b', 'u'].contains(&self.flag) {
+            return Err(TransactionValidationErrors::UnsupportedType);
+        }
         if self.nonce.to_string() != txn_count && !recieve {
             return Err(TransactionValidationErrors::BadNonce);
         } else if self.hash_return() != self.hash {
@@ -227,7 +263,7 @@ impl Transaction {
         } else if self.amount < 1 && self.flag != 'm' {
             // the min amount sendable (1 miao) unless the txn is a message txn
             return Err(TransactionValidationErrors::InsufficentAmount);
-        }
+        } 
         if self.extra.len() > 100 && self.flag != 'f' {
             if self.flag == 'u' {
                 // these cases can have a
