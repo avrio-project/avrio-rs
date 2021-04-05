@@ -339,10 +339,6 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
         if !proccessed_accs.contains(&txn.receive_key) {
             let try_rec_block = form_receive_block(&blk, &txn.receive_key.to_owned()).await;
             if let Ok(rec_blk) = try_rec_block {
-                let request_url = format!(
-                    "http://127.0.0.1:8000/api/v1/blockcount/{}",
-                    &txn.receive_key
-                );
                 trace!("Created rec block={:#?}", rec_blk);
 
                 proccessed_accs.push(txn.receive_key.clone());
