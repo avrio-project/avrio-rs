@@ -311,11 +311,14 @@ fn main() {
         }
     });
     let mut pl = get_peerlist().unwrap_or_default();
-    let seednodes: Vec<SocketAddr> = vec![SocketAddr::new(
-        // TODO: use config, not hardcoded seednodes
-        IpAddr::V4(Ipv4Addr::new(5, 189, 172, 54)),
-        56789,
-    )];
+    let mut seednodes: Vec<SocketAddr> = vec![];
+    for seednode_addr in config().seednodes {
+        if let Ok(addr) = seednode_addr.parse::<SocketAddr>() {
+            seednodes.push(addr);
+        } else {
+            warn!("Invalid seednode addr in config: {}", seednode_addr);
+        }
+    }
     info!("P2P identity={}", config().identitiy);
 
     for node in seednodes {
