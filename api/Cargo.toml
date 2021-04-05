@@ -17,4 +17,5 @@ avrio_database = { path = "../database" }
 avrio_config = { path = "../config" }
 avrio_p2p = { path = "../p2p" }
 avrio_rpc = { path = "../rpc" }
+avrio_crypto = { path = "../crypto"}
 log = "0.4"

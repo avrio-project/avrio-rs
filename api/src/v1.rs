@@ -12,6 +12,7 @@ use avrio_blockchain::{
 };
 use avrio_config::config;
 use avrio_core::account::get_account;
+use avrio_crypto::Wallet;
 use avrio_database::{get_data, open_database};
 use avrio_p2p::helper::prop_block;
 use avrio_rpc::block_announce;
@@ -137,6 +138,22 @@ pub fn get_publickey_for_username(username: String) -> String {
         error!("Could not find an account with username = {}", username);
         return "{ \"success\": false, \"publickey\": \"\" }".to_string();
     }
+}
+
+#[get("/username_for_publickey/<publickey>")]
+pub fn username_for_publickey(publickey: String) -> String {
+    if let Ok(acc) = avrio_core::account::get_account(&publickey) {
+        return "{ \"success\": true, \"username\": \"".to_string() + &acc.username + "\" }";
+    } else {
+        error!("Could not find an account with publickey = {}", publickey);
+        return "{ \"success\": false, \"username\": \"\" }".to_string();
+    }
+}
+
+#[get("/publickey_to_address/<publickey>")]
+pub fn publickey_to_address(publickey: String) -> String {
+    let wall = Wallet::from_private_key(publickey);
+    return "{ \"success\": true, \"username\": \"".to_string() + &wall.address() + "\" }";
 }
 
 #[get("/chainlist")]
@@ -293,6 +310,8 @@ pub fn get_middleware() -> Vec<Route> {
         get_blockcount_v1,
         transaction_count,
         get_publickey_for_username,
+        username_for_publickey,
+        publickey_to_address,
         blocks_above_hash,
         chainlist,
         hash_at_height
