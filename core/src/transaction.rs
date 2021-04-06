@@ -101,6 +101,28 @@ impl Transaction {
             _ => "unknown".to_string(),
         }
     }
+    pub fn update_nonce(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let chain_index_db = config().db_path + "/chains/" + &self.sender_key + "-chainindex";
+        let txn_count: u64 =
+            avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
+        trace!("Setting txn count");
+        if avrio_database::save_data(
+            &(txn_count + 1).to_string(),
+            &chain_index_db,
+            "txncount".to_string(),
+        ) != 1
+        {
+            return Err("failed to update send acc nonce".into());
+        } else {
+            trace!(
+                "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
+                self.sender_key,
+                txn_count,
+                txn_count + 1
+            );
+            return Ok(());
+        };
+    }
 
     pub fn enact(
         &self,
@@ -125,24 +147,7 @@ impl Transaction {
             trace!("Saving sender acc");
             sendacc.save().unwrap();
             trace!("Get txn count");
-            let txn_count: u64 =
-                avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
-            trace!("Setting txn count");
-            if avrio_database::save_data(
-                &(txn_count + 1).to_string(),
-                &chain_index_db,
-                "txncount".to_string(),
-            ) != 1
-            {
-                return Err("failed to update send acc nonce".into());
-            } else {
-                trace!(
-                    "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
-                    self.sender_key,
-                    txn_count,
-                    txn_count + 1
-                );
-            }
+
         // TODO: Check we are on the testnet
         } else if txn_type == *"claim" {
             // »!testnet only!«
@@ -151,25 +156,6 @@ impl Transaction {
             acc.balance += self.amount;
             trace!("Saving acc");
             let _ = acc.save();
-            trace!("Get txn count");
-            let txn_count: u64 =
-                avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
-            trace!("Setting txn count");
-            if avrio_database::save_data(
-                &(txn_count + 1).to_string(),
-                &chain_index_db,
-                "txncount".to_owned(),
-            ) != 1
-            {
-                return Err("failed to update send acc nonce".into());
-            } else {
-                trace!(
-                    "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
-                    self.sender_key,
-                    txn_count,
-                    txn_count + 1
-                );
-            }
         } else if txn_type == *"username registraion" {
             trace!("Getting acc (uname reg)");
             let mut acc = get_account(&self.sender_key).unwrap_or_default();
@@ -185,25 +171,6 @@ impl Transaction {
                 if acc.save().is_err() {
                     return Err("failed to save account (after username addition)".into());
                 }
-                trace!("Get txn count");
-                let txn_count: u64 =
-                    avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
-                trace!("Setting txn count");
-                if avrio_database::save_data(
-                    &(txn_count + 1).to_string(),
-                    &chain_index_db,
-                    "txncount".to_owned(),
-                ) != 1
-                {
-                    return Err("failed to update send acc nonce".into());
-                } else {
-                    trace!(
-                        "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
-                        self.sender_key,
-                        txn_count,
-                        txn_count + 1
-                    );
-                }
             }
         } else if txn_type == *"burn" {
             trace!("Getting sender acc");
@@ -215,25 +182,6 @@ impl Transaction {
             }
             trace!("Saving acc");
             let _ = acc.save();
-            trace!("Get txn count");
-            let txn_count: u64 =
-                avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
-            trace!("Setting txn count");
-            if avrio_database::save_data(
-                &(txn_count + 1).to_string(),
-                &chain_index_db,
-                "txncount".to_owned(),
-            ) != 1
-            {
-                return Err("failed to update send acc nonce".into());
-            } else {
-                trace!(
-                    "Updated account nonce (txn count) for account: {}, prev: {}, new: {}",
-                    self.sender_key,
-                    txn_count,
-                    txn_count + 1
-                );
-            }
         } else {
             return Err("unsupported txn type".into());
         }
