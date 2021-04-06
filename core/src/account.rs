@@ -27,7 +27,7 @@ pub struct Account {
 }
 
 pub fn to_atomc(amount: f64) -> u64 {
-    (amount * (10_i64.pow(config().decimal_places as u32) as f64)) as u64
+    (amount * (10_i64.pow(config().decimal_places as u32) as f64)) as u64 // (amount * 10000 for 4 dec places)
 }
 
 pub fn to_dec(amount: u64) -> f64 {
@@ -35,6 +35,7 @@ pub fn to_dec(amount: u64) -> f64 {
         return 0 as f64;
     } else {
         return amount as f64 / (10_i64.pow(config().decimal_places as u32)) as f64;
+        // (amount / 10000 for 4 dec places)
     }
 }
 
@@ -106,7 +107,7 @@ pub fn set_account(acc: &Account) -> u8 {
                 + &"/usernames/".to_owned()
                 + &avrio_crypto::raw_hash(&acc.username)
                 + ".uname";
-            info!("saving uname: {}.", deserialized.username);
+            debug!("saving uname: {}", acc.username);
             let filetry = File::create(upath);
             if let Ok(mut file) = filetry {
                 if file.write_all(&acc.public_key.as_bytes()).is_err() {
