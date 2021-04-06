@@ -260,13 +260,14 @@ impl Transaction {
             return Err(TransactionValidationErrors::ExtraNotAlphanumeric);
         }
         if self.nonce.to_string() != txn_count && !recieve {
+            trace!("Account nonce: expected={}, got={}", txn_count, self.nonce);
             return Err(TransactionValidationErrors::BadNonce);
         } else if self.hash_return() != self.hash {
             return Err(TransactionValidationErrors::BadHash);
         } else if self.amount < 1 && self.flag != 'm' {
             // the min amount sendable (1 miao) unless the txn is a message txn
             return Err(TransactionValidationErrors::InsufficentAmount);
-        } 
+        }
         if self.extra.len() > 100 && self.flag != 'f' {
             if self.flag == 'u' {
                 // these cases can have a
