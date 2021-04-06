@@ -126,7 +126,7 @@ impl Transaction {
 
     pub fn enact(
         &self,
-        chain_index_db: String,
+        _chain_index_db: String,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let txn_type: String = self.type_transaction();
         if txn_type == *"normal" {
