@@ -5,10 +5,10 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use avrio_blockchain::{get_block, get_block_from_raw, Block};
 use avrio_config::config;
 use avrio_database::{get_data, open_database};
+use avrio_rpc::block_announce;
 use lazy_static::lazy_static;
 use std::net::TcpStream;
 use std::sync::Mutex;
-use avrio_rpc::block_announce;
 extern crate rand;
 extern crate x25519_dalek;
 
