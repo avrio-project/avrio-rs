@@ -1,4 +1,4 @@
-use avrio_blockchain::Block;
+use avrio_blockchain::{Block, BlockType};
 use lazy_static::*;
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,21 @@ impl Caller<'_> {
     }
 }
 pub fn block_announce(blk: Block) -> Result<(), Box<dyn std::error::Error>> {
+    if blk.block_type == BlockType::Send {
+        info!(
+            "New block! Hash={}, Sender={}, Type=Send",
+            blk.hash, blk.header.chain_key
+        );
+    } else {
+        info!(
+            "New block! Hash={}, Sender={}, Type=Recieve, Send block hash={}",
+            blk.hash,
+            blk.header.chain_key,
+            blk.send_block
+                .as_ref()
+                .unwrap_or(&"(Error unwrapping)".to_string())
+        );
+    }
     let connections = &mut CONNECTIONS.lock().unwrap();
     for (stream, subscriptions) in connections.iter_mut() {
         if subscriptions.contains(&"block".to_string()) {
@@ -231,12 +246,7 @@ pub fn launch(port: u64) {
                         let hi_string = String::from_utf8(hi_buffer[0..read_bytes].to_vec())
                             .unwrap_or_default();
                         if hi_string == "init" {
-                            let services_list = [
-                                "block".to_string(),
-                                "chain".to_string(),
-                                "username".to_string(),
-                                "peer".to_string(),
-                            ]; // TODO: move to config
+                            let services_list = ["block".to_string()]; // TODO: move to config
                             let services_list_ser =
                                 serde_json::to_string(&services_list).unwrap_or_default();
                             if let Ok(_) = stream.write(services_list_ser.as_bytes()) {
