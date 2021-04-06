@@ -39,6 +39,7 @@ pub enum TransactionValidationErrors {
     ExtraTooLarge,
     LowGas,
     UnsupportedType,
+    ExtraNotAlphanumeric,
     Other,
 }
 
@@ -255,6 +256,8 @@ impl Transaction {
         );
         if !['c', 'n', 'b', 'u'].contains(&self.flag) {
             return Err(TransactionValidationErrors::UnsupportedType);
+        } else if !self.extra.chars().all(char::is_alphanumeric) {
+            return Err(TransactionValidationErrors::ExtraNotAlphanumeric);
         }
         if self.nonce.to_string() != txn_count && !recieve {
             return Err(TransactionValidationErrors::BadNonce);
