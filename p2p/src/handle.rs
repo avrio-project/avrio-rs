@@ -394,7 +394,7 @@ pub fn launch_handle_client(
                                         let mut prev: Block = block_from.clone();
                                         let mut blks: Vec<Block> = vec![];
                     
-                                        while prev != Default::default() {
+                                        loop {
                                             if (prev == block_from && hash == "0") || prev != block_from {
                                                 blks.push(prev.clone());
                                             }
@@ -405,6 +405,8 @@ pub fn launch_handle_client(
                                                 config().db_path + "/globalindex",&got.to_string());
                                             if got_index != "-1" {
                                                 prev = get_block_from_raw(got_index);
+                                            } else {
+                                                break;
                                             }
                                         }
                     
