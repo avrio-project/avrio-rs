@@ -292,6 +292,21 @@ pub fn launch_handle_client(
                                 }
                     
                             }
+                            0x47 => {
+                                // send global block count
+                                let gbc = get_data(
+                                    config().db_path + &"/globalindex".to_owned(),
+                                    "globalblockcount",
+                                );
+                                log::trace!("Global blockcount={}", gbc);
+
+                                if gbc == *"-1" {
+                                    let _ = send("0".into(), &mut stream, 0x48, true, None);
+                                } else {
+                                    let _ = send(gbc, &mut stream, 0x48, true, None);
+                                }
+                    
+                            }
                             0x6f => {
                                 let (hash, chain): (String, String) =
                                     serde_json::from_str(&read_msg.message).unwrap_or_default();
@@ -340,6 +355,70 @@ pub fn launch_handle_client(
                                                 "Sent all blocks (amount: {}) for chain: {} to peer",
                                                 got,
                                                 chain
+                                            );
+                                        }
+                                    }
+                                }
+                    
+                            }
+                            0x7f => {
+                                let hash: String =
+                                    serde_json::from_str(&read_msg.message).unwrap_or_default();
+                    
+                                if hash == String::default() {
+                                    log::debug!(
+                                        "Got malformed globalgetblocksabovehash hash request (invalid body: {})",
+                                        read_msg.message
+                                    );
+                                } else {
+                                    let block_from: Block;
+                    
+                                    if hash == "0" {
+                                        log::trace!("Getting blocks above network genesis (globally) ");
+                                        let got_index = get_data(
+                                            config().db_path + "/globalindex","0");
+                                        if got_index != "-1"
+                                        {
+                                        block_from = get_block_from_raw(got_index);
+                                        log::trace!("Block from: {:#?}", block_from);
+                                        } else {
+                                            block_from = Block::default();
+                                        }
+                                    } else {
+                                        block_from = get_block_from_raw(hash.clone());
+                                    }
+                    
+                                    if block_from == Default::default() {
+                                        log::debug!("Cant find block (context globalgetblocksabovehash)");
+                                    } else {
+                                        let mut got: u64 = block_from.header.height;
+                                        let mut prev: Block = block_from.clone();
+                                        let mut blks: Vec<Block> = vec![];
+                    
+                                        while prev != Default::default() {
+                                            if (prev == block_from && hash == "0") || prev != block_from {
+                                                blks.push(prev.clone());
+                                            }
+                    
+                                            got += 1;
+                                            log::trace!("Sent block at height: {}", got);
+                                            let got_index = get_data(
+                                                config().db_path + "/globalindex","0");
+                                            if got_index != "-1" {
+                                                prev = get_block_from_raw(got_index);
+                                            }
+                                        }
+                    
+                                        if send(
+                                            serde_json::to_string(&blks).unwrap_or_default(),
+                                            &mut stream,
+                                            0x0a,
+                                            true,
+                                            None
+                                        ).is_ok() {
+                                            log::trace!(
+                                                "Sent all blocks (amount: {}) (global) to peer",
+                                                got
                                             );
                                         }
                                     }
