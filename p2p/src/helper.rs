@@ -357,13 +357,14 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                     }
                     let mut buf = [0; 2048];
 
-                    let top_block_hash: String;
+                    let mut top_block_hash: String;
                     let peer = &mut peer_to_use_unwraped;
                     top_block_hash =
                         get_data(config().db_path + "/globalindex", "globaltopblockhash");
                     if top_block_hash == "-1" {
+                        top_block_hash = "0".to_string();
                         if let Err(e) = send(
-                            serde_json::to_string(&"0")?,
+                            serde_json::to_string(&0)?,
                             peer,
                             0x7f,
                             true,
