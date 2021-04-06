@@ -519,7 +519,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                         let _ = unlock_peer(peer_to_use_unwraped).unwrap();
                     }
 
-                    return Ok(1)
+                    return Ok(1);
                 }
             }
         }
