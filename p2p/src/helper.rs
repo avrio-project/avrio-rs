@@ -345,14 +345,17 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
             if let Ok(global_block_height) = try_read_gh {
                 if let Ok(amount_to_sync) = global_block_height.message.parse::<u64>() {
                     info!("Got global block height from peer: {}", amount_to_sync);
+                    if amount_to_sync == 0 {
+                        return Ok(0);
+                    }
                     let print_synced_every: u64;
                     match amount_to_sync {
-                        0..=9 => print_synced_every = 1,
-                        10..=100 => print_synced_every = 10,
-                        101..=500 => print_synced_every = 50,
-                        501..=1000 => print_synced_every = 100,
-                        1001..=10000 => print_synced_every = 500,
-                        10001..=50000 => print_synced_every = 2000,
+                        0..=49 => print_synced_every = 1,
+                        50..=100 => print_synced_every = 5,
+                        101..=500 => print_synced_every = 10,
+                        501..=1000 => print_synced_every = 50,
+                        1001..=10000 => print_synced_every = 100,
+                        10001..=50000 => print_synced_every = 500,
                         _ => print_synced_every = 5000,
                     }
                     let mut buf = [0; 2048];
@@ -586,12 +589,12 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
     info!("Got to get {} blocks for chain: {}", amount_to_sync, chain);
 
     match amount_to_sync {
-        0..=9 => print_synced_every = 1,
-        10..=100 => print_synced_every = 10,
-        101..=500 => print_synced_every = 50,
-        501..=1000 => print_synced_every = 100,
-        1001..=10000 => print_synced_every = 500,
-        10001..=50000 => print_synced_every = 2000,
+        0..=49 => print_synced_every = 1,
+        50..=100 => print_synced_every = 5,
+        101..=500 => print_synced_every = 10,
+        501..=1000 => print_synced_every = 50,
+        1001..=10000 => print_synced_every = 100,
+        10001..=50000 => print_synced_every = 500,
         _ => print_synced_every = 5000,
     }
 
