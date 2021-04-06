@@ -152,7 +152,9 @@ pub fn username_for_publickey(publickey: String) -> String {
 
 #[get("/publickey_to_address/<publickey>")]
 pub fn publickey_to_address(publickey: String) -> String {
-    return "{ \"success\": true, \"address\": \"".to_string() + &public_key_to_address(&publickey) + "\" }";
+    return "{ \"success\": true, \"address\": \"".to_string()
+        + &public_key_to_address(&publickey)
+        + "\" }";
 }
 
 #[get("/chainlist")]

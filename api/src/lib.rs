@@ -11,7 +11,6 @@
 pub mod v1;
 pub mod wallet_api;
 
-
 #[macro_use]
 extern crate rocket;
 extern crate avrio_core;
