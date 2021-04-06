@@ -10,7 +10,7 @@ use std::process;
 
 pub extern crate avrio_config;
 use avrio_config::config;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 
 extern crate avrio_core;
 
