@@ -612,6 +612,71 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
         &block.header.height.to_string(),
     ) == "-1"
     {
+        let global_block_count_string = get_data(
+            config().db_path + &"/globalindex".to_owned(),
+            "globalblockcount",
+        );
+        let global_block_count: u64;
+        if global_block_count_string == "-1" {
+            save_data(
+                "1",
+                &(config().db_path + &"/globalindex".to_owned()),
+                "globalblockcount".to_string(),
+            );
+            global_block_count = 1;
+        } else {
+            if let Ok(global_block_count_int) = global_block_count_string.parse::<u64>() {
+                save_data(
+                    &(global_block_count_int + 1).to_string(),
+                    &(config().db_path + &"/globalindex".to_owned()),
+                    "globalblockcount".to_string(),
+                );
+                debug!(
+                    "Incremented global block count: old={}, new={}",
+                    global_block_count_int,
+                    global_block_count_int + 1
+                );
+                global_block_count = global_block_count_int + 1;
+            } else {
+                error!("Failed to parse current globalblockcount, setting to 1");
+                save_data(
+                    "1",
+                    &(config().db_path + &"/globalindex".to_owned()),
+                    "globalblockcount".to_string(),
+                );
+                global_block_count = 1;
+            }
+        }
+        if get_data(
+            config().db_path + "/globalindex",
+            &global_block_count.to_string(),
+        ) != "-1"
+        {
+            error!(
+                "Global invetory entry already present for height={}",
+                global_block_count
+            );
+            panic!(
+                "Global invetory entry already present for height={}",
+                global_block_count
+            );
+        } else {
+            save_data(
+                &block.hash,
+                &(config().db_path + &"/globalindex".to_owned()),
+                global_block_count.to_string(),
+            );
+            debug!(
+                "Inserted global inventory entry, global height={}, hash={}",
+                global_block_count, block.hash
+            );
+            save_data(
+                &block.hash,
+                &(config().db_path + &"/globalindex".to_owned()),
+                "globaltopblockhash".to_string(),
+            );
+            debug!("Updated global topblockhash");
+        }
         debug!("block {} not in invs", block.hash);
 
         let hash = block.hash.clone();
@@ -706,6 +771,71 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     if block.block_type != BlockType::Recieve {
         // we only enact recive blocks, ignore send blocks
         return Err("tried to enact a send block".into());
+    }
+    let global_block_count_string = get_data(
+        config().db_path + &"/globalindex".to_owned(),
+        "globalblockcount",
+    );
+    let global_block_count: u64;
+    if global_block_count_string == "-1" {
+        save_data(
+            "1",
+            &(config().db_path + &"/globalindex".to_owned()),
+            "globalblockcount".to_string(),
+        );
+        global_block_count = 1;
+    } else {
+        if let Ok(global_block_count_int) = global_block_count_string.parse::<u64>() {
+            save_data(
+                &(global_block_count_int + 1).to_string(),
+                &(config().db_path + &"/globalindex".to_owned()),
+                "globalblockcount".to_string(),
+            );
+            debug!(
+                "Incremented global block count: old={}, new={}",
+                global_block_count_int,
+                global_block_count_int + 1
+            );
+            global_block_count = global_block_count_int + 1;
+        } else {
+            error!("Failed to parse current globalblockcount, setting to 1");
+            save_data(
+                "1",
+                &(config().db_path + &"/globalindex".to_owned()),
+                "globalblockcount".to_string(),
+            );
+            global_block_count = 1;
+        }
+    }
+    if get_data(
+        config().db_path + "/globalindex",
+        &global_block_count.to_string(),
+    ) != "-1"
+    {
+        error!(
+            "Global invetory entry already present for height={}",
+            global_block_count
+        );
+        panic!(
+            "Global invetory entry already present for height={}",
+            global_block_count
+        );
+    } else {
+        save_data(
+            &block.hash,
+            &(config().db_path + &"/globalindex".to_owned()),
+            global_block_count.to_string(),
+        );
+        debug!(
+            "Inserted global inventory entry, global height={}, hash={}",
+            global_block_count, block.hash
+        );
+        save_data(
+            &block.hash,
+            &(config().db_path + &"/globalindex".to_owned()),
+            "globaltopblockhash".to_string(),
+        );
+        debug!("Updated global topblockhash");
     }
     if get_data(
         config().db_path
