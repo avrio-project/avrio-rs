@@ -362,7 +362,7 @@ pub fn launch_handle_client(
                     
                             }
                             0x7f => {
-                                let hash: String = read_msg.message;
+                                let hash: String = read_msg.message.clone();
                     
                                 if hash == String::default() {
                                     log::debug!(
