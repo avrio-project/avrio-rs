@@ -747,59 +747,63 @@ async fn main() {
                                 if lock.username == "" {
                                     info!("Enter desired_username:");
                                     let desired_username: String = read!();
-                                    let request_url = format!(
+                                    if !desired_username.chars().all(char::is_alphanumeric) {
+                                        error!("Username may only contain alphanumeric charactors");
+                                    } else {
+                                        let request_url = format!(
                                         "http://127.0.0.1:8000/api/v1/publickey_for_username/{}",
                                         desired_username
                                     );
-                                    if let Ok(response) = reqwest::get(&request_url).await {
-                                        if let Ok(publickey_for_username) =
-                                            response.json::<PublickeyForUsername>().await
-                                        {
-                                            if publickey_for_username.publickey != "" {
-                                                error!("Username {} is taken, try another (rerun register_username)", desired_username);
-                                            } else {
-                                                let mut txn = Transaction {
-                                                    hash: String::from(""),
-                                                    amount: to_atomc(0.50),
-                                                    extra: desired_username,
-                                                    flag: 'u',
-                                                    sender_key: wall.public_key.clone(),
-                                                    receive_key: wall.public_key.clone(),
-                                                    access_key: String::from(""),
-                                                    unlock_time: 0,
-                                                    gas_price: 10, // 0.001 AIO
-                                                    gas: 20,
-                                                    max_gas: u64::max_value(),
-                                                    nonce: 0,
-                                                    timestamp: SystemTime::now()
-                                                        .duration_since(UNIX_EPOCH)
-                                                        .expect("Time went backwards")
-                                                        .as_millis()
-                                                        as u64,
-                                                    signature: String::from(""),
-                                                };
-                                                let request_url = format!(
-                                                    "http://127.0.0.1:8000/api/v1/balances/{}",
-                                                    wall.public_key
-                                                );
-                                                if let Ok(response_undec) =
-                                                    reqwest::get(&request_url).await
-                                                {
-                                                    if let Ok(response) =
-                                                        response_undec.json::<Balances>().await
+                                        if let Ok(response) = reqwest::get(&request_url).await {
+                                            if let Ok(publickey_for_username) =
+                                                response.json::<PublickeyForUsername>().await
+                                            {
+                                                if publickey_for_username.publickey != "" {
+                                                    error!("Username {} is taken, try another (rerun register_username)", desired_username);
+                                                } else {
+                                                    let mut txn = Transaction {
+                                                        hash: String::from(""),
+                                                        amount: to_atomc(0.50),
+                                                        extra: desired_username,
+                                                        flag: 'u',
+                                                        sender_key: wall.public_key.clone(),
+                                                        receive_key: wall.public_key.clone(),
+                                                        access_key: String::from(""),
+                                                        unlock_time: 0,
+                                                        gas_price: 10, // 0.001 AIO
+                                                        gas: 20,
+                                                        max_gas: u64::max_value(),
+                                                        nonce: 0,
+                                                        timestamp: SystemTime::now()
+                                                            .duration_since(UNIX_EPOCH)
+                                                            .expect("Time went backwards")
+                                                            .as_millis()
+                                                            as u64,
+                                                        signature: String::from(""),
+                                                    };
+                                                    let request_url = format!(
+                                                        "http://127.0.0.1:8000/api/v1/balances/{}",
+                                                        wall.public_key
+                                                    );
+                                                    if let Ok(response_undec) =
+                                                        reqwest::get(&request_url).await
                                                     {
-                                                        if txn.amount + txn.fee() > response.balance
+                                                        if let Ok(response) =
+                                                            response_undec.json::<Balances>().await
                                                         {
-                                                            error!("Insufficent balance");
-                                                        } else {
-                                                            let request_url = format!(
+                                                            if txn.amount + txn.fee()
+                                                                > response.balance
+                                                            {
+                                                                error!("Insufficent balance");
+                                                            } else {
+                                                                let request_url = format!(
                                                     "http://127.0.0.1:8000/api/v1/transactioncount/{}",
                                                     wall.public_key
                                                 );
-                                                            if let Ok(response) =
-                                                                reqwest::get(&request_url).await
-                                                            {
-                                                                if let Ok(transactioncount) =
+                                                                if let Ok(response) =
+                                                                    reqwest::get(&request_url).await
+                                                                {
+                                                                    if let Ok(transactioncount) =
                                                                     response
                                                                         .json::<Transactioncount>()
                                                                         .await
@@ -824,11 +828,12 @@ async fn main() {
                                                                 } else {
                                                                     error!("Failed to decode recieved response into transactioncount struct");
                                                                 }
-                                                            } else {
-                                                                error!(
-                                                                    "Failed to send request={}",
-                                                                    request_url
-                                                                );
+                                                                } else {
+                                                                    error!(
+                                                                        "Failed to send request={}",
+                                                                        request_url
+                                                                    );
+                                                                }
                                                             }
                                                         }
                                                     }
