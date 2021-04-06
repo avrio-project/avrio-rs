@@ -14,7 +14,9 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 
 extern crate avrio_core;
 
-use avrio_p2p::{core::new_connection, core::rec_server, helper::sync_in_order, helper::sync_needed};
+use avrio_p2p::{
+    core::new_connection, core::rec_server, helper::sync_in_order, helper::sync_needed,
+};
 
 extern crate avrio_blockchain;
 use avrio_blockchain::{genesis::genesis_blocks, *};
