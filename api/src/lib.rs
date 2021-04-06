@@ -9,6 +9,8 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
 pub mod v1;
+pub mod wallet_api;
+
 
 #[macro_use]
 extern crate rocket;
