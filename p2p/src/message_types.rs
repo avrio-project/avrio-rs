@@ -27,9 +27,14 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0xcd, "Send Chain Digest (response)");
     message_types.insert(0x45, "Get Block Count (ask)");
     message_types.insert(0x46, "Get Block Count (response)");
+    message_types.insert(0x47, "Get Global Block Count (ask)");
+    message_types.insert(0x48, "Get Global Block Count (response)");
+
     message_types.insert(0x60, "Get Chain List (ask)");
     message_types.insert(0x61, "Get Chain List (response)");
-    message_types.insert(0x6f, "Get Block Above Hash");
+    message_types.insert(0x6f, "Get Block Above Hash, chain concurrent"); // get the blocks above hash x, concurernt to chain c
+    message_types.insert(0x7f, "Get Block Above Hash, global concurrent"); // get the blocks above hash x, but globally concurernt rather than chain concurrent
+
     message_types.insert(0x99, "Get Peer List (ask)");
     message_types.insert(0x9f, "Get Peer List (response)");
     message_types.insert(0x9a, "Announce peer");
