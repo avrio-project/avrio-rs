@@ -569,7 +569,7 @@ async fn main() {
                         format!("http://127.0.0.1:8000/api/v1/balances/{}", wall.public_key);
                     if let Ok(response_undec) = reqwest::get(&request_url).await {
                         if let Ok(response) = response_undec.json::<Balances>().await {
-                            info!("Balance: {}, Locked: {}", response.balance, response.locked);
+                            info!("Balance: {}, Locked: {}", to_dec(response.balance), to_dec(response.locked));
                             if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
                                 let mut wallet_details = (*locked_ls).clone();
                                 wallet_details.balance = response.balance;
@@ -738,7 +738,7 @@ async fn main() {
                             info!("Our address: {}", wall.address());
                         } else if read == *"balance" || read == *"get_balance" || read == *"bal" {
                             if let Ok(lock) = WALLET_DETAILS.lock() {
-                                info!("Our balance: {}", lock.balance);
+                                info!("Our balance: {}", to_dec(lock.balance));
                             } else {
                                 error!("Failed to get lock on WALLET_DETAILS muxtex (try again)");
                             }
