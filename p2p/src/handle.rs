@@ -390,7 +390,7 @@ pub fn launch_handle_client(
                                     if block_from == Default::default() {
                                         log::debug!("Cant find block (context globalgetblocksabovehash)");
                                     } else {
-                                        let mut got: u64 = block_from.header.height;
+                                        let mut got: u64 = block_from.header.height + 1;
                                         let mut prev: Block = block_from.clone();
                                         let mut blks: Vec<Block> = vec![];
                     
@@ -402,7 +402,7 @@ pub fn launch_handle_client(
                                             got += 1;
                                             log::trace!("Sent block at height: {}", got);
                                             let got_index = get_data(
-                                                config().db_path + "/globalindex","0");
+                                                config().db_path + "/globalindex",&got.to_string());
                                             if got_index != "-1" {
                                                 prev = get_block_from_raw(got_index);
                                             }
