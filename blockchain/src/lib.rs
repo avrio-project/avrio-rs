@@ -612,7 +612,7 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
         &block.header.height.to_string(),
     ) == "-1"
     {
-        debug!("block not in invs");
+        debug!("block {} not in invs", block.hash);
 
         let hash = block.hash.clone();
         let chain_key_copy = block.header.chain_key.to_owned();
@@ -627,12 +627,18 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
 
         save_data(
             &block.hash,
-            &(config().db_path + &"/chaindigest".to_owned()),
+            &(config().db_path
+                + &"/chains/".to_owned()
+                + &block.header.chain_key
+                + &"-chainindex".to_owned()),
             "topblockhash".to_string(),
         );
         save_data(
             &(block.header.height + 1).to_string(),
-            &(config().db_path + &"/chaindigest".to_owned()),
+            &(config().db_path
+                + &"/chains/".to_owned()
+                + &block.header.chain_key
+                + &"-chainindex".to_owned()),
             "blockcount".to_owned(),
         );
 
@@ -648,26 +654,6 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
 
         if inv_sender_res != 1 {
             return Err("failed to save sender inv".into());
-        }
-
-        let block_count = get_data(config().db_path + &"/chaindigest".to_owned(), "blockcount");
-
-        if block_count == *"-1" {
-            save_data(
-                &"1".to_owned(),
-                &(config().db_path + &"/chaindigest".to_owned()),
-                "blockcount".to_owned(),
-            );
-            trace!("set block count, prev: -1 (not set), new: 1");
-        } else {
-            let mut bc: u64 = block_count.parse().unwrap_or_default();
-            bc += 1;
-            save_data(
-                &bc.to_string(),
-                &(config().db_path + &"/chaindigest".to_owned()),
-                "blockcount".to_owned(),
-            );
-            trace!("Updated non-zero block count, new count: {}", bc);
         }
 
         if block.header.height == 0 {
@@ -766,24 +752,6 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         trace!("Saved inv for sender: {}", block.header.chain_key);
         if inv_sender_res != 1 {
             return Err("failed to save sender inv".into());
-        }
-        let block_count = get_data(config().db_path + &"/chaindigest".to_owned(), &"blockcount");
-        if block_count == *"-1" {
-            save_data(
-                &"1".to_owned(),
-                &(config().db_path + &"/chaindigest".to_owned()),
-                "blockcount".to_owned(),
-            );
-            trace!("set block count, prev: -1 (not set), new: 1");
-        } else {
-            let mut bc: u64 = block_count.parse().unwrap_or_default();
-            bc += 1;
-            save_data(
-                &bc.to_string(),
-                &(config().db_path + &"/chaindigest".to_owned()),
-                "blockcount".to_owned(),
-            );
-            trace!("Updated non-zero block count, new count: {}", bc);
         }
         if block.header.height == 0 {
             if save_data(
