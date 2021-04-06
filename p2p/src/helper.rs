@@ -363,7 +363,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                         get_data(config().db_path + "/globalindex", "globaltopblockhash");
                     if top_block_hash == "-1" {
                         if let Err(e) = send(
-                            serde_json::to_string(&"0".to_owned())?,
+                            serde_json::to_string(&"0")?,
                             peer,
                             0x7f,
                             true,
@@ -484,7 +484,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
 
                         if top_block_hash == "-1" {
                             if let Err(e) =
-                                send(serde_json::to_string("0")?, peer, 0x7f, true, None)
+                                send(serde_json::to_string(&0)?, peer, 0x7f, true, None)
                             {
                                 error!(
                                     "Asking peer for their blocks above hash: {} (globally) gave error: {}",
