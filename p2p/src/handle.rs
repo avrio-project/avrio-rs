@@ -373,7 +373,7 @@ pub fn launch_handle_client(
                                 } else {
                                     let block_from: Block;
                     
-                                    if hash == "0" {
+                                    if hash == "0" || hash == "-1"  {
                                         log::trace!("Getting blocks above network genesis (globally) ");
                                         let got_index = get_data(
                                             config().db_path + "/globalindex","0");
