@@ -362,8 +362,7 @@ pub fn launch_handle_client(
                     
                             }
                             0x7f => {
-                                let hash: String =
-                                    serde_json::from_str(&read_msg.message).unwrap_or_default();
+                                let hash: String = read_msg.message;
                     
                                 if hash == String::default() {
                                     log::debug!(
