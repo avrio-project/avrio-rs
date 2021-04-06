@@ -656,6 +656,9 @@ pub fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
             return Err("failed to save sender inv".into());
         }
 
+        for txn in block.txns {
+            txn.update_nonce()?;
+        }
         if block.header.height == 0 {
             if save_data(
                 &"".to_owned(),
