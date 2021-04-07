@@ -559,10 +559,10 @@ pub fn add_peer(peer: SocketAddr) -> std::result::Result<(), Box<dyn std::error:
 }
 
 pub fn save_peerlist(list: &[SocketAddr]) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let mut as_string: Vec<String> = vec![];
+    let mut as_string: PeerlistSave = PeerlistSave { peers: vec![] };
 
     for peer in list {
-        as_string.push(peer.to_string());
+        as_string.peers.push(peer.to_string());
     }
 
     let s = serde_json::to_string(&as_string)?;
