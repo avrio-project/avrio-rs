@@ -1010,11 +1010,14 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
     Ok(())
 }
 
-pub fn check_block(block: Block) -> std::result::Result<(), BlockValidationErrors> {
+pub fn benchmark_block_test(block: Block) -> std::result::Result<(), BlockValidationErrors> {
     info!("Benchmarking new block validation code");
     let start_new = SystemTime::now();
-    let _ = check_block_new(block.clone())?;
-    let new_time = SystemTime::now().duration_since(start_new).expect("").as_millis();
+    let _ = check_block(block.clone())?;
+    let new_time = SystemTime::now()
+        .duration_since(start_new)
+        .expect("")
+        .as_millis();
     let end_new = SystemTime::now();
     let _ = check_block_old(block)?;
     info!(
@@ -1028,7 +1031,8 @@ pub fn check_block(block: Block) -> std::result::Result<(), BlockValidationError
     Ok(())
 }
 
-pub fn check_block_new(block: Block) -> std::result::Result<(), BlockValidationErrors> {
+pub fn check_block(block: Block) -> std::result::Result<(), BlockValidationErrors> {
+    let start_time = SystemTime::now();
     let config = config();
     // check if the block version is supported
     match format!(
@@ -1112,7 +1116,8 @@ pub fn check_block_new(block: Block) -> std::result::Result<(), BlockValidationE
                 }
             }
             Err(e) => {
-                if e != 0 { // 0 = account file not found
+                if e != 0 {
+                    // 0 = account file not found
                     error!(
                         "Failed to get account {} while checking if exists, error code={}",
                         block.header.chain_key, e
@@ -1258,6 +1263,14 @@ pub fn check_block_new(block: Block) -> std::result::Result<(), BlockValidationE
         }
     }
     // all checks complete, this block must be valid
+    debug!(
+        "Block {} valid, took {} ms",
+        block.hash,
+        SystemTime::now()
+            .duration_since(start_new)
+            .expect("time went backwars ono")
+            .as_millis()
+    );
     Ok(())
 }
 /// Checks if a block is valid returns a blockValidationErrors
