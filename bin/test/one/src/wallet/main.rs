@@ -569,7 +569,11 @@ async fn main() {
                         format!("http://127.0.0.1:8000/api/v1/balances/{}", wall.public_key);
                     if let Ok(response_undec) = reqwest::get(&request_url).await {
                         if let Ok(response) = response_undec.json::<Balances>().await {
-                            info!("Balance: {}, Locked: {}", to_dec(response.balance), to_dec(response.locked));
+                            info!(
+                                "Balance: {}, Locked: {}",
+                                to_dec(response.balance),
+                                to_dec(response.locked)
+                            );
                             if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
                                 let mut wallet_details = (*locked_ls).clone();
                                 wallet_details.balance = response.balance;
@@ -951,7 +955,7 @@ async fn main() {
         std::process::exit(0);
     }
 }
-fn create_wallet() -> Result<Wallet, Box<dyn Error>> {
+pub fn create_wallet() -> Result<Wallet, Box<dyn Error>> {
     info!("Enter new wallet name:");
     let name: String = read!();
     info!("Enter password:");
@@ -1002,7 +1006,7 @@ fn open_wallet_gather() -> Result<Wallet, Box<dyn Error>> {
     Ok(open_wallet(name, pswd))
 }
 
-fn save_wallet(
+pub fn save_wallet(
     keypair: &[String],
     password: String,
     name: String,
@@ -1040,7 +1044,7 @@ fn save_wallet(
     Ok(())
 }
 
-fn generate_keypair(out: &mut Vec<String>) {
+pub fn generate_keypair(out: &mut Vec<String>) {
     let wallet: Wallet = Wallet::gen();
     out.push(wallet.public_key.clone());
     out.push(wallet.private_key);
@@ -1049,7 +1053,7 @@ fn generate_keypair(out: &mut Vec<String>) {
     let _ = conf.save();
 }
 
-fn open_wallet(wallet_name: String, password: String) -> Wallet {
+pub fn open_wallet(wallet_name: String, password: String) -> Wallet {
     // TODO: use unique nonce
     // can we just hash the public key with some local data on the computer (maybe mac address)? Or is that insufficent (TODO: find out)
     let mut padded = password.as_bytes().to_vec();
