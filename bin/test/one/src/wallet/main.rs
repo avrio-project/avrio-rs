@@ -75,6 +75,15 @@ struct Balances {
 lazy_static! {
     static ref WALLET_DETAILS: Mutex<WalletDetails> = Mutex::new(WalletDetails::default());
 }
+fn trim_newline(s: &mut String) -> String {
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+    s.clone()
+}
 
 fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
     let mut base_config = fern::Dispatch::new();
@@ -241,7 +250,7 @@ fn get_choice() -> u8 {
     info!("[1] Open an existing wallet");
     info!("[2] Create a wallet");
     info!("[3] Import private keys");
-    let ans: u8 = read!();
+    let ans: u8 = trim_newline(&mut read!()).parse::<u8>().unwrap();
     return ans;
 }
 pub fn new_ann(ann: Announcement) {
@@ -611,10 +620,12 @@ async fn main() {
                     loop {
                         // Now we loop until shutdown
                         let _ = io::stdout().flush();
-                        let read: String = read!("{}\n");
+                        let read: String = trim_newline(&mut read!("{}\n"));
+                        trace!("{:?}", read);
                         if read == *"send_txn" {
                             info!("Please enter the amount");
-                            let amount: f64 = read!("{}\n");
+                            let amount: f64 =
+                                trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
                             let mut txn = Transaction {
                                 hash: String::from(""),
                                 amount: to_atomc(amount),
@@ -644,7 +655,7 @@ async fn main() {
                                         error!("Insufficent balance");
                                     } else {
                                         info!("Please enter the reciever address or username:");
-                                        let addr: String = read!();
+                                        let addr: String = trim_newline(&mut read!());
                                         if avrio_crypto::valid_address(&addr) {
                                             let rec_wall = Wallet::from_address(addr);
                                             txn.receive_key = rec_wall.public_key;
@@ -695,7 +706,8 @@ async fn main() {
                             info!("Our address: {}", wall.address());
                         } else if read == *"claim" {
                             info!("Please enter the amount");
-                            let amount: f64 = read!("{}\n");
+                            let amount: f64 =
+                                trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
                             let mut txn = Transaction {
                                 hash: String::from(""),
                                 amount: to_atomc(amount),
@@ -750,7 +762,7 @@ async fn main() {
                             if let Ok(lock) = WALLET_DETAILS.lock() {
                                 if lock.username == "" {
                                     info!("Enter desired_username:");
-                                    let desired_username: String = read!();
+                                    let desired_username: String = trim_newline(&mut read!());
                                     if !desired_username.chars().all(char::is_alphanumeric) {
                                         error!("Username may only contain alphanumeric charactors");
                                     } else {
@@ -862,7 +874,7 @@ async fn main() {
                             warn!("Please remeber the avrio team is not liable for any funds lost");
                             error!("You can safley ignore this message as testnet coins have no value, but dont go loosing your coins :D");
                             info!("If you understand these risks please enter: confirm");
-                            let confirm: String = read!();
+                            let confirm: String = trim_newline(&mut read!());
                             if confirm.to_uppercase() != "CONFIRM" {
                                 error!("Did not enter confirm, aborting (got {})", confirm);
                             } else {
@@ -871,7 +883,8 @@ async fn main() {
                             }
                         } else if read == *"burn" {
                             info!("Please enter the amount");
-                            let amount: f64 = read!("{}\n");
+                            let amount: f64 =
+                                trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
                             let mut txn = Transaction {
                                 hash: String::from(""),
                                 amount: to_atomc(amount),
@@ -957,7 +970,7 @@ async fn main() {
 }
 pub fn create_wallet() -> Result<Wallet, Box<dyn Error>> {
     info!("Enter new wallet name:");
-    let name: String = read!();
+    let name: String = trim_newline(&mut read!());
     info!("Enter password:");
     let password: String = rpassword::read_password()?;
     if get_data(config().db_path + &"/wallets/".to_owned() + &name, "pubkey") != "-1" {
@@ -978,9 +991,9 @@ pub fn create_wallet() -> Result<Wallet, Box<dyn Error>> {
 
 fn import_wallet() -> Result<Wallet, Box<dyn Error>> {
     info!("Please enter the wallet private key");
-    let private_key: String = read!();
+    let private_key: String = trim_newline(&mut read!());
     info!("Please enter name of new wallet");
-    let name: String = read!();
+    let name: String = trim_newline(&mut read!());
     if get_data(config().db_path + &"/wallets/".to_owned() + &name, "pubkey") != "-1" {
         error!("Wallet with name={} already exists", name);
         return Err("wallet with name already exists".into());
@@ -1000,7 +1013,7 @@ fn import_wallet() -> Result<Wallet, Box<dyn Error>> {
 
 fn open_wallet_gather() -> Result<Wallet, Box<dyn Error>> {
     info!("Enter your wallet name");
-    let name: String = read!();
+    let name: String = trim_newline(&mut read!());
     info!("Enter your wallet password");
     let pswd: String = rpassword::read_password()?;
     Ok(open_wallet(name, pswd))
