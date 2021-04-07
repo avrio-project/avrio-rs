@@ -3,7 +3,7 @@ use crate::{
     peer::{strip_port, PEERS},
 };
 use aes_gcm::aead::{generic_array::GenericArray, Aead, NewAead};
-use aes_gcm::Aes128Gcm;
+use aes_gcm::Aes256Gcm;
 use log::{debug, trace};
 use std::error::Error;
 use std::fmt;
@@ -98,11 +98,12 @@ pub fn send(
     //p2p_dat.log();
     let data: String = msg;
     let s: S;
-    let mut k: Aes128Gcm;
     if let Some(key_unwrapped) = key {
         // did the function get called with a custom key?
         trace!("KEY: {:?}, LEN: {}", key_unwrapped, key_unwrapped.len());
-        let mut k = Aes128Gcm::new(GenericArray::from_slice(key_unwrapped));
+        let k = Aes256Gcm::new(
+            GenericArray::from_slice(key_unwrapped)
+        );
         if let Ok(output) = k.encrypt(GenericArray::from_slice(b"unique nonce"), data.as_bytes()) {
             let p2p_dat = P2pData::gen(
                 hex::encode(output), // create the P2P data struct with the encrypted data
@@ -126,7 +127,7 @@ pub fn send(
             );
             let nonce = &[0; 12];
             trace!("NONCE: {:?}, LEN: {}", nonce, nonce.len());
-            k = Aes128Gcm::new(
+            let k = Aes256Gcm::new(
                 GenericArray::from_slice(&hex::decode(&val.0).unwrap_or_default()), // keys are stored encoded as hex, not utf8 string
             );
 
@@ -197,10 +198,10 @@ pub fn read(
                 let len_striped: String = len_s.trim_start_matches('0').to_string(); // trims 0 which pad the LEN BYTES number to make it always LEN_DECL_BYTES long
                 let len: usize = len_striped.parse()?; // turn string (eg 129) into a usize (unsized int)
                 trace!("LEN_S={}", len_s);
-                let mut k: Aes128Gcm;
+                let mut k: Aes256Gcm;
                 if let Some(key_unwrapped) = key {
                     // if we were passed a custom key use that
-                    k = Aes128Gcm::new(GenericArray::from_slice(key_unwrapped));
+                    k = Aes256Gcm::new(GenericArray::from_slice(key_unwrapped));
                 } else {
                     // if not get it from the PEERS lazy static
                     debug!("Awaiting lock on PEERS mutex");
@@ -208,7 +209,7 @@ pub fn read(
                     debug!("Gained lock on PEERS mutex");
                     if let Some(val) = map.get(&strip_port(&peer.peer_addr()?)) {
                         // get the peer's wrapper object from the PEERS lazy static
-                        k = Aes128Gcm::new(
+                        k = Aes256Gcm::new(
                             GenericArray::from_slice(&hex::decode(&val.0).unwrap_or_default()), // Key must be 16 or 32 bytes
                         );
                     } else {
@@ -242,7 +243,7 @@ pub fn read(
                 p2p_dat.log();
                 s = p2p_dat.message.clone(); // the message being sent, can be block data, peerlist etc depnsing on the p2p_dat.type
                 let cf: &[u8] = &hex::decode(s)?; // turn the message segment into a vector of bytes
-                if let Ok(out) = k.decrypt(GenericArray::from_slice(b""), cf) {
+                if let Ok(out) = k.decrypt(GenericArray::from_slice(b"unique nonce"), cf) {
                     trace!("OUT={}", String::from_utf8(out.clone())?);
                     return Ok(P2pData::new(
                         // create a p2p object containing: out - teh decoded message, the message type, the checksum, then len and return it
