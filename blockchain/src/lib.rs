@@ -1173,7 +1173,7 @@ pub fn check_block_new(block: Block) -> std::result::Result<(), BlockValidationE
         }
         // else: the previous block exists and has the correct hash
         // check timestamp of block
-        if block.header.timestamp <= got_block.header.timestamp {
+        if block.header.timestamp < got_block.header.timestamp {
             error!("Block with hash={} older than parent block with hash={}, block_timestamp={}, parent_timestamp={}", block.hash, got_block.hash, block.header.timestamp, got_block.header.timestamp);
         } else if block.header.timestamp - (config.transaction_timestamp_max_offset as u64)
             > (SystemTime::now()
