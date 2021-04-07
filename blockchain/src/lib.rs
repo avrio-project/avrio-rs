@@ -1014,13 +1014,14 @@ pub fn check_block(block: Block) -> std::result::Result<(), BlockValidationError
     info!("Benchmarking new block validation code");
     let start_new = SystemTime::now();
     let _ = check_block_new(block.clone())?;
+    let new_time = SystemTime::now().duration_since(start_new).expect("").as_millis();
     let end_new = SystemTime::now();
     let _ = check_block_old(block)?;
     info!(
         "New validation took: {} ms, Old validation took: {} ms",
-        end_new.duration_since(start_new).expect("").as_millis(),
+        new_time,
         SystemTime::now()
-            .duration_since(start_new)
+            .duration_since(end_new)
             .expect("")
             .as_millis()
     );
