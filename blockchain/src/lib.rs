@@ -1019,7 +1019,10 @@ pub fn check_block(block: Block) -> std::result::Result<(), BlockValidationError
     info!(
         "New validation took: {} ms, Old validation took: {} ms",
         end_new.duration_since(start_new).expect("").as_millis(),
-        SystemTime::now().duration_since(start_new).expect("").as_millis()
+        SystemTime::now()
+            .duration_since(start_new)
+            .expect("")
+            .as_millis()
     );
     Ok(())
 }
@@ -1108,11 +1111,13 @@ pub fn check_block_new(block: Block) -> std::result::Result<(), BlockValidationE
                 }
             }
             Err(e) => {
-                error!(
-                    "Failed to get account {} while checking if exists, error code={}",
-                    block.header.chain_key, e
-                );
-                return Err(BlockValidationErrors::FailedToGetAccount(e));
+                if e != 0 { // 0 = account file not found
+                    error!(
+                        "Failed to get account {} while checking if exists, error code={}",
+                        block.header.chain_key, e
+                    );
+                    return Err(BlockValidationErrors::FailedToGetAccount(e));
+                }
             }
         };
         // now check if the block is a send block (as height == 0) and the send_block feild is None
