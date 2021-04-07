@@ -2,12 +2,9 @@ use crate::{
     format::{P2pData, LEN_DECL_BYTES},
     peer::{strip_port, PEERS},
 };
+use aes_gcm::aead::{generic_array::GenericArray, Aead, NewAead};
+use aes_gcm::Aes128Gcm;
 use log::{debug, trace};
-use rust_crypto::{
-    aead::{AeadDecryptor, AeadEncryptor},
-    aes::KeySize,
-    aes_gcm::AesGcm,
-};
 use std::error::Error;
 use std::fmt;
 use std::io::{Read, Write};
@@ -101,30 +98,23 @@ pub fn send(
     //p2p_dat.log();
     let data: String = msg;
     let s: S;
-    let mut k: AesGcm;
+    let mut k: Aes128Gcm;
     if let Some(key_unwrapped) = key {
         // did the function get called with a custom key?
         trace!("KEY: {:?}, LEN: {}", key_unwrapped, key_unwrapped.len());
-        let mut k = AesGcm::new(
-            // create a new decoder (AesGcm) object using passed key
-            KeySize::KeySize128,
-            key_unwrapped,
-            &[0; 12],
-            &[0; 1], //p2p_dat.length().to_string().as_bytes(),
-        );
-        // vectors for AES GCM components
-        let mut tag = vec![0; 16];
-        let mut output = vec![0; data.as_bytes().len()];
-        let _ = k.encrypt(data.as_bytes(), &mut output, &mut tag); // encrypt the data
-        let p2p_dat = P2pData::gen(
-            format!("{}@{}", hex::encode(output), hex::encode(tag)),
-            msg_type,
-        );
-        p2p_dat.log();
-        s = S {
-            // turn encrypted data into a wrapper object (for sendable trait)
-            c: p2p_dat.to_string(),
-        };
+        let mut k = Aes128Gcm::new(GenericArray::from_slice(key_unwrapped));
+        if let Ok(output) = k.encrypt(GenericArray::from_slice(b"unique nonce"), data.as_bytes()) {
+            let p2p_dat = P2pData::gen(
+                hex::encode(output), // create the P2P data struct with the encrypted data
+                msg_type,
+            );
+            p2p_dat.log();
+            s = S {
+                c: p2p_dat.to_string(),
+            };
+        } else {
+            return Err("Failed to encode data".into());
+        }
     } else {
         // use key in PEERS lazy staitic
         let map = PEERS.lock()?; // gets a mutex "lock" on the PEERS lazy static. Prevents data races accross diffrent threads. Can lock up.
@@ -136,25 +126,24 @@ pub fn send(
             );
             let nonce = &[0; 12];
             trace!("NONCE: {:?}, LEN: {}", nonce, nonce.len());
-            k = AesGcm::new(
-                // create a new decoder (AesGcm) object using stored key
-                KeySize::KeySize128,
-                &hex::decode(&val.0).unwrap_or_default(), // keys are stored encoded as hex, not utf8 strings
-                nonce,
-                &[0; 1], //TODO: use adaptive nonce (eg p2p_dat.length().to_string().as_bytes())
+            k = Aes128Gcm::new(
+                GenericArray::from_slice(&hex::decode(&val.0).unwrap_or_default()), // keys are stored encoded as hex, not utf8 string
             );
-            // variables for encryption output
-            let mut tag = vec![0; 16];
-            let mut output = vec![0; data.as_bytes().len()];
-            let _ = k.encrypt(data.as_bytes(), &mut output, &mut tag);
-            let p2p_dat = P2pData::gen(
-                format!("{}@{}", hex::encode(output), hex::encode(tag)), // create the P2P data struct with the encrypted data
-                msg_type,
-            );
-            p2p_dat.log();
-            s = S {
-                c: p2p_dat.to_string(),
-            };
+
+            if let Ok(output) =
+                k.encrypt(GenericArray::from_slice(b"unique nonce"), data.as_bytes())
+            {
+                let p2p_dat = P2pData::gen(
+                    hex::encode(output), // create the P2P data struct with the encrypted data
+                    msg_type,
+                );
+                p2p_dat.log();
+                s = S {
+                    c: p2p_dat.to_string(),
+                };
+            } else {
+                return Err("Failed to encode data".into());
+            }
         } else {
             return Err("No key provided and peer not found".into());
         }
@@ -208,16 +197,10 @@ pub fn read(
                 let len_striped: String = len_s.trim_start_matches('0').to_string(); // trims 0 which pad the LEN BYTES number to make it always LEN_DECL_BYTES long
                 let len: usize = len_striped.parse()?; // turn string (eg 129) into a usize (unsized int)
                 trace!("LEN_S={}", len_s);
-                let mut k: AesGcm;
+                let mut k: Aes128Gcm;
                 if let Some(key_unwrapped) = key {
                     // if we were passed a custom key use that
-                    k = AesGcm::new(
-                        // create a decoder object from cusstom passed key
-                        KeySize::KeySize128,
-                        key_unwrapped, // Key must be 16 or 32 bytes
-                        &[0; 12],      // nonce must be 96 bits, or 12 bytes
-                        &[0; 1],       // AAD
-                    );
+                    k = Aes128Gcm::new(GenericArray::from_slice(key_unwrapped));
                 } else {
                     // if not get it from the PEERS lazy static
                     debug!("Awaiting lock on PEERS mutex");
@@ -225,12 +208,8 @@ pub fn read(
                     debug!("Gained lock on PEERS mutex");
                     if let Some(val) = map.get(&strip_port(&peer.peer_addr()?)) {
                         // get the peer's wrapper object from the PEERS lazy static
-                        k = AesGcm::new(
-                            // create a decoder object from the stored key
-                            KeySize::KeySize128,
-                            &hex::decode(&val.0).unwrap_or_default(), // Key must be 16 or 32 bytes
-                            &[0; 12], // nonce must be 96 bits, or 12 bytes
-                            &[0; 1],  // AAD
+                        k = Aes128Gcm::new(
+                            GenericArray::from_slice(&hex::decode(&val.0).unwrap_or_default()), // Key must be 16 or 32 bytes
                         );
                     } else {
                         return Err("No key provided and peer not found".into());
@@ -262,28 +241,19 @@ pub fn read(
                 };
                 p2p_dat.log();
                 s = p2p_dat.message.clone(); // the message being sent, can be block data, peerlist etc depnsing on the p2p_dat.type
-                let s_split: Vec<&str> = s.split('@').collect(); // split the AES_GCM encoded string by the delimmiter token ("@")
-                if s_split.is_empty() {
-                    // there should be 2 values: tag and message (eg len > 1)
-                    return Err("No auth tag".into());
+                let cf: &[u8] = &hex::decode(s)?; // turn the message segment into a vector of bytes
+                if let Ok(out) = k.decrypt(GenericArray::from_slice(b""), cf) {
+                    trace!("OUT={}", String::from_utf8(out.clone())?);
+                    return Ok(P2pData::new(
+                        // create a p2p object containing: out - teh decoded message, the message type, the checksum, then len and return it
+                        len,
+                        String::from_utf8(out)?,
+                        p2p_dat.message_type,
+                        p2p_dat.checksum(),
+                    ));
                 } else {
-                    trace!("s_spilt={:?}, LEN={}", s_split, s_split.len());
-                    let cf: &[u8] = &hex::decode(s_split[0])?; // turn the message segment into a vector of bytes
-                    let tag: &[u8] = &hex::decode(s_split[1])?; // turn the tag segment into a vector of bytes
-                    let mut out = vec![0u8; cf.len()]; // the output length will always == encrypted message (cf).len(); preallocate vector to store this
-                    if !k.decrypt(cf, &mut out, tag) {
-                        // try to decrypt the message using previously created decoder object
-                        return Err("failed to decrypt message".into());
-                    } else {
-                        trace!("OUT={}", String::from_utf8(out.clone())?);
-                        return Ok(P2pData::new(
-                            // create a p2p object containing: out - teh decoded message, the message type, the checksum, then len and return it
-                            len,
-                            String::from_utf8(out)?,
-                            p2p_dat.message_type,
-                            p2p_dat.checksum(),
-                        ));
-                    }
+                    // try to decrypt the message using previously created decoder object
+                    return Err("failed to decrypt message".into());
                 }
             }
         }
