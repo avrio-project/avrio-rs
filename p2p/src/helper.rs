@@ -346,6 +346,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                 if let Ok(amount_to_sync) = global_block_height.message.parse::<u64>() {
                     info!("Got global block height from peer: {}", amount_to_sync);
                     if amount_to_sync == 0 {
+                        let _ = unlock_peer(peer_to_use_unwraped).unwrap();
                         return Ok(0);
                     }
                     let print_synced_every: u64;
