@@ -67,7 +67,7 @@ pub fn prop_block(blk: &Block) -> Result<u64, Box<dyn std::error::Error>> {
     let mut i: u64 = 0;
     for peer in get_peers_addr()?.iter_mut() {
         debug!("Sending block to peer: {:?}", peer);
-        let mut peer_stream = lock(peer, 1000)?;
+        let mut peer_stream = lock(peer, 10000)?;
         let send_res = send_block_struct(blk, &mut peer_stream);
         if send_res.is_ok() {
             i += 1;
