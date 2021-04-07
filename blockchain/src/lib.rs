@@ -1267,7 +1267,7 @@ pub fn check_block(block: Block) -> std::result::Result<(), BlockValidationError
         "Block {} valid, took {} ms",
         block.hash,
         SystemTime::now()
-            .duration_since(start_new)
+            .duration_since(start_time)
             .expect("time went backwars ono")
             .as_millis()
     );
