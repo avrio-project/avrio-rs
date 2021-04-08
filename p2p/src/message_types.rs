@@ -8,6 +8,9 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     let mut message_types = HashMap::new();
 
     message_types.insert(0, "Raw / Invalid");
+    message_types.insert(0x01, "Ping");
+    message_types.insert(0x02, "Pong");
+    message_types.insert(0x03, "Rehandshake");
     message_types.insert(0x22, "Sync Request");
     message_types.insert(0x23, "Sync Close");
     message_types.insert(0x01, "Sync Acknowledged");
@@ -22,8 +25,8 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0xa3, "Handshake Confirm Key Test");
 
     // chain digests
-    message_types.insert(0x1b, "Send Chain Digest (ask)"); // - why are there two? Backward combatability? TODO: remove one
-    message_types.insert(0x1c, "Send Chain Digest (ask)"); //
+    message_types.insert(0x1b, "Send Chain Digest (ask)"); // - why are there two? Backward combatability?
+    message_types.insert(0x1c, "Send Chain Digest (ask)"); // TODO: remove one
     message_types.insert(0xcd, "Send Chain Digest (response)");
     message_types.insert(0x45, "Get Block Count (ask)");
     message_types.insert(0x46, "Get Block Count (response)");
