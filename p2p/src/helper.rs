@@ -372,6 +372,8 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                                 "Asking peer for their blocks above hash: {} (globally) gave error: {}",
                                 top_block_hash, e
                             );
+                            let _ =
+                                send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None);
                             return Err(e);
                         }
                     } else if let Err(e) = send(
@@ -385,6 +387,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                             "Asking peer for their blocks above hash: {} (globally) gave error: {}",
                             top_block_hash, e
                         );
+                        let _ = send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None);
                         return Err(e);
                     }
 
@@ -424,6 +427,8 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                                 "Failed to get block, wrong message type: {}",
                                 deformed.message_type
                             );
+                            let _ =
+                                send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None);
                             return Err("failed to get block".into());
                         } else {
                             let blocks: Vec<Block> =
@@ -488,6 +493,13 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                                     "Asking peer for their blocks above hash: {} (globally) gave error: {}",
                                     top_block_hash, e
                                 );
+                                let _ = send(
+                                    "".to_string(),
+                                    &mut peer_to_use_unwraped,
+                                    0x23,
+                                    true,
+                                    None,
+                                );
                                 return Err(e);
                             }
                         } else if let Err(e) = send(
@@ -501,6 +513,8 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                                 "Asking peer for their blocks above hash: {} (globally) gave error: {}",
                                 top_block_hash, e
                             );
+                            let _ =
+                                send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None);
                             return Err(e);
                         }
                     }
@@ -510,10 +524,11 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                     if cd != mode_hash {
                         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or register_username etc) then ignore this. If not please delete your data dir and resync");
                         error!("Our CD: {}, expected: {}", cd, mode_hash);
-
+                        let _ = send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None);
                         return sync_in_order(); // this should sync again, why is it not?
                     } else {
                         info!("Finalised syncing, releasing lock on peer");
+                        let _ = send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None).unwrap();
                         let _ = unlock_peer(peer_to_use_unwraped).unwrap();
                     }
 
