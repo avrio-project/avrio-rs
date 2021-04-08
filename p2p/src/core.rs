@@ -20,9 +20,7 @@ fn from_slice(bytes: &[u8]) -> [u8; 32] {
 use log::trace;
 
 pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::error::Error>> {
-    if in_peers(
-        &addr.parse::<SocketAddr>()?
-    )? {
+    if in_peers(&addr.parse::<SocketAddr>()?)? {
         return Err("Already connected".into());
     }
     log::info!("Connecting to {}", addr);
@@ -33,7 +31,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
     let handshake = form_handshake(local_pub.as_bytes());
     trace!("Formed handshake, {}", handshake);
     let _ = crate::io::send(
-        handshake,
+        handshake.clone(),
         &mut a,
         0xa,
         true,
@@ -44,13 +42,39 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
                 .unwrap(),
         ),
     )?;
-    let d = crate::io::read(
+    let mut d = crate::io::read(
         &mut a,
         Some(2000),
         Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
     )?;
     if d.message == "cancel" {
         return Err("canceled by peer".into());
+    }
+    if d.message_type == 0x03 {
+        // we are reconnecting to the peer, but they have not droped our socket yet. Resend everything
+        log::info!("Reconnecting to {}", addr);
+        drop(a);
+        a = std::net::TcpStream::connect(addr)?;
+        let _ = crate::io::send(
+            handshake,
+            &mut a,
+            0xa,
+            true,
+            Some(
+                "hand_keyhand_keyhand_keyhand_key"
+                    .as_bytes()
+                    .try_into()
+                    .unwrap(),
+            ),
+        )?;
+        d = crate::io::read(
+            &mut a,
+            Some(2000),
+            Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
+        )?;
+        if d.message == "cancel" {
+            return Err("canceled by peer".into());
+        }
     }
     if d.message_type != 0x1a {
         return Err("wrong first response type".into());
