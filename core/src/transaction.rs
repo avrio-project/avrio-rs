@@ -271,7 +271,7 @@ impl Transaction {
         }
         match self.flag {
             'n' => {
-                let size_of_extra = std::mem::size_of_val(&self.extra);
+                let size_of_extra = self.extra.len();
                 if size_of_extra > 100 {
                     error!(
                         "Normal type transaction {}'s extra ({}) too large, {} > 100",
@@ -335,8 +335,8 @@ impl Transaction {
                 }
             }
             'c' => {
-                let size_of_extra = std::mem::size_of_val(&self.extra);
-                if self.extra != "" {
+                let size_of_extra = self.extra.len();
+                if size_of_extra != 0 {
                     error!(
                         "Claim type transaction {}'s extra ({}) not zero, {} != 0",
                         self.hash, self.extra, size_of_extra
@@ -357,7 +357,7 @@ impl Transaction {
                 }
             }
             'u' => {
-                let size_of_extra = std::mem::size_of_val(&self.extra);
+                let size_of_extra = self.extra.len();
                 if size_of_extra > 20 {
                     error!(
                         "Username registration type transaction {}'s extra ({}) too large, {} > 20",
