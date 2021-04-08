@@ -626,78 +626,94 @@ async fn main() {
                             info!("Please enter the amount");
                             let amount: f64 =
                                 trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
-                            let mut txn = Transaction {
-                                hash: String::from(""),
-                                amount: to_atomc(amount),
-                                extra: String::from(""),
-                                flag: 'n',
-                                sender_key: wall.public_key.clone(),
-                                receive_key: String::from(""),
-                                access_key: String::from(""),
-                                unlock_time: 0,
-                                gas_price: 10, // 0.001 AIO
-                                gas: 20,
-                                max_gas: u64::max_value(),
-                                nonce: 0,
-                                timestamp: SystemTime::now()
-                                    .duration_since(UNIX_EPOCH)
-                                    .expect("Time went backwards")
-                                    .as_millis() as u64,
-                                signature: String::from(""),
-                            };
-                            let request_url = format!(
-                                "http://127.0.0.1:8000/api/v1/balances/{}",
-                                wall.public_key
-                            );
-                            if let Ok(response_undec) = reqwest::get(&request_url).await {
-                                if let Ok(response) = response_undec.json::<Balances>().await {
-                                    if txn.amount + txn.fee() > response.balance {
-                                        error!("Insufficent balance");
-                                    } else {
-                                        info!("Please enter the reciever address or username:");
-                                        let addr: String = trim_newline(&mut read!());
-                                        if avrio_crypto::valid_address(&addr) {
-                                            let rec_wall = Wallet::from_address(addr);
-                                            txn.receive_key = rec_wall.public_key;
+                            info!("Enter extra data (must be at most 100 chars long");
+                            let extra_data: String = trim_newline(&mut read!("{}\n"));
+                            if extra_data.len() > 100 {
+                                error!("Extra data must be under or equal to 100 bytes");
+                            } else {
+                                let mut txn = Transaction {
+                                    hash: String::from(""),
+                                    amount: to_atomc(amount),
+                                    extra: extra_data.clone(),
+                                    flag: 'n',
+                                    sender_key: wall.public_key.clone(),
+                                    receive_key: String::from(""),
+                                    access_key: String::from(""),
+                                    unlock_time: 0,
+                                    gas_price: 10, // 0.001 AIO
+                                    gas: avrio_core::gas::TX_GAS as u64
+                                        + (avrio_core::gas::GAS_PER_EXTRA_BYTE_NORMAL as u64
+                                            * extra_data.len() as u64),
+
+                                    max_gas: u64::max_value(),
+                                    nonce: 0,
+                                    timestamp: SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .expect("Time went backwards")
+                                        .as_millis()
+                                        as u64,
+                                    signature: String::from(""),
+                                };
+                                let request_url = format!(
+                                    "http://127.0.0.1:8000/api/v1/balances/{}",
+                                    wall.public_key
+                                );
+                                if let Ok(response_undec) = reqwest::get(&request_url).await {
+                                    if let Ok(response) = response_undec.json::<Balances>().await {
+                                        if txn.amount + txn.fee() > response.balance {
+                                            error!("Insufficent balance");
                                         } else {
-                                            debug!(
+                                            info!("Please enter the reciever address or username:");
+                                            let addr: String = trim_newline(&mut read!());
+                                            if avrio_crypto::valid_address(&addr) {
+                                                let rec_wall = Wallet::from_address(addr);
+                                                txn.receive_key = rec_wall.public_key;
+                                            } else {
+                                                debug!(
                                         "Could not find acc with addr={}, trying as username",
                                         addr
                                     );
-                                            let request_url = format!(
+                                                let request_url = format!(
                                         "http://127.0.0.1:8000/api/v1/publickey_for_username/{}",
                                         addr
                                     );
-                                            if let Ok(response) = reqwest::get(&request_url).await {
-                                                if let Ok(publickey_for_username) =
-                                                    response.json::<PublickeyForUsername>().await
+                                                if let Ok(response) =
+                                                    reqwest::get(&request_url).await
                                                 {
-                                                    txn.receive_key =
-                                                        publickey_for_username.publickey;
+                                                    if let Ok(publickey_for_username) = response
+                                                        .json::<PublickeyForUsername>()
+                                                        .await
+                                                    {
+                                                        txn.receive_key =
+                                                            publickey_for_username.publickey;
+                                                    }
                                                 }
                                             }
-                                        }
-                                        let request_url = format!(
-                                            "http://127.0.0.1:8000/api/v1/transactioncount/{}",
-                                            wall.public_key
-                                        );
-                                        if let Ok(response) = reqwest::get(&request_url).await {
-                                            if let Ok(transactioncount) =
-                                                response.json::<Transactioncount>().await
-                                            {
-                                                txn.nonce = transactioncount.transaction_count;
-                                                txn.hash();
-                                                let _ = txn.sign(&wall.private_key);
-                                                if let Err(e) =
-                                                    send_transaction(txn, wall.clone()).await
+                                            let request_url = format!(
+                                                "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                                                wall.public_key
+                                            );
+                                            if let Ok(response) = reqwest::get(&request_url).await {
+                                                if let Ok(transactioncount) =
+                                                    response.json::<Transactioncount>().await
                                                 {
-                                                    error!("Failed to send txn, got error={}", e);
+                                                    txn.nonce = transactioncount.transaction_count;
+                                                    txn.hash();
+                                                    let _ = txn.sign(&wall.private_key);
+                                                    if let Err(e) =
+                                                        send_transaction(txn, wall.clone()).await
+                                                    {
+                                                        error!(
+                                                            "Failed to send txn, got error={}",
+                                                            e
+                                                        );
+                                                    }
+                                                } else {
+                                                    error!("Failed to decode recieved response into transactioncount struct");
                                                 }
                                             } else {
-                                                error!("Failed to decode recieved response into transactioncount struct");
+                                                error!("Failed to send request={}", request_url);
                                             }
-                                        } else {
-                                            error!("Failed to send request={}", request_url);
                                         }
                                     }
                                 }
@@ -718,7 +734,7 @@ async fn main() {
                                 access_key: String::from(""),
                                 unlock_time: 0,
                                 gas_price: 10, // 0.001 AIO
-                                gas: 20,
+                                gas: avrio_core::gas::TX_GAS as u64,
                                 max_gas: u64::max_value(),
                                 nonce: 0,
                                 timestamp: SystemTime::now()
@@ -780,14 +796,14 @@ async fn main() {
                                                     let mut txn = Transaction {
                                                         hash: String::from(""),
                                                         amount: to_atomc(0.50),
-                                                        extra: desired_username,
+                                                        extra: desired_username.clone(),
                                                         flag: 'u',
                                                         sender_key: wall.public_key.clone(),
                                                         receive_key: wall.public_key.clone(),
                                                         access_key: String::from(""),
                                                         unlock_time: 0,
                                                         gas_price: 10, // 0.001 AIO
-                                                        gas: 20,
+                                                        gas: avrio_core::gas::TX_GAS as u64 + ((avrio_core::gas::GAS_PER_EXTRA_BYTE_NORMAL / 2) as u64 * desired_username.len() as u64),
                                                         max_gas: u64::max_value(),
                                                         nonce: 0,
                                                         timestamp: SystemTime::now()
