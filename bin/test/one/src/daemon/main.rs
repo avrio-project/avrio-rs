@@ -290,12 +290,15 @@ fn main() {
     });
     let synced: bool;
     info!("Avrio Daemon successfully launched");
-    if config().chain_key == *"" {
+    let mut statedigest = get_data(config().db_path + &"/chaindigest".to_owned(), "master");
+    if statedigest == *"-1" {
         generate_chains().unwrap();
-        let chainsdigest: String =
+        statedigest =
             avrio_blockchain::form_state_digest(config().db_path + &"/chaindigest".to_owned())
                 .unwrap_or_default();
-        info!("Chain digest: {}", chainsdigest);
+        info!("State digest: {}", statedigest);
+    } else {
+        info!("State digest: {}", statedigest);
     }
     info!(
         "Launching P2p server on {}:{}",
