@@ -622,14 +622,49 @@ async fn main() {
                         let _ = io::stdout().flush();
                         let read: String = trim_newline(&mut read!("{}\n"));
                         trace!("{:?}", read);
-                        if read == *"send_txn" {
-                            info!("Please enter the amount");
-                            let amount: f64 =
-                                trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
-                            info!("Enter extra data (must be at most 100 chars long");
-                            let extra_data: String = trim_newline(&mut read!("{}\n"));
-                            if extra_data.len() > 100 {
-                                error!("Extra data must be under or equal to 100 bytes");
+                        let read_split: Vec<&str> = read.split(' ').collect();
+                        if read_split[0] == "send_txn" {
+                            let mut amount: f64 = 0.0;
+                            let mut extra_data: String = String::from("");
+                            let mut addr: String = String::from("");
+                            match read_split.len() {
+                                3 => {
+                                    if let Ok(amount_parsed) = read_split[1].parse::<f64>() {
+                                        if let Ok(receiver_parsed) = read_split[2].parse::<String>()
+                                        {
+                                            amount = amount_parsed;
+                                            addr = receiver_parsed;
+                                        }
+                                    }
+                                }
+                                4 => {
+                                    if let Ok(amount_parsed) = read_split[2].parse::<f64>() {
+                                        if let Ok(receiver_parsed) = read_split[1].parse::<String>()
+                                        {
+                                            if let Ok(extra_parsed) =
+                                                read_split[3].parse::<String>()
+                                            {
+                                                amount = amount_parsed;
+                                                addr = receiver_parsed;
+                                                extra_data = extra_parsed;
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    info!("Please enter the amount");
+                                    amount =
+                                        trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
+                                    info!("Please enter the reciever address or username:");
+                                    addr = trim_newline(&mut read!());
+                                    info!("Enter extra data (must be at most 100 chars long");
+                                    extra_data = trim_newline(&mut read!("{}\n"));
+                                    if extra_data.len() > 100 {
+                                        error!("Extra data must be under or equal to 100 bytes");
+                                    }
+                                }
+                            }
+                            if amount == 0.0 {
                             } else {
                                 let mut txn = Transaction {
                                     hash: String::from(""),
@@ -663,8 +698,6 @@ async fn main() {
                                         if txn.amount + txn.fee() > response.balance {
                                             error!("Insufficent balance");
                                         } else {
-                                            info!("Please enter the reciever address or username:");
-                                            let addr: String = trim_newline(&mut read!());
                                             if avrio_crypto::valid_address(&addr) {
                                                 let rec_wall = Wallet::from_address(addr);
                                                 txn.receive_key = rec_wall.public_key;
