@@ -1214,7 +1214,7 @@ pub fn check_block(block: Block) -> std::result::Result<(), BlockValidationError
             // for every transaction in the block...
             for txn in &block.txns {
                 // check if the txn is valid
-                if let Err(txn_validation_error) = txn.valid(false) {
+                if let Err(txn_validation_error) = txn.valid() {
                     error!(
                         "Validating transaction {} in block {} gave error {:?}",
                         txn.hash, block.hash, txn_validation_error
@@ -1431,7 +1431,7 @@ pub fn check_block_old(blk: Block) -> std::result::Result<(), BlockValidationErr
             }
             for txn in blk.txns {
                 // check each txn in the block is valid
-                if let Err(e) = txn.valid(blk.block_type == BlockType::Recieve) {
+                if let Err(e) = txn.valid() {
                     return Err(BlockValidationErrors::InvalidTransaction(e));
                 } /*else { removed as this will return prematurley and result in only the first txn being validated
                       return Ok(());
