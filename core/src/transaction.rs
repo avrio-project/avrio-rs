@@ -336,7 +336,7 @@ impl Transaction {
             }
             'c' => {
                 let size_of_extra = std::mem::size_of_val(&self.extra);
-                if size_of_extra != 0 {
+                if self.extra != "" {
                     error!(
                         "Claim type transaction {}'s extra ({}) not zero, {} != 0",
                         self.hash, self.extra, size_of_extra
