@@ -1243,11 +1243,11 @@ pub fn check_block(block: Block) -> std::result::Result<(), BlockValidationError
                 }
                 // for every transaction in the block...
                 for txn in &block.txns {
-                    if !got_block.txns.contains(txn) {
+                    if !got_send_block.txns.contains(txn) {
                         // check if the transaction is in the send block for this block
                         error!(
                             "Transaction {} not found in send block {} (recieve block {} invalid)",
-                            txn.hash, got_block.hash, block.hash
+                            txn.hash, got_send_block.hash, block.hash
                         );
                         return Err(BlockValidationErrors::TransactionsNotInSendBlock);
                     } else if txn.receive_key != block.header.chain_key {
