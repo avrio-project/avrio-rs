@@ -7,10 +7,10 @@ extern crate x25519_dalek;
 
 use avrio_config::config;
 
-use std::convert::TryInto;
+use crate::peer::in_peers;
+use std::{convert::TryInto, net::SocketAddr};
 use x25519_dalek::EphemeralSecret;
 use x25519_dalek::PublicKey;
-
 fn from_slice(bytes: &[u8]) -> [u8; 32] {
     let mut array = [0; 32];
     let bytes = &bytes[..array.len()]; // panics if not enough data
@@ -20,6 +20,11 @@ fn from_slice(bytes: &[u8]) -> [u8; 32] {
 use log::trace;
 
 pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::error::Error>> {
+    if in_peers(
+        &addr.parse::<SocketAddr>()?
+    )? {
+        return Err("Already connected".into());
+    }
     log::info!("Connecting to {}", addr);
     let mut a = std::net::TcpStream::connect(addr)?;
     let mut local_cspring = rand::rngs::OsRng;
@@ -41,7 +46,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
     )?;
     let d = crate::io::read(
         &mut a,
-        Some(100000),
+        Some(1000),
         Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
     )?;
     if d.message == "cancel" {
