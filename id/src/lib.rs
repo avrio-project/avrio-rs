@@ -7,10 +7,7 @@ extern crate rand;
 #[macro_use]
 extern crate log;
 use avrio_crypto::raw_hash;
-use ring::{
-    rand as randc,
-    signature::{self, KeyPair},
-};
+use ring::signature;
 use serde::{Deserialize, Serialize};
 pub struct HashParams {
     pub iterations: u32,

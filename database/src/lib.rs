@@ -529,10 +529,7 @@ pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
 }
 
 pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
-    let peers_db = open_database(config().db_path + &"/peers".to_string()).unwrap();
-    let s = get_data_from_database(&peers_db, &"white");
-
-    drop(peers_db);
+    let s = get_data(config().db_path + &"/peers".to_string(), &"white");
 
     if s == *"-1" {
         Err("peerlist not found".into())

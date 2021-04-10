@@ -154,7 +154,6 @@ impl Transaction {
             trace!("Saving sender acc");
             sendacc.save().unwrap();
             trace!("Get txn count");
-
         // TODO: Check we are on the testnet
         } else if txn_type == *"claim" {
             // »!testnet only!«

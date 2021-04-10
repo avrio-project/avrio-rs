@@ -228,47 +228,6 @@ impl BlockSignature {
         res
     }
 }
-/*
-pub fn generate_merkle_root_all() -> std::result::Result<String, Box<dyn std::error::Error>> {
-    trace!(target: "blockchain::chain_digest","Generating state digest from scratch");
-    let _roots: Vec<String> = vec![];
-    if let Ok(db) = open_database(config().db_path + "/chainlist") {
-        let mut iter = db.raw_iterator();
-        iter.seek_to_first();
-        let cd_db = open_database(config().db_path + &"/chaindigest".to_owned()).unwrap();
-        let mut chains_list: Vec<String> = Vec::new();
-        while iter.valid() {
-            if let Some(chain) = iter.key() {
-                if let Ok(chain_string) = String::from_utf8(chain.to_vec()) {
-                    chains_list.push(chain_string);
-                }
-            }
-            iter.next();
-        }
-        chains_list.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
-        for chain_string in chains_list {
-            if let Ok(blkdb) =
-                open_database(config().db_path + "/chains/" + &chain_string + "-chainindex")
-            {
-                let mut blkiter = blkdb.raw_iterator();
-                blkiter.seek_to_first();
-                while blkiter.valid() {
-                    if let Some(blk) = iter.value() {
-                        let s: String = String::from_utf8(blk.to_vec())?;
-                        if let Ok(_) = String::from_utf8(iter.key().unwrap_or_default().to_vec())?
-                            .parse::<u64>()
-                        {
-                            trace!(target: "blockchain::chain_digest","Chain digest: {}", update_chain_digest(&s, &cd_db));
-                        }
-                    }
-                    blkiter.next();
-                }
-            }
-        }
-    }
-    return Ok(get_data(config().db_path + &"/chainsdigest", "master"));
-}
-*/
 
 pub fn update_chain_digest(new_blk_hash: &str, cd_db: String, chain: &str) -> String {
     trace!(target: "blockchain::chain_digest","Updating chain digest for chain={}, hash={}", chain, new_blk_hash);
@@ -1433,9 +1392,7 @@ pub fn check_block_old(blk: Block) -> std::result::Result<(), BlockValidationErr
                 // check each txn in the block is valid
                 if let Err(e) = txn.valid() {
                     return Err(BlockValidationErrors::InvalidTransaction(e));
-                } /*else { removed as this will return prematurley and result in only the first txn being validated
-                      return Ok(());
-                  }*/
+                }
             }
             Ok(()) // if you got here there are no issues
         }
