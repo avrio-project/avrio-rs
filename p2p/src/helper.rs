@@ -19,7 +19,7 @@ use std::thread;
 
 pub fn get_peerlist_from_peer(peer: &SocketAddr) -> Result<Vec<SocketAddr>, Box<dyn Error>> {
     let mut peer_lock = lock(peer, 1000)?;
-    send("".to_string(), &mut peer_lock, 0x9f, true, None)?;
+    send("".to_string(), &mut peer_lock, 0x8f, true, None)?;
     let peerlist_ser = read(&mut peer_lock, Some(20000), None)?; // wait for 20 secs
     let peerlist: Vec<SocketAddr> = serde_json::from_str(&peerlist_ser.message)?;
     unlock_peer(peer_lock).unwrap();
@@ -79,6 +79,37 @@ pub fn prop_block(blk: &Block) -> Result<u64, Box<dyn std::error::Error>> {
             );
         }
         let _ = unlock_peer(peer_stream)?;
+    }
+    trace!("Sent block {} to {} peers", blk.hash, i);
+    Ok(i)
+}
+
+/// # Prop_block
+/// Sends a block to all connected peers.
+/// # Returns
+/// a result enum conatining the error encountered or a u64 of the number of peers we sent to and got a block ack response from
+/// Once proof of node is in place it will send it only to the relevant comitee.
+pub fn prop_block_with_ignore(
+    blk: &Block,
+    ignore_peer: &SocketAddr,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    let mut i: u64 = 0;
+    for peer in get_peers_addr()?.iter() {
+        if peer != ignore_peer {
+            debug!("Sending block to peer: {:?}", peer);
+            let mut peer_stream = lock(peer, 5000)?;
+            let send_res = send_block_struct(blk, &mut peer_stream);
+            if send_res.is_ok() {
+                i += 1;
+            } else {
+                trace!(
+                    "error sending block to peer {}, error={}",
+                    peer_stream.peer_addr()?,
+                    send_res.unwrap_err()
+                );
+            }
+            let _ = unlock_peer(peer_stream)?;
+        }
     }
     trace!("Sent block {} to {} peers", blk.hash, i);
     Ok(i)
@@ -421,7 +452,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
 
                         trace!(target: "avrio_p2p::sync", "got blocks: {:#?}", deformed);
 
-                        if deformed.message_type != 0x0a {
+                        if deformed.message_type != 0x04 {
                             // TODO: Ask for block(s) again rather than returning err
                             error!(
                                 "Failed to get block, wrong message type: {}",
@@ -528,7 +559,8 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                         return sync_in_order(); // this should sync again, why is it not?
                     } else {
                         info!("Finalised syncing, releasing lock on peer");
-                        let _ = send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None).unwrap();
+                        let _ = send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None)
+                            .unwrap();
                         let _ = unlock_peer(peer_to_use_unwraped).unwrap();
                     }
 
@@ -672,7 +704,7 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
 
         trace!(target: "avrio_p2p::sync", "got blocks: {:#?}", deformed);
 
-        if deformed.message_type != 0x0a {
+        if deformed.message_type != 0x04 {
             // TODO: Ask for block(s) again rather than returning err
             error!(
                 "Failed to get block, wrong message type: {}",
@@ -784,7 +816,7 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
     } else {
         let block_ser: String = serde_json::to_string(block)?; // serilise the block into bson
 
-        if let Err(e) = send(block_ser, peer, 0x0a, true, None) {
+        if let Err(e) = send(block_ser, peer, 0x04, true, None) {
             Err(e)
         } else {
             Ok(())
@@ -799,7 +831,7 @@ pub fn send_block_with_hash(hash: String, peer: &mut TcpStream) -> Result<(), Bo
     } else {
         let block_ser: String = bson::to_bson(&block)?.to_string();
 
-        if let Err(e) = send(block_ser, peer, 0x0a, true, None) {
+        if let Err(e) = send(block_ser, peer, 0x04, true, None) {
             Err(e)
         } else {
             Ok(())

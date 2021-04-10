@@ -101,9 +101,7 @@ pub fn send(
     if let Some(key_unwrapped) = key {
         // did the function get called with a custom key?
         trace!("KEY: {:?}, LEN: {}", key_unwrapped, key_unwrapped.len());
-        let k = Aes256Gcm::new(
-            GenericArray::from_slice(key_unwrapped)
-        );
+        let k = Aes256Gcm::new(GenericArray::from_slice(key_unwrapped));
         if let Ok(output) = k.encrypt(GenericArray::from_slice(b"unique nonce"), data.as_bytes()) {
             let p2p_dat = P2pData::gen(
                 hex::encode(output), // create the P2P data struct with the encrypted data

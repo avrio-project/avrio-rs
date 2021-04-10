@@ -11,11 +11,14 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x01, "Ping");
     message_types.insert(0x02, "Pong");
     message_types.insert(0x03, "Rehandshake");
+    message_types.insert(0x04, "Block");
+    message_types.insert(0x8f, "Send peerlist (ask)");
+    message_types.insert(0x9f, "Send peerlist (response)");
+
     message_types.insert(0x22, "Sync Request");
     message_types.insert(0x23, "Sync Close");
     message_types.insert(0x01, "Sync Acknowledged");
     message_types.insert(0x05, "Send Block");
-    message_types.insert(0x0a, "Block");
     message_types.insert(0x0b, "Block Acknowledged");
     message_types.insert(0x0c, "Block Reject"); // message will contain a code explaining why the block was rejected
                                                 // 4 part handshake
@@ -42,7 +45,6 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x9f, "Get Peer List (response)");
     message_types.insert(0x9a, "Announce peer");
     message_types.insert(0xff, "Shutdown");
-
     message_types
 }
 

@@ -89,7 +89,6 @@ pub fn launch_handle_client(
         move || {
             let mut paused = false;
             loop {
-                
                 if let Ok(msg) = rx.try_recv() {
                     log::debug!("Read msg={}", msg);
                     if msg == "pause" {
@@ -126,7 +125,9 @@ pub fn launch_handle_client(
                     if a != 0 && !paused {
                         let read_data = read(&mut stream, Some(1000), None);
                         if let Ok(read_msg) = read_data {
-                            if process_handle_msg(read_msg, &mut stream, &mut last_ping_time).is_some() {
+                            if process_handle_msg(read_msg, &mut stream, &mut last_ping_time)
+                                .is_some()
+                            {
                                 return Ok(());
                             }
                         }
@@ -205,7 +206,9 @@ pub fn launch_handle_client(
                     );
                     for msg_to_proc in to_process_after_ping {
                         trace!("Processing msg_to_proc {}", msg_to_proc.checksum());
-                        if process_handle_msg(msg_to_proc, &mut stream, &mut last_ping_time).is_some() {
+                        if process_handle_msg(msg_to_proc, &mut stream, &mut last_ping_time)
+                            .is_some()
+                        {
                             return Ok(());
                         }
                     }
@@ -217,7 +220,11 @@ pub fn launch_handle_client(
     Ok(())
 }
 
-pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_time: &mut SystemTime) -> Option<String>{
+pub fn process_handle_msg(
+    read_msg: P2pData,
+    stream: &mut TcpStream,
+    last_ping_time: &mut SystemTime,
+) -> Option<String> {
     match read_msg.message_type {
         // zero type msg
         0 => {
@@ -277,7 +284,21 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
                 stream,
             );
         }
-        0x0a => {
+        0x0b => { // peer accepted our block
+            if let Ok(addr) =  stream.peer_addr() {
+                info!("Peer={} accepted our block={}", addr, read_msg.message);
+            } else {
+                info!("Peer (failed to get addr) accepted our block {}", read_msg.message);
+            }
+        }
+        0x0c => { // peer accepted our block
+            if let Ok(addr) =  stream.peer_addr() {
+                warn!("Peer={} rejected our block, reason={}", addr, read_msg.message);
+            } else {
+                warn!("Peer (failed to get addr) rejeted our reason={}", read_msg.message);
+            }
+        }
+        0x04 => {
             // the peer just sent us a block,
             // validate it, save it an enact it
             log::trace!("Got block from peer");
@@ -286,6 +307,16 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
             if block.is_default() {
                 log::trace!("Could not decode block");
                 let _ = send("dsf".to_owned(), stream, 0x0c, true, None);
+            } else if !get_block_from_raw(block.hash.clone()).is_default() {
+                debug!("Already have block {}, ignoring", block.hash);
+                let _ = send(
+                    "ebf".to_owned(),
+                    stream,
+                    0x0c,
+                    true,
+                    None,
+                );
+                
             } else if let Err(e) = avrio_blockchain::check_block(block.clone()) {
                     let curr_invalid_block_count =
                         crate::peer::get_invalid_block_count(
@@ -303,6 +334,10 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
                         curr_invalid_block_count + 1,
                     );
                     log::debug!("Got invalid block from peer. New invalid block count: {}. Invalid because: {:?}", curr_invalid_block_count +1, e);
+                    if curr_invalid_block_count + 1 > 10 {
+                        // close the stream
+
+                    }
                 } else if let Err(e) = avrio_blockchain::save_block(block.clone()) {
                         log::debug!("Saving block gave error: {}", e);
                         let _ = send(
@@ -340,10 +375,11 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
                             );
                             log::error!("");
                         } else {
-                            log::debug!("Recieved and processed block from peer, sending block ack");
-                            let _ = block_announce(block);
+                            log::debug!("Recieved and processed block from peer, sending block ack and propigating");
+                            let _ = block_announce(block.clone());
+                            let _ = crate::helper::prop_block(&block);
                             let _ = send(
-                                "".to_owned(),
+                                block.hash,
                                 stream,
                                 0x0b,
                                 true,
@@ -453,7 +489,7 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
                     if send(
                         serde_json::to_string(&blks).unwrap_or_default(),
                         stream,
-                        0x0a,
+                        0x04,
                         true,
                         None
                     ).is_ok() {
@@ -519,7 +555,7 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
                     if send(
                         serde_json::to_string(&blks).unwrap_or_default(),
                         stream,
-                        0x0a,
+                        0x04,
                         true,
                         None
                     ).is_ok() {
@@ -537,7 +573,7 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
             let _ = send("".to_string(), stream, 0x03, true, None);
             return Some("return".to_owned());
         }
-        0x9f => {
+        0x8f => {
             log::debug!("Peer=asked for peer list");
             let peerlist_get = avrio_database::get_peerlist();
             if let Ok(peers) = peerlist_get {
@@ -545,7 +581,7 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
                 if send(
                     serde_json::to_string(&peers).unwrap_or_default(),
                     stream,
-                    0x0a,
+                    0x9f,
                     true,
                     None
                 ).is_ok() {
@@ -560,7 +596,7 @@ pub fn process_handle_msg(read_msg: P2pData, stream: &mut TcpStream, last_ping_t
                 if send(
                     serde_json::to_string(&blank_vec).unwrap_or_default(),
                     stream,
-                    0x0a,
+                    0x9f,
                     true,
                     None
                 ).is_ok() {
