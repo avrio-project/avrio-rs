@@ -89,6 +89,53 @@ pub fn launch_handle_client(
         move || {
             let mut paused = false;
             loop {
+                
+                if let Ok(msg) = rx.try_recv() {
+                    log::debug!("Read msg={}", msg);
+                    if msg == "pause" {
+                        log::trace!("Pausing stream for peer");
+                        loop {
+                            if let Ok(msg) = rx.try_recv() {
+                                if msg == "run" {
+                                    log::trace!("Resuming stream for peer");
+                                    paused = true;
+                                    break;
+                                }
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
+                    }
+                }
+                if let Ok(a) = peek(&mut stream) {
+                    if let Ok(msg) = rx.try_recv() {
+                        log::debug!("Read msg={}", msg);
+                        if msg == "pause" {
+                            log::trace!("Pausing stream for peer");
+                            loop {
+                                if let Ok(msg) = rx.try_recv() {
+                                    if msg == "run" {
+                                        log::trace!("Resuming stream for peer");
+                                        paused = true;
+                                        break;
+                                    }
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(10));
+                            }
+                        }
+                    }
+                    if a != 0 && !paused {
+                        let read_data = read(&mut stream, Some(1000), None);
+                        if let Ok(read_msg) = read_data {
+                            if process_handle_msg(read_msg, &mut stream, &mut last_ping_time).is_some() {
+                                return Ok(());
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                } else {
+                    return Err("failed to peek peer");
+                }
+                paused = false;
                 let mut to_process_after_ping: Vec<P2pData> = vec![];
                 if SystemTime::now()
                     .duration_since(last_ping_time)
@@ -163,52 +210,6 @@ pub fn launch_handle_client(
                         }
                     }
                 }
-                if let Ok(msg) = rx.try_recv() {
-                    log::debug!("Read msg={}", msg);
-                    if msg == "pause" {
-                        log::trace!("Pausing stream for peer");
-                        loop {
-                            if let Ok(msg) = rx.try_recv() {
-                                if msg == "run" {
-                                    log::trace!("Resuming stream for peer");
-                                    paused = true;
-                                    break;
-                                }
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                        }
-                    }
-                }
-                if let Ok(a) = peek(&mut stream) {
-                    if let Ok(msg) = rx.try_recv() {
-                        log::debug!("Read msg={}", msg);
-                        if msg == "pause" {
-                            log::trace!("Pausing stream for peer");
-                            loop {
-                                if let Ok(msg) = rx.try_recv() {
-                                    if msg == "run" {
-                                        log::trace!("Resuming stream for peer");
-                                        paused = true;
-                                        break;
-                                    }
-                                }
-                                std::thread::sleep(std::time::Duration::from_millis(10));
-                            }
-                        }
-                    }
-                    if a != 0 && !paused {
-                        let read_data = read(&mut stream, Some(1000), None);
-                        if let Ok(read_msg) = read_data {
-                            if process_handle_msg(read_msg, &mut stream, &mut last_ping_time).is_some() {
-                                return Ok(());
-                            }
-                        }
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                } else {
-                    return Err("failed to peek peer");
-                }
-                paused = false;
                 std::thread::sleep(Duration::from_millis(50));
             }
         },
