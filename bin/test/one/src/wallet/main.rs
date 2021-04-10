@@ -34,6 +34,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use text_io::read;
+
 #[derive(Default, Clone)]
 struct WalletDetails {
     wallet: Option<Wallet>,
@@ -74,6 +75,7 @@ struct Balances {
 }
 lazy_static! {
     static ref WALLET_DETAILS: Mutex<WalletDetails> = Mutex::new(WalletDetails::default());
+    static ref SERVER_ADDR: Mutex<String> = Mutex::new(String::from("http://127.0.0.1:8000"));
 }
 fn trim_newline(s: &mut String) -> String {
     if s.ends_with('\n') {
@@ -222,7 +224,8 @@ async fn form_receive_block(blk: &Block, for_chain: &String) -> Result<Block, Bo
         return Ok(blk_clone);
     } else {
         let request_url = format!(
-            "http://127.0.0.1:8000/api/v1/blockcount/{}",
+            "{}/api/v1/blockcount/{}",
+            SERVER_ADDR.lock().unwrap().to_owned(),
             for_chain.clone()
         );
         let response = reqwest::get(&request_url).await?;
@@ -230,7 +233,8 @@ async fn form_receive_block(blk: &Block, for_chain: &String) -> Result<Block, Bo
         let response_decoded = response.json::<Blockcount>().await?;
         let height = response_decoded.blockcount;
         let request_url = format!(
-            "http://127.0.0.1:8000/api/v1/hash_at_height/{}/{}",
+            "{}/api/v1/hash_at_height/{}/{}",
+            SERVER_ADDR.lock().unwrap().to_owned(),
             for_chain.clone(),
             height - 1
         );
@@ -298,7 +302,8 @@ pub fn new_ann(ann: Announcement) {
 
 async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn Error>> {
     let request_url = format!(
-        "http://127.0.0.1:8000/api/v1/blockcount/{}",
+        "{}/api/v1/blockcount/{}",
+        SERVER_ADDR.lock().unwrap().to_owned(),
         wall.public_key.clone()
     );
     let response = reqwest::get(&request_url).await?;
@@ -306,7 +311,8 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
     let response_decoded = response.json::<Blockcount>().await?;
     let height = response_decoded.blockcount;
     let request_url = format!(
-        "http://127.0.0.1:8000/api/v1/hash_at_height/{}/{}",
+        "{}/api/v1/hash_at_height/{}/{}",
+        SERVER_ADDR.lock().unwrap().to_owned(),
         wall.public_key.clone(),
         height - 1
     );
@@ -371,7 +377,7 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
     if !failed {
         // now transmit all blocks to node
         for block_json in blocks {
-            let request_url = "http://127.0.0.1:8000/api/v1/submit_block";
+            let request_url = SERVER_ADDR.lock().unwrap().to_owned() + "/api/v1/submit_block";
             if let Ok(response) = Client::new()
                 .post(request_url)
                 .json(&block_json)
@@ -415,6 +421,13 @@ async fn main() {
                 .takes_value(true)
                 .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: debug"),
         )
+        .arg(
+            Arg::with_name("serveraddr")
+                .long("server-addr")
+                .short("a")
+                .takes_value(true)
+                .help("Sets the server addr"),
+        )
         .get_matches();
     //println!("{}", matches.occurrences_of("loglev"));
     let art = "
@@ -447,6 +460,9 @@ async fn main() {
             Err("invalid number".into())
         }
     };
+    if let Some(addr) = matches.value_of("serveraddr") {
+        *(SERVER_ADDR.lock().unwrap()) = format!("http://{}", addr);
+    }
     if let Ok(wall) = wallet {
         info!("Using wallet with publickey={}", wall.public_key);
         debug!("Creating caller struct");
@@ -463,7 +479,8 @@ async fn main() {
             };
             drop(locked_ls);
             let request_url = format!(
-                "http://127.0.0.1:8000/api/v1/blockcount/{}",
+                "{}/api/v1/blockcount/{}",
+                SERVER_ADDR.lock().unwrap().to_string(),
                 wall.public_key
             );
             let try_get_response = reqwest::get(&request_url).await;
@@ -517,7 +534,8 @@ async fn main() {
                                     "Genesis blocks encoded: {}, {}",
                                     block_json, rec_block_json
                                 );
-                                let request_url = "http://127.0.0.1:8000/api/v1/submit_block";
+                                let request_url =
+                                    SERVER_ADDR.lock().unwrap().to_owned() + "/api/v1/submit_block";
                                 if let Ok(response) = Client::new()
                                     .post(request_url)
                                     .json(&block_json)
@@ -537,8 +555,8 @@ async fn main() {
                                                 "Genesis send block response={}",
                                                 response_string
                                             );
-                                            let request_url =
-                                                "http://127.0.0.1:8000/api/v1/submit_block";
+                                            let request_url = SERVER_ADDR.lock().unwrap().to_string()
+                                                + "/api/v1/submit_block";
                                             if let Ok(response) = Client::new()
                                                 .post(request_url)
                                                 .json(&rec_block_json)
@@ -574,8 +592,11 @@ async fn main() {
                             blockcount
                         );
                     }
-                    let request_url =
-                        format!("http://127.0.0.1:8000/api/v1/balances/{}", wall.public_key);
+                    let request_url = format!(
+                        "{}/api/v1/balances/{}",
+                        SERVER_ADDR.lock().unwrap().to_string(),
+                        wall.public_key
+                    );
                     if let Ok(response_undec) = reqwest::get(&request_url).await {
                         if let Ok(response) = response_undec.json::<Balances>().await {
                             info!(
@@ -599,7 +620,8 @@ async fn main() {
                         error!("Failed to request {}", request_url);
                     }
                     let request_url = format!(
-                        "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                        "{}/api/v1/transactioncount/{}",
+                        SERVER_ADDR.lock().unwrap().to_string(),
                         wall.public_key
                     );
                     if let Ok(response) = reqwest::get(&request_url).await {
@@ -690,7 +712,8 @@ async fn main() {
                                     signature: String::from(""),
                                 };
                                 let request_url = format!(
-                                    "http://127.0.0.1:8000/api/v1/balances/{}",
+                                    "{}/api/v1/balances/{}",
+                                    SERVER_ADDR.lock().unwrap().to_string(),
                                     wall.public_key
                                 );
                                 if let Ok(response_undec) = reqwest::get(&request_url).await {
@@ -707,9 +730,10 @@ async fn main() {
                                         addr
                                     );
                                                 let request_url = format!(
-                                        "http://127.0.0.1:8000/api/v1/publickey_for_username/{}",
-                                        addr
-                                    );
+                                                    "{}/api/v1/publickey_for_username/{}",
+                                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                                    addr
+                                                );
                                                 if let Ok(response) =
                                                     reqwest::get(&request_url).await
                                                 {
@@ -723,7 +747,8 @@ async fn main() {
                                                 }
                                             }
                                             let request_url = format!(
-                                                "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                                                "{}/api/v1/transactioncount/{}",
+                                                SERVER_ADDR.lock().unwrap().to_string(),
                                                 wall.public_key
                                             );
                                             if let Ok(response) = reqwest::get(&request_url).await {
@@ -777,7 +802,8 @@ async fn main() {
                                 signature: String::from(""),
                             };
                             let request_url = format!(
-                                "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                                "{}/api/v1/transactioncount/{}",
+                                SERVER_ADDR.lock().unwrap().to_string(),
                                 wall.public_key
                             );
                             if let Ok(response) = reqwest::get(&request_url).await {
@@ -816,9 +842,10 @@ async fn main() {
                                         error!("Username may only contain alphanumeric charactors");
                                     } else {
                                         let request_url = format!(
-                                        "http://127.0.0.1:8000/api/v1/publickey_for_username/{}",
-                                        desired_username
-                                    );
+                                            "{}/api/v1/publickey_for_username/{}",
+                                            SERVER_ADDR.lock().unwrap().to_string(),
+                                            desired_username
+                                        );
                                         if let Ok(response) = reqwest::get(&request_url).await {
                                             if let Ok(publickey_for_username) =
                                                 response.json::<PublickeyForUsername>().await
@@ -847,7 +874,8 @@ async fn main() {
                                                         signature: String::from(""),
                                                     };
                                                     let request_url = format!(
-                                                        "http://127.0.0.1:8000/api/v1/balances/{}",
+                                                        "{}/api/v1/balances/{}",
+                                                        SERVER_ADDR.lock().unwrap().to_string(),
                                                         wall.public_key
                                                     );
                                                     if let Ok(response_undec) =
@@ -862,9 +890,10 @@ async fn main() {
                                                                 error!("Insufficent balance");
                                                             } else {
                                                                 let request_url = format!(
-                                                    "http://127.0.0.1:8000/api/v1/transactioncount/{}",
-                                                    wall.public_key
-                                                );
+                                                                    "{}/api/v1/transactioncount/{}",
+                                                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                                                    wall.public_key
+                                                                );
                                                                 if let Ok(response) =
                                                                     reqwest::get(&request_url).await
                                                                 {
@@ -954,7 +983,8 @@ async fn main() {
                                 signature: String::from(""),
                             };
                             let request_url = format!(
-                                "http://127.0.0.1:8000/api/v1/balances/{}",
+                                "{}/api/v1/balances/{}",
+                                SERVER_ADDR.lock().unwrap().to_string(),
                                 wall.public_key
                             );
                             if let Ok(response_undec) = reqwest::get(&request_url).await {
@@ -963,7 +993,8 @@ async fn main() {
                                         error!("Insufficent balance");
                                     } else {
                                         let request_url = format!(
-                                            "http://127.0.0.1:8000/api/v1/transactioncount/{}",
+                                            "{}/api/v1/transactioncount/{}",
+                                            SERVER_ADDR.lock().unwrap().to_string(),
                                             wall.public_key
                                         );
                                         if let Ok(response) = reqwest::get(&request_url).await {
