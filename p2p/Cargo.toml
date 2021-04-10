@@ -8,17 +8,21 @@ authors = [
 edition = "2018"
 
 [dependencies]
-avrio_config = { path = "../config" }
+avrio_config = { path = "../config/" }
 avrio_database = { path = "../database" }
 avrio_blockchain = { path = "../blockchain" }
 avrio_core = { path = "../core" }
-hex = "0.4"
+avrio_crypto = { path = "../crypto" }
 log = "~0.4"
 rand = "~0.7.3"
 serde = "~1.0.82"
 serde_derive = "1.0.104"
-serde_json = "~1.0.33"
+bson = "0.14"
 unwrap = "~1.2.1"
 simple_logger = "1.5.0"
-rocksdb = "0.13"
 lazy_static = "1.4"
+x25519-dalek = "0.6.0"
+hex = "0.4.2"
+aes-gcm = "0.8.0"
+serde_json = "1"
+avrio_rpc = { path = "../rpc" }

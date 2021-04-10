@@ -2,17 +2,16 @@
 name = "avrio_rpc"
 version = "0.1.0"
 authors = [
-    "Arielh25 <areilhurdle@gmail.com>",
+    "Leo Cornelius <leocornelius019@gmail.com>",
     "TheDevMinerTV <tobigames200@gmail.com>"
 ]
 edition = "2018"
+license = "MIT"
 
 [dependencies]
-serde_json = "1.0"
+log = "0.4"
+serde_json = "1"
 serde = { version = "1.0", features = ["derive"] }
-rocket = { version = "0.4.4", default-features = false }
-avrio_core = { path = "../core" }
+serde_derive = "1.0.104"
+lazy_static = "1.4.0"
 avrio_blockchain = { path = "../blockchain" }
-avrio_database = { path = "../database" }
-avrio_config = { path = "../config" }
-avrio_p2p = { path = "../p2p" }

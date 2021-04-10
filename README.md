@@ -2,7 +2,7 @@
 <b> Master branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-rs.svg?branch=master) Development branch: ![Travis CI](https://api.travis-ci.com/avrio-project/avrio-rs.svg?branch=development) </b>
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/bc49fd1ca3a04c3cbc427074042293d2)](https://www.codacy.com/gh/avrio-project/avrio-rs/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=avrio-project/avrio-rs&amp;utm_campaign=Badge_Grade)
 
-This is the offical implemention of the avrio protocol. It is written in rust. It's protocol is subject to frequent change and as such no documention exists (however it is in the works) It is currently not ready for usage. If you wish to join the Avrio network, please use our [cryptonight based implementation](https://github.com/avrio-project/avrio). For more details please join our [discord](https://discord.gg/4aGKGmm)
+This is the offical implemention of the avrio protocol. It is written in rust. It's protocol is subject to frequent change and as such no documention exists (however it is in the works) It is currently not ready for usage. For more details please join our [discord](https://discord.gg/4aGKGmm)
 
 ## Table of Contents
   - [How to compile](#how-to-compile)
@@ -48,7 +48,7 @@ You will also need the following packages: [Boost](https://www.boost.org/), [Ope
 ```bash
 sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
 sudo apt-get update
-sudo apt-get install -y build-essential g++-8 gcc-8 git libboost-all-dev libssl1.0-dev cmake
+sudo apt-get install -y build-essential g++-8 gcc-8 git libboost-all-dev libssl1.0-dev cmake libclang-dev clang
 git clone -b master --single-branch https://github.com/avrio-project/avrio-rs/
 cd avrio-rs
 cargo build --release

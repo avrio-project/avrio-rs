@@ -13,3 +13,5 @@ Cargo.lock
 **/*.pdb
 
 **/*.conf
+*log
+*cfg

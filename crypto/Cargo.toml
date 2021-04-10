@@ -16,4 +16,5 @@ blake = "2.0.0"
 bcrypt = "0.6.3"
 sha2 = "0.8.1"
 ring = "0.16.12"
-avrio_config = { path = "../config" }
+avrio_config = { path = "../config/" }
+csv = "1.1"

@@ -30,42 +30,40 @@ impl UsernameRegistation {
     pub fn hash(&mut self) {
         self.hash = self.hash_item();
     }
+
     pub fn hash_return(&self) -> String {
-        return self.hash_item();
+        self.hash_item()
     }
-    pub fn sign(
-        &mut self,
-        private_key: &String,
-    ) -> std::result::Result<(), ring::error::KeyRejected> {
+
+    pub fn sign(&mut self, private_key: &str) -> std::result::Result<(), ring::error::KeyRejected> {
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(
             bs58::decode(private_key)
                 .into_vec()
-                .unwrap_or(vec![0])
+                .unwrap_or_else(|_| vec![0])
                 .as_ref(),
         )?;
         let msg: &[u8] = self.hash.as_bytes();
         self.signature = bs58::encode(key_pair.sign(msg)).into_string();
-        return Ok(());
+        Ok(())
     }
+
     pub fn verify_signature(&self) -> bool {
         let public_key_bytes = bs58::decode(self.public_key.clone())
             .into_vec()
-            .unwrap_or(vec![5]);
+            .unwrap_or_else(|_| vec![5]);
         if public_key_bytes.len() == 1 && public_key_bytes[0] == 5 {
             return false;
         }
         let peer_public_key =
             signature::UnparsedPublicKey::new(&signature::ED25519, public_key_bytes);
-        match peer_public_key.verify(
-            self.hash.as_bytes(),
-            &bs58::decode(&(self.signature).to_owned())
-                .into_vec()
-                .unwrap_or(vec![0]),
-        ) {
-            Ok(()) => {
-                return true;
-            }
-            _ => return false,
-        }
+        matches!(
+            peer_public_key.verify(
+                self.hash.as_bytes(),
+                &bs58::decode(&(self.signature).to_owned())
+                    .into_vec()
+                    .unwrap_or_else(|_| vec![0]),
+            ),
+            Ok(())
+        )
     }
 }

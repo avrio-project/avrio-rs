@@ -1,0 +1,28 @@
+[package]
+name = "avrio_api"
+version = "0.2.0"
+authors = [
+    "Arielh25 <areilhurdle@gmail.com>",
+    "TheDevMinerTV <tobigames200@gmail.com>"
+]
+edition = "2018"
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+rocket = { version = "0.4.7", default-features = true }
+avrio_core = { path = "../core" }
+avrio_blockchain = { path = "../blockchain" }
+avrio_database = { path = "../database" }
+avrio_config = { path = "../config" }
+avrio_p2p = { path = "../p2p" }
+avrio_rpc = { path = "../rpc" }
+avrio_crypto = { path = "../crypto"}
+log = "0.4"
+hex = "0.4.2"
+ring = "0.16.11"
+aes-gcm = "0.5.0"
+aead = "0.2.0"
+lazy_static = "1.4.0"
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
