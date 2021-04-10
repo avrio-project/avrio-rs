@@ -6,7 +6,7 @@ extern crate rand;
 extern crate x25519_dalek;
 
 use avrio_config::config;
-
+use std::time::Duration;
 use crate::peer::in_peers;
 use std::{convert::TryInto, net::SocketAddr};
 use x25519_dalek::EphemeralSecret;
@@ -24,7 +24,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
         return Err("Already connected".into());
     }
     log::info!("Connecting to {}", addr);
-    let mut a = std::net::TcpStream::connect(addr)?;
+    let mut a = std::net::TcpStream::connect_timeout(&(addr.parse()?), Duration::new(5,0))?;
     let mut local_cspring = rand::rngs::OsRng;
     let local_sec = EphemeralSecret::new(&mut local_cspring);
     let local_pub = PublicKey::from(&local_sec);
