@@ -10,7 +10,7 @@ use x25519_dalek::PublicKey;
 
 use crate::{
     io::{read, send},
-    peer::add_peer,
+    peer::{add_peer, remove_peer},
 };
 
 use std::convert::TryInto;
@@ -114,151 +114,94 @@ impl P2pServer {
                                     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
                                 });
                                 if let Ok(in_peers) = crate::peer::in_peers(&addr) {
-                                    if !in_peers {
-                                        let mut local_cspring = rand::rngs::OsRng;
-                                        let local_sec = EphemeralSecret::new(&mut local_cspring);
-                                        let local_pub = PublicKey::from(&local_sec);
-                                        let d_split =
-                                            read_msg.message.split('*').collect::<Vec<&str>>();
-                                        log::trace!(
-                                            "D_SPLIT: {:?}, len: {}",
-                                            d_split,
-                                            d_split.len()
-                                        );
+                                    if in_peers {
+                                        log::debug!("Peer in peer list, removing");
+                                        remove_peer(addr, true)?;
+                                    }
+                                    let mut local_cspring = rand::rngs::OsRng;
+                                    let local_sec = EphemeralSecret::new(&mut local_cspring);
+                                    let local_pub = PublicKey::from(&local_sec);
+                                    let d_split =
+                                        read_msg.message.split('*').collect::<Vec<&str>>();
+                                    log::trace!("D_SPLIT: {:?}, len: {}", d_split, d_split.len());
 
-                                        if hex::encode(config().network_id) != d_split[0] {
-                                            log::debug!("Peer tried to handshake with wrong network id. Expecting: {}, got: {}. Ignoring...", hex::encode(config().network_id), d_split[0]);
-                                            // TODO: send shutdown type first!
-                                            let _ = stream.shutdown(std::net::Shutdown::Both);
-                                        } else if d_split[1] == config().identitiy {
-                                            let _ = crate::io::send(
-                                                "cancel".to_string(),
-                                                &mut stream,
-                                                0x1a,
-                                                true,
-                                                None,
+                                    if hex::encode(config().network_id) != d_split[0] {
+                                        log::debug!("Peer tried to handshake with wrong network id. Expecting: {}, got: {}. Ignoring...", hex::encode(config().network_id), d_split[0]);
+                                        // TODO: send shutdown type first!
+                                        let _ = stream.shutdown(std::net::Shutdown::Both);
+                                    } else if d_split[1] == config().identitiy {
+                                        let _ = crate::io::send(
+                                            "cancel".to_string(),
+                                            &mut stream,
+                                            0x1a,
+                                            true,
+                                            None,
+                                        );
+                                        log::debug!("Sent cancel to peer");
+                                        std::thread::sleep(std::time::Duration::from_millis(100));
+                                        let _ = stream.shutdown(std::net::Shutdown::Both);
+                                        log::debug!("Shutdown stream");
+                                    } else {
+                                        let addr_s = addr.to_string();
+                                        let ip_s = addr_s.split(':').collect::<Vec<&str>>()[0];
+                                        let addr_s = format!("{}:{}", ip_s, d_split[3]);
+                                        let mut save_res: Result<(), &'static str> = Ok(());
+                                        let _ = avrio_database::add_peer(
+                                            addr_s.parse().unwrap_or_else(|_| {
+                                                SocketAddr::new(
+                                                    IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                                                    0,
+                                                )
+                                            }),
+                                        )
+                                        .unwrap_or_else(|e| {
+                                            log::error!(
+                                                "Saving peer gave error: {}, dropping connection",
+                                                e
                                             );
-                                            log::debug!("Sent cancel to peer");
-                                            std::thread::sleep(std::time::Duration::from_millis(
-                                                100,
-                                            ));
-                                            let _ = stream.shutdown(std::net::Shutdown::Both);
-                                            log::debug!("Shutdown stream");
-                                        } else {
-                                            let addr_s = addr.to_string();
-                                            let ip_s = addr_s.split(':').collect::<Vec<&str>>()[0];
-                                            let addr_s = format!("{}:{}", ip_s, d_split[3]);
-                                            let mut save_res: Result<(), &'static str> = Ok(());
-                                            let _ = avrio_database::add_peer(addr_s.parse().unwrap_or_else(|_| SocketAddr::new(
-                                            IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                                            0,
-                                        ))).unwrap_or_else(|e| {
-                                            log::error!("Saving peer gave error: {}, dropping connection", e);
                                             // TODO: send shutdown type first!
                                             stream.shutdown(std::net::Shutdown::Both).unwrap();
                                             save_res = Err("Saving peer gave error");
                                         });
-                                            if let Err(e) = save_res {
-                                                return Err(e.into());
-                                            }
-                                            let key = local_sec.diffie_hellman(&PublicKey::from(
-                                                from_slice(
-                                                    &hex::decode(d_split[4]).unwrap_or_default(),
-                                                ),
-                                            ));
-                                            log::trace!(
-                                                "KEY={}, LEN={}",
-                                                hex::encode(key.as_bytes()),
-                                                key.as_bytes().len()
-                                            );
+                                        if let Err(e) = save_res {
+                                            return Err(e.into());
+                                        }
+                                        let key =
+                                            local_sec.diffie_hellman(&PublicKey::from(from_slice(
+                                                &hex::decode(d_split[4]).unwrap_or_default(),
+                                            )));
+                                        log::trace!(
+                                            "KEY={}, LEN={}",
+                                            hex::encode(key.as_bytes()),
+                                            key.as_bytes().len()
+                                        );
 
-                                            let handshake =
-                                                crate::core::form_handshake(local_pub.as_bytes());
-                                            let _ = crate::io::send(
-                                                handshake,
-                                                &mut stream,
-                                                0x1a,
-                                                true,
-                                                Some(
-                                                    "hand_keyhand_keyhand_keyhand_key"
-                                                        .as_bytes()
-                                                        .try_into()
-                                                        .unwrap(),
-                                                ),
-                                            )
-                                            .unwrap_or_default();
-                                            if let Ok(d) = crate::io::read(
-                                                &mut stream,
-                                                Some(100000),
-                                                Some(key.as_bytes()),
-                                            ) {
-                                                if d.message_type != 0xa2 {
-                                                    return Err(
-                                                        "wrong seccond response type".into()
-                                                    );
-                                                } else {
-                                                    // We understood that key - we can send ack (accept)
-                                                    let _ = send(
-                                                        "ack".to_string(),
-                                                        &mut stream,
-                                                        0xa3,
-                                                        true,
-                                                        Some(
-                                                            "hand_keyhand_keyhand_keyhand_key"
-                                                                .as_bytes()
-                                                                .try_into()
-                                                                .unwrap(),
-                                                        ),
-                                                    );
-                                                    // now we add peer to peers list
-                                                    log::info!(
-                                                        "New incoming connection to peer: {}",
-                                                        stream.peer_addr().unwrap()
-                                                    );
-
-                                                    let _ = avrio_database::add_peer(
-                                                        stream.peer_addr().unwrap(),
-                                                    );
-
-                                                    if let Err(e) = avrio_database::add_peer(
-                                                        stream.peer_addr().unwrap(),
-                                                    ) {
-                                                        log::error!(
-                                                        "Failed to add peer: {} to peer list, gave error: {}",
-                                                        stream.peer_addr().unwrap(),
-                                                        e
-                                                    );
-
-                                                        drop(listener);
-
-                                                        return Err(
-                                                            "failed to add peer to peerlist".into(),
-                                                        );
-                                                    } else {
-                                                        std::thread::spawn(move || {
-                                                            // connection succeeded
-                                                            let (tx, rx) =
-                                                                std::sync::mpsc::channel();
-                                                            let _ = add_peer(
-                                                                stream.try_clone().unwrap(),
-                                                                false,
-                                                                hex::encode(key.as_bytes()),
-                                                                &tx,
-                                                            );
-                                                            let _ =
-                                                                crate::handle::launch_handle_client(
-                                                                    rx,
-                                                                    &mut stream
-                                                                        .try_clone()
-                                                                        .unwrap(),
-                                                                );
-                                                        });
-                                                    }
-                                                }
+                                        let handshake =
+                                            crate::core::form_handshake(local_pub.as_bytes());
+                                        let _ = crate::io::send(
+                                            handshake,
+                                            &mut stream,
+                                            0x1a,
+                                            true,
+                                            Some(
+                                                "hand_keyhand_keyhand_keyhand_key"
+                                                    .as_bytes()
+                                                    .try_into()
+                                                    .unwrap(),
+                                            ),
+                                        )
+                                        .unwrap_or_default();
+                                        if let Ok(d) = crate::io::read(
+                                            &mut stream,
+                                            Some(100000),
+                                            Some(key.as_bytes()),
+                                        ) {
+                                            if d.message_type != 0xa2 {
+                                                return Err("wrong seccond response type".into());
                                             } else {
-                                                // WE did not understand that key - send rej (reject)
+                                                // We understood that key - we can send ack (accept)
                                                 let _ = send(
-                                                    "rej".to_string(),
+                                                    "ack".to_string(),
                                                     &mut stream,
                                                     0xa3,
                                                     true,
@@ -269,10 +212,62 @@ impl P2pServer {
                                                             .unwrap(),
                                                     ),
                                                 );
+                                                // now we add peer to peers list
+                                                log::info!(
+                                                    "New incoming connection to peer: {}",
+                                                    stream.peer_addr().unwrap()
+                                                );
+
+                                                let _ = avrio_database::add_peer(
+                                                    stream.peer_addr().unwrap(),
+                                                );
+
+                                                if let Err(e) = avrio_database::add_peer(
+                                                    stream.peer_addr().unwrap(),
+                                                ) {
+                                                    log::error!(
+                                                        "Failed to add peer: {} to peer list, gave error: {}",
+                                                        stream.peer_addr().unwrap(),
+                                                        e
+                                                    );
+
+                                                    drop(listener);
+
+                                                    return Err(
+                                                        "failed to add peer to peerlist".into()
+                                                    );
+                                                } else {
+                                                    std::thread::spawn(move || {
+                                                        // connection succeeded
+                                                        let (tx, rx) = std::sync::mpsc::channel();
+                                                        let _ = add_peer(
+                                                            stream.try_clone().unwrap(),
+                                                            false,
+                                                            hex::encode(key.as_bytes()),
+                                                            &tx,
+                                                        );
+                                                        let _ = crate::handle::launch_handle_client(
+                                                            rx,
+                                                            &mut stream.try_clone().unwrap(),
+                                                        );
+                                                    });
+                                                }
                                             }
+                                        } else {
+                                            // WE did not understand that key - send rej (reject)
+                                            let _ = send(
+                                                "rej".to_string(),
+                                                &mut stream,
+                                                0xa3,
+                                                true,
+                                                Some(
+                                                    "hand_keyhand_keyhand_keyhand_key"
+                                                        .as_bytes()
+                                                        .try_into()
+                                                        .unwrap(),
+                                                ),
+                                            );
                                         }
-                                    } else {
-                                        log::debug!("Got handshake from handshook peer, ignoring");
                                     }
                                 }
                             } else {

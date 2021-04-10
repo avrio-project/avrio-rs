@@ -84,6 +84,28 @@ pub fn add_peer(
     Ok(())
 }
 
+pub fn remove_peer(peer: SocketAddr, is_incoming: bool) -> Result<(), Box<dyn Error>> {
+    (*PEERS.lock()?).remove(&strip_port(&peer));
+    if is_incoming {
+        let mut new_incoming: Vec<TcpStream> = vec![];
+        for incoming in &(*INCOMING.lock()?) {
+            if incoming.peer_addr().unwrap() != peer {
+                let stream = incoming.try_clone()?;
+                new_incoming.push(stream);
+            }
+        }
+    } else {
+        let mut new_outgoing: Vec<TcpStream> = vec![];
+        for outgoing in &(*OUTGOING.lock()?) {
+            if outgoing.peer_addr().unwrap() != peer {
+                let stream = outgoing.try_clone()?;
+                new_outgoing.push(stream);
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn locked(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
     if !in_peers(peer)? {
         Err("not in peer list".into())
