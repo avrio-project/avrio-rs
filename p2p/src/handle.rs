@@ -377,7 +377,13 @@ pub fn process_handle_msg(
                         } else {
                             log::debug!("Recieved and processed block from peer, sending block ack and propigating");
                             let _ = block_announce(block.clone());
-                            let _ = crate::helper::prop_block(&block);
+                            let _ = crate::helper::prop_block_with_ignore(
+                                &block, 
+                                &stream.peer_addr()
+                                .unwrap_or(
+                                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
+                                )
+                            );
                             let _ = send(
                                 block.hash,
                                 stream,
