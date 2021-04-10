@@ -555,8 +555,9 @@ async fn main() {
                                                 "Genesis send block response={}",
                                                 response_string
                                             );
-                                            let request_url = SERVER_ADDR.lock().unwrap().to_string()
-                                                + "/api/v1/submit_block";
+                                            let request_url =
+                                                SERVER_ADDR.lock().unwrap().to_string()
+                                                    + "/api/v1/submit_block";
                                             if let Ok(response) = Client::new()
                                                 .post(request_url)
                                                 .json(&rec_block_json)
@@ -891,7 +892,10 @@ async fn main() {
                                                             } else {
                                                                 let request_url = format!(
                                                                     "{}/api/v1/transactioncount/{}",
-                                                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                                                    SERVER_ADDR
+                                                                        .lock()
+                                                                        .unwrap()
+                                                                        .to_string(),
                                                                     wall.public_key
                                                                 );
                                                                 if let Ok(response) =
