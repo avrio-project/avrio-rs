@@ -1492,4 +1492,9 @@ mod tests {
             assert_eq!(block_read, block_clone);
         }
     }
+    pub fn from_compact(encoded: String) -> Result<Block, Box<dyn std::error::Error>> {
+        let mut ret = Block::default();
+        ret.decode_compressed(encoded)?;
+        Ok(ret)
+    }
 }
