@@ -1403,6 +1403,7 @@ pub fn check_block_old(blk: Block) -> std::result::Result<(), BlockValidationErr
 
 //todo write commentaion/docs for tests
 pub mod genesis;
+pub mod encode;
 #[cfg(test)]
 mod tests {
     use crate::rand::Rng;
