@@ -58,8 +58,8 @@ pub fn get_peers_addr() -> Result<Vec<SocketAddr>, Box<dyn Error>> {
 /// returns a resut value conatining a bool value.
 /// If the peer is in either INCOMING or OUTGOING it will be true
 pub fn in_peers(peer: &std::net::SocketAddr) -> Result<bool, Box<dyn Error>> {
-    for p in get_peers()? {
-        if strip_port(&p.peer_addr()?) == strip_port(peer) {
+    for p in get_peers_addr()? {
+        if strip_port(&p) == strip_port(peer) {
             return Ok(true);
         }
     }
@@ -89,7 +89,7 @@ pub fn remove_peer(peer: SocketAddr, is_incoming: bool) -> Result<(), Box<dyn Er
     if is_incoming {
         let mut new_incoming: Vec<TcpStream> = vec![];
         for incoming in &(*INCOMING.lock()?) {
-            if incoming.peer_addr().unwrap() != peer {
+            if strip_port(&incoming.peer_addr().unwrap()) != strip_port(&peer) {
                 let stream = incoming.try_clone()?;
                 new_incoming.push(stream);
             }
@@ -97,7 +97,7 @@ pub fn remove_peer(peer: SocketAddr, is_incoming: bool) -> Result<(), Box<dyn Er
     } else {
         let mut new_outgoing: Vec<TcpStream> = vec![];
         for outgoing in &(*OUTGOING.lock()?) {
-            if outgoing.peer_addr().unwrap() != peer {
+            if strip_port(&outgoing.peer_addr().unwrap()) != strip_port(&peer) {
                 let stream = outgoing.try_clone()?;
                 new_outgoing.push(stream);
             }
