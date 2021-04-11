@@ -44,18 +44,20 @@ struct PeerlistSave {
     peers: Vec<String>,
 }
 pub fn close_flush_stream() {
-    info!("Shutting down dirty page flusher stream");
-    if let Some(sender) = FLUSH_STREAM_HANDLER.lock().unwrap().clone() {
-        if let Err(e) = sender.send("stop".to_string()) {
-            error!(
+    if CACHE_VALUES {
+        info!("Shutting down dirty page flusher stream");
+        if let Some(sender) = FLUSH_STREAM_HANDLER.lock().unwrap().clone() {
+            if let Err(e) = sender.send("stop".to_string()) {
+                error!(
                 "CRITICAL: failed to send stop message to dirty data flush stream. Got error={}",
                 e
             );
+            } else {
+                info!("Safley shut down dirty data flush stream!");
+            }
         } else {
-            info!("Safley shut down dirty data flush stream!");
+            error!("Called close_flush_stream() but failed to get access to FLUSH_STRAM_HANDLER");
         }
-    } else {
-        error!("Called close_flsuh_stream() but failed to get access to FLUSH_STRAM_HANDLER");
     }
 }
 
