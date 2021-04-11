@@ -17,7 +17,10 @@ use crate::{
     gas::*,
 };
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    error,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionValidationErrors {
@@ -108,7 +111,7 @@ impl Transaction {
             _ => "unknown".to_string(),
         }
     }
-    pub fn update_nonce(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    pub fn update_nonce(&self) -> std::result::Result<(), Box<dyn error::Error>> {
         let chain_index_db = config().db_path + "/chains/" + &self.sender_key + "-chainindex";
         let txn_count: u64 =
             avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
@@ -131,10 +134,7 @@ impl Transaction {
         };
     }
 
-    pub fn enact(
-        &self,
-        _chain_index_db: String,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    pub fn enact(&self, _chain_index_db: String) -> std::result::Result<(), Box<dyn error::Error>> {
         let txn_type: String = self.type_transaction();
         if txn_type == *"normal" {
             trace!("Opening senders account");
@@ -718,6 +718,55 @@ impl Transaction {
             }
         }
         trace!("Finished validating txn");
+        Ok(())
+    }
+
+    pub fn encode_compressed(&self) -> String {
+        format!(
+            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            self.hash,
+            self.amount,
+            self.extra,
+            self.flag,
+            self.sender_key,
+            self.receive_key,
+            self.access_key,
+            self.unlock_time,
+            self.gas_price,
+            self.max_gas,
+            self.gas,
+            self.nonce,
+            self.timestamp,
+            self.signature
+        )
+    }
+    pub fn decode_compressed(&mut self, encoded: String) -> Result<(), Box<dyn error::Error>> {
+        let components: Vec<&str> = encoded.split(':').collect();
+        if components.len() != 14 {
+            error!(
+                "Failed to decode compressed transaction, expected component count=14, got={}",
+                components.len()
+            );
+            println!(
+                "Faulty encoded transaction: encoded={}, components={:#?}",
+                encoded, components
+            );
+            return Err("components len not 14".into());
+        }
+        self.hash = components[0].to_string();
+        self.amount = components[1].parse()?;
+        self.extra = components[2].to_string();
+        self.flag = components[3].parse()?;
+        self.sender_key = components[4].to_string();
+        self.receive_key = components[5].to_string();
+        self.access_key = components[6].to_string();
+        self.unlock_time = components[7].parse()?;
+        self.gas_price = components[8].parse()?;
+        self.max_gas = components[9].parse()?;
+        self.gas = components[10].parse()?;
+        self.nonce = components[11].parse()?;
+        self.timestamp = components[12].parse()?;
+        self.signature = components[13].to_string();
         Ok(())
     }
 
