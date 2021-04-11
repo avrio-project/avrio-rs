@@ -5,7 +5,8 @@ use crate::{
     utils::*,
 };
 use avrio_blockchain::{
-    check_block, enact_block, enact_send, form_state_digest, save_block, Block, BlockType,
+    check_block, enact_block, enact_send, form_state_digest, from_compact, save_block, Block,
+    BlockType,
 };
 use avrio_config::config;
 use avrio_database::get_data;
@@ -462,9 +463,15 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                                 send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None);
                             return Err("failed to get block".into());
                         } else {
-                            let blocks: Vec<Block> =
+                            let blocks_encoded: Vec<String> =
                                 serde_json::from_str(&deformed.message).unwrap_or_default();
-
+                            let mut blocks: Vec<Block> = vec![];
+                            for encoded in blocks_encoded {
+                                match from_compact(encoded.clone()) {
+                                    Ok(block) => blocks.push(block),
+                                    Err(e) => error!("Failed to decode compact block from peer, gave error={}, encoded={}", e, encoded),
+                                }
+                            }
                             if !blocks.is_empty() {
                                 trace!(
                                     "Got: {} blocks from peer. Hash: {} up to: {}",
@@ -712,8 +719,18 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
             );
             return Err("failed to get block".into());
         } else {
-            let blocks: Vec<Block> = serde_json::from_str(&deformed.message).unwrap_or_default();
-
+            let blocks_encoded: Vec<String> =
+                serde_json::from_str(&deformed.message).unwrap_or_default();
+            let mut blocks: Vec<Block> = vec![];
+            for encoded in blocks_encoded {
+                match from_compact(encoded.clone()) {
+                    Ok(block) => blocks.push(block),
+                    Err(e) => error!(
+                        "Failed to decode compact block from peer, gave error={}, encoded={}",
+                        e, encoded
+                    ),
+                }
+            }
             if !blocks.is_empty() {
                 trace!(
                     "Got: {} blocks from peer. Hash: {} up to: {}",
@@ -814,7 +831,7 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
     if block.hash == Block::default().hash {
         Err("tried to send default block".into())
     } else {
-        let block_ser: String = serde_json::to_string(block)?; // serilise the block into bson
+        let block_ser: String = block.encode_compressed(); // serilise the block into bson
 
         if let Err(e) = send(block_ser, peer, 0x04, true, None) {
             Err(e)
