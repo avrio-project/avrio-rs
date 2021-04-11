@@ -46,7 +46,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
     )?;
     let mut d = crate::io::read(
         &mut a,
-        Some(2000),
+        Some(10000),
         Some("hand_keyhand_keyhand_keyhand_key".as_bytes()),
     )?;
     if d.message == "cancel" {
