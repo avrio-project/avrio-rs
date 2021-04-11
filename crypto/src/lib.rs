@@ -7,7 +7,9 @@ use sha2::{Digest, Sha256};
 
 // Base58
 extern crate bs58;
-
+// VRF/ openssl
+use vrf::openssl::{CipherSuite, ECVRF};
+use vrf::VRF;
 // scrypt
 extern crate scrypt;
 
@@ -191,6 +193,54 @@ pub fn commitee_from_address(address: &str) -> u64 {
     }
 
     0
+}
+
+pub fn get_vrf(
+    private_key: String,
+    message: String,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    // Initialization of VRF context by providing a curve
+    let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).unwrap();
+    // Inputs: Secret Key & Message
+    let secret_key = bs58::decode(private_key).into_vec()?;
+    let message: &[u8] = message.as_bytes();
+
+    // VRF proof and hash output
+    let pi = vrf.prove(&secret_key, &message).unwrap();
+    // as the VRF hash is derived from the proof, do we really need to include this when saving, sending etc? 
+    let hash = vrf.proof_to_hash(&pi).unwrap();
+    return Ok((
+        bs58::encode(pi).into_string(),
+        bs58::encode(hash).into_string(),
+    ));
+}
+
+pub fn validate_vrf(public_key: String, proof: String, message: String) -> bool {
+    if let Ok(mut vrf) = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI) {
+        if let Ok(pi) = bs58::decode(proof).into_vec() {
+            if let Ok(msg_vec) = bs58::decode(message).into_vec() {
+                if let Ok(pubkey) = bs58::decode(public_key).into_vec() {
+                    if let Ok(_) = vrf.verify(&pubkey, &pi, &msg_vec) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn vrf_hash_to_integer(hash: String) -> u64 {
+    let as_vec = hash.as_bytes();
+    let mut int: u64 = 0;
+    for n_bit in as_vec {
+        if n_bit % 5 == 0 {
+            int -= *n_bit as u64;
+        } else {
+            int += *n_bit as u64;
+        }
+    }
+    int
 }
 
 pub fn valid_address(address: &str) -> bool {

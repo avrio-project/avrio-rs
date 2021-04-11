@@ -18,3 +18,4 @@ sha2 = "0.8.1"
 ring = "0.16.12"
 avrio_config = { path = "../config/" }
 csv = "1.1"
+vrf = "0.2.2"
