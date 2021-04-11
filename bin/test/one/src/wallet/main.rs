@@ -422,11 +422,18 @@ async fn main() {
                 .help("Sets the level of verbosity: 0: Error, 1: Warn, 2: Info, 3: debug"),
         )
         .arg(
-            Arg::with_name("serveraddr")
-                .long("server-addr")
+            Arg::with_name("apiaddr")
+                .long("api-addr")
                 .short("a")
                 .takes_value(true)
-                .help("Sets the server addr"),
+                .help("Sets the api server addr (INCLUDES PORT)"),
+        )
+        .arg(
+            Arg::with_name("rpcaddr")
+                .long("rpc-addr")
+                .short("r")
+                .takes_value(true)
+                .help("Sets the rpc server addr (INCLUDES PORT)"),
         )
         .get_matches();
     //println!("{}", matches.occurrences_of("loglev"));
@@ -460,7 +467,7 @@ async fn main() {
             Err("invalid number".into())
         }
     };
-    if let Some(addr) = matches.value_of("serveraddr") {
+    if let Some(addr) = matches.value_of("apiaddr") {
         *(SERVER_ADDR.lock().unwrap()) = format!("http://{}", addr);
     }
     if let Ok(wall) = wallet {
@@ -637,8 +644,22 @@ async fn main() {
                     if let Ok(walletdetails) = WALLET_DETAILS.lock() {
                         info!("Our balance: {}", to_dec(walletdetails.balance));
                     }
-                    if let Ok(_) = launch_client(17785, vec![], caller) {
+                    let mut rpcaddr = "127.0.0.1:17785";
+                    if let Some(addr) = matches.value_of("rpcaddr") {
+                        rpcaddr = addr;
+                    }
+                    let rpcaddr_split: Vec<&str> = rpcaddr.split(':').collect();
+                    if let Ok(_) = launch_client(
+                        rpcaddr_split[0].to_string(),
+                        rpcaddr_split[1].parse().unwrap_or(17785),
+                        vec![],
+                        caller,
+                    ) {
                         debug!("Launched RPC listener");
+                    } else {
+                        error!("Failed to connect to RPC server, please check it is running on the specified (or default) port");
+                        error!("Note: when using --rpcaddr make sure to use both the ip and port (eg --rpcaddr 127.0.0.1:1231) ");
+                        process::exit(1);
                     }
                     loop {
                         // Now we loop until shutdown
