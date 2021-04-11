@@ -293,9 +293,9 @@ pub fn process_handle_msg(
         }
         0x0c => { // peer accepted our block
             if let Ok(addr) =  stream.peer_addr() {
-                warn!("Peer={} rejected our block, reason={}", addr, read_msg.message);
+                debug!("Peer={} rejected our block, reason={}", addr, read_msg.message);
             } else {
-                warn!("Peer (failed to get addr) rejeted our reason={}", read_msg.message);
+                debug!("Peer (failed to get addr) rejeted our reason={}", read_msg.message);
             }
         }
         0x04 => {
@@ -310,7 +310,7 @@ pub fn process_handle_msg(
             } else if !get_block_from_raw(block.hash.clone()).is_default() {
                 debug!("Already have block {}, ignoring", block.hash);
                 let _ = send(
-                    "ebf".to_owned(),
+                    "ahb".to_owned(),
                     stream,
                     0x0c,
                     true,
