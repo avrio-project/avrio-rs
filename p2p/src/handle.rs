@@ -6,12 +6,12 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use avrio_blockchain::{get_block, get_block_from_raw, Block};
+use avrio_blockchain::{get_block, get_block_from_raw, Block, from_compact};
 use avrio_config::config;
 use avrio_database::{get_data, open_database};
 use avrio_rpc::block_announce;
 use lazy_static::lazy_static;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use std::net::{Shutdown, TcpStream};
 use std::sync::Mutex;
 extern crate rand;
@@ -302,8 +302,7 @@ pub fn process_handle_msg(
             // the peer just sent us a block,
             // validate it, save it an enact it
             log::trace!("Got block from peer");
-            let block: avrio_blockchain::Block =
-                serde_json::from_str(&read_msg.message).unwrap_or_default();
+            let block: avrio_blockchain::Block = from_compact(read_msg.message).unwrap_or_default();
             if block.is_default() {
                 log::trace!("Could not decode block");
                 let _ = send("dsf".to_owned(), stream, 0x0c, true, None);
@@ -480,11 +479,11 @@ pub fn process_handle_msg(
                 } else {
                     let mut got: u64 = block_from.header.height;
                     let mut prev: Block = block_from.clone();
-                    let mut blks: Vec<Block> = vec![];
+                    let mut blks: Vec<String> = vec![];
 
                     while prev != Default::default() {
                         if (prev == block_from && hash == "0") || prev != block_from {
-                            blks.push(prev);
+                            blks.push(prev.encode_compressed());
                         }
 
                         got += 1;
@@ -540,11 +539,11 @@ pub fn process_handle_msg(
                 } else {
                     let mut got: u64 = block_from.header.height + 1;
                     let mut prev: Block = block_from.clone();
-                    let mut blks: Vec<Block> = vec![];
+                    let mut blks: Vec<String> = vec![];
 
                     loop {
                         if (prev == block_from && hash == "0") || prev != block_from {
-                            blks.push(prev.clone());
+                            blks.push(prev.encode_compressed());
                         }
 
                         got += 1;
