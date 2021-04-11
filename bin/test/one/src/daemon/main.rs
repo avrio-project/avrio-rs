@@ -41,7 +41,7 @@ pub fn safe_exit() {
     // TODO: save mempool to disk + send kill to all threads.
 
     info!("Goodbye!");
-    avrio_p2p::core::close_all();
+    let _ = avrio_p2p::core::close_all();
     avrio_database::close_flush_stream();
     std::process::exit(0);
 }
