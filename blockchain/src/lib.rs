@@ -1405,6 +1405,11 @@ pub fn check_block_old(blk: Block) -> std::result::Result<(), BlockValidationErr
         Err(BlockValidationErrors::BlockExists) // this block already exists
     }
 }
+pub fn from_compact(encoded: String) -> Result<Block, Box<dyn std::error::Error>> {
+    let mut ret = Block::default();
+    ret.decode_compressed(encoded)?;
+    Ok(ret)
+}
 
 //todo write commentaion/docs for tests
 pub mod encode;
@@ -1491,10 +1496,5 @@ mod tests {
             println!("read block: {}", block_read.hash);
             assert_eq!(block_read, block_clone);
         }
-    }
-    pub fn from_compact(encoded: String) -> Result<Block, Box<dyn std::error::Error>> {
-        let mut ret = Block::default();
-        ret.decode_compressed(encoded)?;
-        Ok(ret)
     }
 }
