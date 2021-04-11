@@ -395,7 +395,12 @@ pub fn get_block_from_raw(hash: String) -> Block {
     if let Ok(mut file) = try_open {
         let mut contents = String::new();
         file.read_to_string(&mut contents).unwrap();
-        serde_json::from_str(&contents).unwrap_or_default()
+        let mut ret = Block::default();
+        if let Ok(_) = ret.decode_compressed(contents) {
+            return ret;
+        } else {
+            return Block::default();
+        }
     } else {
         trace!(
             "Opening raw block file (hash={}) failed. Reason={}",
@@ -409,7 +414,7 @@ pub fn get_block_from_raw(hash: String) -> Block {
 /// formats the block into a .dat file and saves it under block-hash.dat
 pub fn save_block(block: Block) -> std::result::Result<(), Box<dyn std::error::Error>> {
     trace!("Saving block with hash: {}", block.hash);
-    let encoded: Vec<u8> = serde_json::to_string(&block)?.as_bytes().to_vec();
+    let encoded: Vec<u8> = block.encode_compressed().as_bytes().to_vec();
     let mut file = File::create(config().db_path + "/blocks/blk-" + &block.hash + ".dat")?;
     file.write_all(&encoded)?;
     trace!("Saved Block");
@@ -1402,8 +1407,8 @@ pub fn check_block_old(blk: Block) -> std::result::Result<(), BlockValidationErr
 }
 
 //todo write commentaion/docs for tests
-pub mod genesis;
 pub mod encode;
+pub mod genesis;
 #[cfg(test)]
 mod tests {
     use crate::rand::Rng;
