@@ -1,14 +1,16 @@
 use crate::{
     io::{read, send},
-    peer::add_peer,
+    peer::{add_peer, get_peers_addr, lock, remove_peer},
 };
 extern crate rand;
 extern crate x25519_dalek;
-
 use crate::peer::in_peers;
 use avrio_config::config;
 use std::time::Duration;
-use std::{convert::TryInto, net::SocketAddr};
+use std::{
+    convert::TryInto,
+    net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr},
+};
 use x25519_dalek::EphemeralSecret;
 use x25519_dalek::PublicKey;
 fn from_slice(bytes: &[u8]) -> [u8; 32] {
@@ -151,6 +153,27 @@ pub fn rec_server(address: &str) -> Result<(), Box<dyn std::error::Error>> {
     p2p_server.launch()
 }
 
-pub fn close_all() {}
+pub fn close_all() -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Closing all tcp streams");
+    for addr in &get_peers_addr()? {
+        let _ = close(addr)?;
+    }
+    Ok(())
+}
 
-pub fn close(_peer: std::net::SocketAddr) {}
+pub fn close(peer: &std::net::SocketAddr) -> Result<(), Box<dyn std::error::Error>>{
+    if let Ok(mut stream) = lock(peer, 10000) {
+        log::info!(
+            "Disconnected from peer {}",
+            stream
+                .peer_addr()?,
+        );
+        let _ = send("".to_string(), &mut stream, 0xff, true, None);
+        std::thread::sleep(Duration::from_micros(1000));
+        let _ = remove_peer(stream.peer_addr()?, true);
+        let _ = remove_peer(stream.peer_addr()?, false);
+        let _ = stream.shutdown(Shutdown::Both);
+        
+    }
+    Ok(())
+}
