@@ -249,6 +249,7 @@ impl P2pServer {
                                                         let _ = crate::handle::launch_handle_client(
                                                             rx,
                                                             &mut stream.try_clone().unwrap(),
+                                                            true
                                                         );
                                                     });
                                                 }

@@ -119,7 +119,7 @@ pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::er
                         e
                     );
                     return Err("failed to add peer to peer list".into());
-                } else if let Err(e) = crate::handle::launch_handle_client(rx, &mut a) {
+                } else if let Err(e) = crate::handle::launch_handle_client(rx, &mut a, true) {
                     log::error!("Failed to launch peer handler stream, gave error: {}", e);
                 }
                 Ok(a)
