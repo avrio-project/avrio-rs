@@ -1,9 +1,10 @@
-use crate::format::P2pData;
-use crate::io::{peek, read, send};
+use crate::{format::P2pData,io::{peek, read, send}, peer::remove_peer};
 
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown, TcpStream},
     time::{Duration, SystemTime},
+    sync::Mutex,
+    thread
 };
 
 use avrio_blockchain::{get_block, get_block_from_raw, Block, from_compact};
@@ -12,8 +13,6 @@ use avrio_database::{get_data, open_database};
 use avrio_rpc::block_announce;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
-use std::net::{Shutdown, TcpStream};
-use std::sync::Mutex;
 extern crate rand;
 extern crate x25519_dalek;
 
@@ -81,13 +80,18 @@ fn deincrement_sync_count() -> Result<(), Box<dyn std::error::Error>> {
 pub fn launch_handle_client(
     rx: std::sync::mpsc::Receiver<String>,
     stream: &mut TcpStream,
+    incoming: bool
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = stream.try_clone()?;
-    let mut last_ping_time = SystemTime::now();
-    let mut ping_nonce = 0;
+    
     let _handler: std::thread::JoinHandle<Result<(), &'static str>> = std::thread::spawn(
         move || {
+            let mut ping_nonce = 0;
             let mut paused = false;
+            if !incoming {
+                thread::sleep(Duration::from_millis(2000));
+            }
+            let mut last_ping_time = SystemTime::now();
             loop {
                 if let Ok(msg) = rx.try_recv() {
                     log::debug!("Read msg={}", msg);
@@ -165,6 +169,13 @@ pub fn launch_handle_client(
                                                 tries += 1;
                                                 if tries == MAX_TRIES {
                                                     // close the stream
+                                                    info!("Disconnected to peer {}, {} incorrect responses to PONG", stream.peer_addr()
+                                                        .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)), MAX_TRIES
+                                                    );
+                                                    let _ = send("".to_string(), &mut stream, 0xff, true, None);
+                                                    thread::sleep(Duration::from_micros(1000));
+                                                    let _ = remove_peer(stream.peer_addr().unwrap(), true);
+                                                    let _ = remove_peer(stream.peer_addr().unwrap(), false);
                                                     let _ = stream.shutdown(Shutdown::Both);
                                                     return Err("Incorrect pong response");
                                                 } else {
@@ -184,6 +195,10 @@ pub fn launch_handle_client(
                                         Err(e) => {
                                             error!("Got error while trying to read pong message for peer, error={}", e);
                                             // close the stream
+                                            let _ = send("".to_string(), &mut stream, 0xff, true, None);
+                                            thread::sleep(Duration::from_micros(1000));
+                                            let _ = remove_peer(stream.peer_addr().unwrap(), true);
+                                            let _ = remove_peer(stream.peer_addr().unwrap(), false);
                                             let _ = stream.shutdown(Shutdown::Both);
                                             return Err("Failed to read pong message");
                                         }
@@ -193,6 +208,10 @@ pub fn launch_handle_client(
                             Err(e) => {
                                 error!("Failed to send ping message to peer, gave error={}", e);
                                 // close the stream
+                                let _ = send("".to_string(), &mut stream, 0xff, true, None);
+                                thread::sleep(Duration::from_micros(1000));
+                                let _ = remove_peer(stream.peer_addr().unwrap(), true);
+                                let _ = remove_peer(stream.peer_addr().unwrap(), false);
                                 let _ = stream.shutdown(Shutdown::Both);
                                 return Err("Failed to send ping message");
                             }
@@ -237,6 +256,17 @@ pub fn process_handle_msg(
             debug!("Got ping message from peer");
             *last_ping_time = SystemTime::now();
             let _= send(read_msg.message, stream, 0x02, true, None);
+        }
+        0x0f => {
+            // shutdown
+            info!("Disconnected to peer {}, connection closed by peer", stream.peer_addr()
+                .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0))
+            );
+            let _ = remove_peer(stream.peer_addr().unwrap(), true);
+            let _ = remove_peer(stream.peer_addr().unwrap(), false);
+            thread::sleep(Duration::from_micros(1000));
+            let _ = stream.shutdown(Shutdown::Both);
+            return Some("closed by peer".into());
         }
         // sync req message
         0x22 => {
