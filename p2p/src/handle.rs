@@ -257,7 +257,7 @@ pub fn process_handle_msg(
             *last_ping_time = SystemTime::now();
             let _= send(read_msg.message, stream, 0x02, true, None);
         }
-        0x0f => {
+        0xff => {
             // shutdown
             info!("Disconnected to peer {}, connection closed by peer", stream.peer_addr()
                 .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0))
