@@ -111,6 +111,7 @@ pub fn peer_announce(peer: String) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn launch_client(
+    server_ip: String,
     server_port: u64,
     services: Vec<String>,
     mut caller: Caller<'static>,
@@ -119,7 +120,7 @@ pub fn launch_client(
         "Launching RPC server client, connecting to server on port={}",
         server_port
     );
-    if let Ok(mut stream) = TcpStream::connect(format!("127.0.0.1:{}", server_port)) {
+    if let Ok(mut stream) = TcpStream::connect(format!("{}:{}", server_ip, server_port)) {
         if let Ok(_) = stream.write(b"init") {
             debug!("Sent init message to server");
             let mut buf = [0u8; 1024];
