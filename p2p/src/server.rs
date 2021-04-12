@@ -218,41 +218,19 @@ impl P2pServer {
                                                     stream.peer_addr().unwrap()
                                                 );
 
-                                                let _ = avrio_database::add_peer(
-                                                    stream.peer_addr().unwrap(),
+                                                // connection succeeded
+                                                let (tx, rx) = std::sync::mpsc::channel();
+                                                let _ = add_peer(
+                                                    stream.try_clone().unwrap(),
+                                                    false,
+                                                    hex::encode(key.as_bytes()),
+                                                    &tx,
                                                 );
-
-                                                if let Err(e) = avrio_database::add_peer(
-                                                    stream.peer_addr().unwrap(),
-                                                ) {
-                                                    log::error!(
-                                                        "Failed to add peer: {} to peer list, gave error: {}",
-                                                        stream.peer_addr().unwrap(),
-                                                        e
-                                                    );
-
-                                                    drop(listener);
-
-                                                    return Err(
-                                                        "failed to add peer to peerlist".into()
-                                                    );
-                                                } else {
-                                                    std::thread::spawn(move || {
-                                                        // connection succeeded
-                                                        let (tx, rx) = std::sync::mpsc::channel();
-                                                        let _ = add_peer(
-                                                            stream.try_clone().unwrap(),
-                                                            false,
-                                                            hex::encode(key.as_bytes()),
-                                                            &tx,
-                                                        );
-                                                        let _ = crate::handle::launch_handle_client(
-                                                            rx,
-                                                            &mut stream.try_clone().unwrap(),
-                                                            true
-                                                        );
-                                                    });
-                                                }
+                                                let _ = crate::handle::launch_handle_client(
+                                                    rx,
+                                                    &mut stream,
+                                                    true,
+                                                );
                                             }
                                         } else {
                                             // WE did not understand that key - send rej (reject)
