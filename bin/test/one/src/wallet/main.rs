@@ -1074,6 +1074,7 @@ async fn main() {
                                             {
                                                 error!("Insufficent balance");
                                             } else {
+                                                let mut height_delta = 0;
                                                 for number in 0..amount {
                                                     // make a new block
                                                     let mut txns: Vec<Transaction> = vec![];
@@ -1113,7 +1114,7 @@ async fn main() {
                                                                 .await
                                                             {
                                                                 txn.nonce = transactioncount
-                                                                    .transaction_count;
+                                                                    .transaction_count + (txn_per_block * height_delta);
                                                                 txn.hash();
                                                                 let _ = txn.sign(&wall.private_key);
                                                                 txns.push(txn);
@@ -1139,7 +1140,7 @@ async fn main() {
                                                             response.json::<Blockcount>().await
                                                         {
                                                             let height =
-                                                                response_decoded.blockcount;
+                                                                response_decoded.blockcount + height_delta;
                                                             let request_url =
                                                                 format!(
                                                             "{}/api/v1/hash_at_height/{}/{}",
@@ -1239,7 +1240,8 @@ async fn main() {
                                                             }
                                                         }
                                                     }
-                                                    info!("Created blocks");
+                                                    info!("Created block {}/{} (containing {} txns)", height_delta, amount, txn_per_block);
+                                                    height_delta += 1;
                                                 }
                                                 // now send all blocks
                                                 if !failed {
