@@ -166,7 +166,7 @@ pub fn launch_handle_client(
                     if peer_syncing(&stream.peer_addr().unwrap()).unwrap_or(true) {
                         debug!("Aborting ping message: reason=Peer Syncing");
                     } else {
-                        match send(ping_nonce.to_string(), &mut stream, 0x01, true, None) {
+                        match send(ping_nonce.to_string(), &mut stream, 0x91, true, None) {
                             Ok(_) => {
                                 debug!("Sent ping message to peer, waiting for pong");
                                 let mut tries = 0;
