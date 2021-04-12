@@ -1114,7 +1114,9 @@ async fn main() {
                                                                 .await
                                                             {
                                                                 txn.nonce = transactioncount
-                                                                    .transaction_count + (txn_per_block * height_delta);
+                                                                    .transaction_count
+                                                                    + (txn_per_block
+                                                                        * height_delta);
                                                                 txn.hash();
                                                                 let _ = txn.sign(&wall.private_key);
                                                                 txns.push(txn);
@@ -1139,8 +1141,9 @@ async fn main() {
                                                         if let Ok(response_decoded) =
                                                             response.json::<Blockcount>().await
                                                         {
-                                                            let height =
-                                                                response_decoded.blockcount + height_delta;
+                                                            let height = response_decoded
+                                                                .blockcount
+                                                                + height_delta;
                                                             let request_url =
                                                                 format!(
                                                             "{}/api/v1/hash_at_height/{}/{}",
@@ -1240,7 +1243,10 @@ async fn main() {
                                                             }
                                                         }
                                                     }
-                                                    info!("Created block {}/{} (containing {} txns)", height_delta, amount, txn_per_block);
+                                                    info!(
+                                                        "Created block {}/{} (containing {} txns)",
+                                                        height_delta, amount, txn_per_block
+                                                    );
                                                     height_delta += 1;
                                                 }
                                                 // now send all blocks
