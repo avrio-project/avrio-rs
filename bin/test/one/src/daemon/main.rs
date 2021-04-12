@@ -11,7 +11,7 @@ use std::process;
 pub extern crate avrio_config;
 use avrio_config::config;
 use std::net::{SocketAddr, TcpStream};
-
+use std::sync::Mutex;
 extern crate avrio_core;
 
 use avrio_p2p::{
@@ -23,7 +23,7 @@ use avrio_blockchain::{genesis::genesis_blocks, *};
 
 extern crate avrio_database;
 use avrio_database::{get_data, get_peerlist};
-
+use avrio_node::mempool::Mempool;
 #[macro_use]
 extern crate log;
 
@@ -35,14 +35,24 @@ extern crate avrio_crypto;
 use avrio_crypto::Wallet;
 use fern::colors::{Color, ColoredLevelConfig};
 
+use lazy_static::lazy_static;
 use text_io::read;
 
+lazy_static! {
+    static ref MEMPOOL: Mutex<Option<Mempool>> = Mutex::new(None);
+}
 pub fn safe_exit() {
     // TODO: save mempool to disk + send kill to all threads.
 
     info!("Goodbye!");
     let _ = avrio_p2p::core::close_all();
     avrio_database::close_flush_stream();
+    (*(MEMPOOL.lock().unwrap()))
+        .as_ref()
+        .unwrap()
+        .shutdown()
+        .unwrap();
+    *(MEMPOOL.lock().unwrap()) = None;
     std::process::exit(0);
 }
 fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
@@ -289,6 +299,15 @@ fn main() {
         start_server();
     });
     let synced: bool;
+    info!("Starting mempool");
+    let mut mempool = Mempool::new(vec![]);
+    if let Err(e) = mempool.init() {
+        error!("Failed to initalise mempool, gave error={}", e);
+        std::process::exit(0);
+    }
+    let _ = mempool.load_from_disk(&(config().db_path + "/mempool")); // is allowed to fail
+    let _ = mempool.save_to_disk(&(config().db_path + "/mempool")); // create files
+    *(MEMPOOL.lock().unwrap()) = Some(mempool);
     info!("Avrio Daemon successfully launched");
     let mut statedigest = get_data(config().db_path + &"/chaindigest".to_owned(), "master");
     if statedigest == *"-1" {
