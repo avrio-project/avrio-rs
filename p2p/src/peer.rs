@@ -99,19 +99,27 @@ pub fn remove_peer(peer: SocketAddr, is_incoming: bool) -> Result<(), Box<dyn Er
     if is_incoming {
         let mut new_incoming: Vec<TcpStream> = vec![];
         for incoming in &(*INCOMING.lock()?) {
-            if strip_port(&incoming.peer_addr().unwrap()) != strip_port(&peer) {
-                let stream = incoming.try_clone()?;
-                new_incoming.push(stream);
-            }
+            if let Ok(trying_peer_addr) = &incoming.peer_addr() {
+                if strip_port(trying_peer_addr) != strip_port(&peer) {
+                    let stream = incoming.try_clone()?;
+                    new_incoming.push(stream);
+                }
+            } // if we failed to get the addr of the stream, assume it is disconnected and remove (eg dont add it) it as well
         }
+        // now set the INCOMING to the new_incoming vec
+        *INCOMING.lock()? = new_incoming;
     } else {
         let mut new_outgoing: Vec<TcpStream> = vec![];
         for outgoing in &(*OUTGOING.lock()?) {
-            if strip_port(&outgoing.peer_addr().unwrap()) != strip_port(&peer) {
-                let stream = outgoing.try_clone()?;
-                new_outgoing.push(stream);
-            }
+            if let Ok(trying_peer_addr) = &outgoing.peer_addr() {
+                if strip_port(trying_peer_addr) != strip_port(&peer) {
+                    let stream = outgoing.try_clone()?;
+                    new_outgoing.push(stream);
+                }
+            } // if we failed to get the addr of the stream, assume it is disconnected and remove (eg dont add it) it as well
         }
+        // now set the OUTGOING to the new_outgoing vec
+        *OUTGOING.lock()? = new_outgoing;
     }
     Ok(())
 }
