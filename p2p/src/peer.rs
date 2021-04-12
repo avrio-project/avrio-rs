@@ -45,12 +45,14 @@ pub fn get_peers_addr() -> Result<Vec<SocketAddr>, Box<dyn Error>> {
     for peer in iter {
         peers.push(peer.peer_addr()?)
     }
+    log::trace!("Added all incoming peers to vec");
     let val = OUTGOING.lock()?;
+    log::trace!("Got lock on outgoing peers");
     let iter = val.iter();
-
     for peer in iter {
         peers.push(peer.peer_addr()?)
     }
+    log::trace!("Added all outgoing peers to vec");
 
     Ok(peers)
 }
