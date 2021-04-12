@@ -115,8 +115,10 @@ impl P2pServer {
                                 });
                                 if let Ok(in_peers) = crate::peer::in_peers(&addr) {
                                     if in_peers {
-                                        log::debug!("Peer in peer list, removing");
+                                        log::debug!("Peer {} in peer list, removing", addr);
                                         remove_peer(addr, true)?;
+                                    } else {
+                                        log::debug!("Peer {} not in peer list", addr);
                                     }
                                     let mut local_cspring = rand::rngs::OsRng;
                                     let local_sec = EphemeralSecret::new(&mut local_cspring);
