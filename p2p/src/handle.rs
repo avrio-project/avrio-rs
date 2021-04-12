@@ -132,6 +132,7 @@ pub fn launch_handle_client(
                             if process_handle_msg(read_msg, &mut stream, &mut last_ping_time)
                                 .is_some()
                             {
+                                debug!("Got some while handling peer, returning");
                                 return Ok(());
                             }
                         }
@@ -164,12 +165,12 @@ pub fn launch_handle_client(
                                     match read(&mut stream, Some(10000), None) {
                                         Ok(pong) => {
                                             if pong.message != ping_nonce.to_string()
-                                                || pong.message_type != 0x02
+                                                || pong.message_type != 0x92
                                             {
                                                 tries += 1;
                                                 if tries == MAX_TRIES {
                                                     // close the stream
-                                                    info!("Disconnected to peer {}, {} incorrect responses to PONG", stream.peer_addr()
+                                                    info!("Disonnected to peer {}, {} incorrect responses to PONG", stream.peer_addr()
                                                         .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)), MAX_TRIES
                                                     );
                                                     let _ = send("".to_string(), &mut stream, 0xff, true, None);
@@ -228,6 +229,7 @@ pub fn launch_handle_client(
                         if process_handle_msg(msg_to_proc, &mut stream, &mut last_ping_time)
                             .is_some()
                         {
+                            debug!("Got some while handling peer, returning");
                             return Ok(());
                         }
                     }
@@ -252,10 +254,10 @@ pub fn process_handle_msg(
             );
         }
         // ping 
-        0x01 => {
+        0x91 => {
             debug!("Got ping message from peer");
             *last_ping_time = SystemTime::now();
-            let _= send(read_msg.message, stream, 0x02, true, None);
+            let _= send(read_msg.message, stream, 0x92, true, None);
         }
         0xff => {
             // shutdown
