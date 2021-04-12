@@ -1239,42 +1239,46 @@ async fn main() {
                                                             }
                                                         }
                                                     }
-                                                    if !failed {
-                                                        // now transmit all blocks to node
-                                                        for block in &blocks {
-                                                            if let Ok(block_json) =
-                                                                serde_json::to_string(block)
+                                                    info!("Created blocks");
+                                                }
+                                                // now send all blocks
+                                                if !failed {
+                                                    // now transmit all blocks to node
+                                                    for block in &blocks {
+                                                        let try_to_string =
+                                                            serde_json::to_string(block);
+                                                        if let Ok(block_json) = try_to_string {
+                                                            let request_url = SERVER_ADDR
+                                                                .lock()
+                                                                .unwrap()
+                                                                .to_owned()
+                                                                + "/api/v1/submit_block";
+                                                            if let Ok(response) = Client::new()
+                                                                .post(request_url)
+                                                                .json(&block_json)
+                                                                .send()
+                                                                .await
                                                             {
-                                                                let request_url = SERVER_ADDR
-                                                                    .lock()
-                                                                    .unwrap()
-                                                                    .to_owned()
-                                                                    + "/api/v1/submit_block";
-                                                                if let Ok(response) = Client::new()
-                                                                    .post(request_url)
-                                                                    .json(&block_json)
-                                                                    .send()
-                                                                    .await
+                                                                if let Ok(response_string) =
+                                                                    response.text().await
                                                                 {
-                                                                    if let Ok(response_string) =
-                                                                        response.text().await
+                                                                    if response_string
+                                                                        .contains("error")
                                                                     {
-                                                                        if response_string
-                                                                            .contains("error")
-                                                                        {
-                                                                            error!("Failed to submit block, response={}", response_string);
-                                                                        } else {
-                                                                            debug!(
+                                                                        error!("Failed to submit block, response={}", response_string);
+                                                                    } else {
+                                                                        debug!(
                                                                             "Submit response={}",
                                                                             response_string
                                                                         );
-                                                                        }
                                                                     }
                                                                 }
                                                             }
+                                                        } else {
+                                                            error!("Failed to turn block to json, gave error: {}", try_to_string.unwrap_err());
                                                         }
-                                                        info!("Sent all blocks to node");
                                                     }
+                                                    info!("Sent all blocks to node");
                                                 }
                                             }
                                         }
