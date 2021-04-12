@@ -39,6 +39,7 @@ pub fn get_peers() -> Result<Vec<TcpStream>, Box<dyn Error>> {
 pub fn get_peers_addr() -> Result<Vec<SocketAddr>, Box<dyn Error>> {
     let mut peers: Vec<SocketAddr> = vec![];
     let val = INCOMING.lock()?;
+    log::trace!("Got lock on incoming peers");
     let iter = val.iter();
 
     for peer in iter {
