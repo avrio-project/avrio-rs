@@ -25,6 +25,7 @@ avrio_config = { path = "../../../config" }
 avrio_blockchain = { path = "../../../blockchain" }
 avrio_p2p = { path = "../../../p2p" }
 avrio_crypto = { path = "../../../crypto" }
+avrio_node = { path = "../../../node" }
 clap = "2.33.0"
 ring = "0.16.11"
 serde_json = "1"
@@ -43,4 +44,3 @@ reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 rpassword = "5.0"
 rocket = { version = "0.4.7", default-features = true }
-
