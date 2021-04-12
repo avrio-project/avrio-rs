@@ -1229,7 +1229,8 @@ async fn main() {
                                                                             // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
                                                                             let mut proccessed_accs: Vec<String> =
                                                                 vec![];
-
+                                                                            top_block_hash =
+                                                                                blk.hash.clone();
                                                                             for txn in &blk.txns {
                                                                                 if !proccessed_accs
                                                                                 .contains(
