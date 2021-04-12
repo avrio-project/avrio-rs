@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 extern crate avrio_blockchain;
-use avrio_blockchain::Block;
+use avrio_blockchain::{Block, BlockType};
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,6 +9,7 @@ use std::thread::JoinHandle;
 use std::time::SystemTime;
 extern crate avrio_config;
 use avrio_config::config;
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -26,7 +27,7 @@ enum MempoolState {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Mempool {
+pub struct Mempool {
     blocks: HashMap<String, (Block, SystemTime)>,
     #[serde(skip)]
     init: MempoolState,
@@ -215,25 +216,46 @@ impl Mempool {
         let now = SystemTime::now();
         let mut map = MEMPOOL.lock()?;
         let mut to_remove: Vec<(String, String)> = vec![];
-        for (k, v) in map.iter_mut() {
-            if avrio_blockchain::check_block(v.0.clone()).is_ok() {
-                let e_res = avrio_blockchain::save_block(v.0.clone());
-                if e_res.is_ok() {
-                    if let Err(enact_res) = avrio_blockchain::enact_block(v.0.clone()) {
+        let mut blocks_to_check: HashMap<String, ()> = HashMap::new(); // Contains the list of hashes of send blocks that now have at least one corrosponding recieve block
+        for (k, v) in map.iter() {
+            if v.0.block_type == BlockType::Recieve {
+                if !blocks_to_check.contains_key(v.0.send_block.as_ref().unwrap()) {
+                    // add this block and to the hashmap of send block hashes that can be enacted
+                    blocks_to_check.insert(v.0.send_block.as_ref().unwrap().to_owned(), ());
+                    blocks_to_check.insert(v.0.hash.to_owned(), ());
+                }
+            }
+            if now.duration_since(v.1)?.as_millis() as u64 >= MEMPOOL_ENTRY_EXPIREY_TIME {
+                to_remove.push((k.clone(), "timed out".to_owned()));
+            }
+        }
+        for (k, _) in blocks_to_check.iter() {
+            if map.contains_key(k) {
+                let block = map[k].0.clone();
+                let check_result = avrio_blockchain::check_block(block.clone());
+                if check_result.is_ok() {
+                    let e_res = avrio_blockchain::save_block(block.clone());
+                    if e_res.is_ok() {
+                        if let Err(enact_res) = avrio_blockchain::enact_block(block) {
+                            error!(
+                                "Failed to enact saved & valid block from mempool. Gave error: {}",
+                                enact_res
+                            );
+                        }
+                    } else {
                         error!(
-                            "Failed to enact saved & valid block from mempool. Gave error: {}",
-                            enact_res
+                            "Failed to save validated block from mempool. Gave error: {}",
+                            e_res.unwrap_err()
                         );
                     }
+                    to_remove.push((k.clone(), "enacted".to_owned()));
                 } else {
-                    error!(
-                        "Failed to save validated block from mempool. Gave error: {}",
-                        e_res.unwrap_err()
+                    log::debug!(
+                        "Block {} in block_to_check invalid, reason={:?}",
+                        k,
+                        check_result.unwrap_err()
                     );
                 }
-                to_remove.push((k.clone(), "enacted".to_owned()));
-            } else if now.duration_since(v.1)?.as_millis() as u64 >= MEMPOOL_ENTRY_EXPIREY_TIME {
-                to_remove.push((k.clone(), "timed out".to_owned()));
             }
         }
         let set: std::collections::HashSet<_> = to_remove.drain(..).collect(); // dedup
@@ -246,7 +268,7 @@ impl Mempool {
         Ok(())
     }
 
-    pub fn shutdown(self) -> Result<(), Box<(dyn std::error::Error)>> {
+    pub fn shutdown(&self) -> Result<(), Box<(dyn std::error::Error)>> {
         if self.init != MempoolState::Initialized {
             return Err("mempool not initalised".into());
         } else {
