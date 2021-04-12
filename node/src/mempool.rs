@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{net::SocketAddr, sync::Mutex};
 extern crate avrio_blockchain;
 use avrio_blockchain::{Block, BlockType};
 use log::{error, info, trace};
@@ -35,9 +35,19 @@ pub struct Mempool {
     #[serde(skip)]
     purge_stream: Option<mpsc::Sender<String>>,
 }
+pub struct Caller {
+    pub callback: Box<dyn Fn(SocketAddr, Block) + Send>,
+    pub rec_from: SocketAddr,
+}
+
+impl Caller {
+    pub fn call(&self, blk: Block) {
+        (self.callback)(self.rec_from, blk)
+    }
+}
 
 lazy_static! {
-    pub static ref MEMPOOL: Mutex<HashMap<String, (Block, SystemTime)>> =
+    pub static ref MEMPOOL: Mutex<HashMap<String, (Block, SystemTime, Option<Caller>)>> =
         Mutex::new(HashMap::new());
 }
 
@@ -58,13 +68,16 @@ impl Default for MempoolState {
     }
 }
 
-pub fn add_block(blk: &Block) -> Result<(), Box<dyn std::error::Error>> {
+pub fn add_block(blk: &Block, callback: Caller) -> Result<(), Box<dyn std::error::Error>> {
     let mut map = MEMPOOL.lock()?;
     if map.contains_key(&blk.hash) {
         Err("block already in mempool".into())
     } else {
         if !map.contains_key(&blk.hash) {
-            map.insert(blk.hash.clone(), (blk.clone(), SystemTime::now()));
+            map.insert(
+                blk.hash.clone(),
+                (blk.clone(), SystemTime::now(), Some(callback)),
+            );
         }
         Ok(())
     }
@@ -81,7 +94,7 @@ pub fn remove_block(hash: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn get_block(hash: &str) -> Result<Block, Box<dyn std::error::Error>> {
     let map = MEMPOOL.lock()?;
-    for (b, _) in map.values() {
+    for (b, _, _) in map.values() {
         if b.hash == hash {
             return Ok(b.clone());
         }
@@ -104,11 +117,18 @@ impl Mempool {
         mem
     }
     pub fn load(&self) -> Result<(), Box<dyn std::error::Error>> {
-        *MEMPOOL.lock()? = self.blocks.clone();
+        let mut to_set: HashMap<String, (Block, SystemTime, Option<Caller>)> = HashMap::new();
+        for (key, (block, time)) in self.blocks.clone().iter() {
+            to_set.insert(key.clone(), (block.clone(), time.clone(), None));
+        }
+        *MEMPOOL.lock()? = to_set;
         Ok(())
     }
     pub fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.blocks = MEMPOOL.lock()?.clone();
+        for (key, (block, time, _)) in MEMPOOL.lock()?.iter() {
+            self.blocks
+                .insert(key.clone(), (block.clone(), time.clone()));
+        }
         Ok(())
     }
     pub fn purge_worker(
@@ -175,7 +195,11 @@ impl Mempool {
         Ok(res)
     }
 
-    pub fn add_block(&mut self, blk: &Block) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn add_block(
+        &mut self,
+        blk: &Block,
+        caller: Caller,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if self.init != MempoolState::Initialized {
             return Err("mempool not initalised".into());
         }
@@ -183,7 +207,10 @@ impl Mempool {
         if map.contains_key(&blk.hash) {
             Err("block already in mempool".into())
         } else {
-            map.insert(blk.hash.clone(), (blk.clone(), SystemTime::now()));
+            map.insert(
+                blk.hash.clone(),
+                (blk.clone(), SystemTime::now(), Some(caller)),
+            );
             if !self.blocks.contains_key(&blk.hash) {
                 self.blocks
                     .insert(blk.hash.clone(), (blk.clone(), SystemTime::now()));
@@ -235,7 +262,7 @@ impl Mempool {
                 if check_result.is_ok() {
                     let e_res = avrio_blockchain::save_block(block.clone());
                     if e_res.is_ok() {
-                        if let Err(enact_res) = avrio_blockchain::enact_block(block) {
+                        if let Err(enact_res) = avrio_blockchain::enact_block(block.clone()) {
                             error!(
                                 "Failed to enact saved & valid block from mempool. Gave error: {}",
                                 enact_res
@@ -248,6 +275,9 @@ impl Mempool {
                         );
                     }
                     to_remove.push((k.clone(), "enacted".to_owned()));
+                    if let Some(callback) = &map[k].2 {
+                        callback.call(block);
+                    }
                 } else {
                     log::debug!(
                         "Block {} in block_to_check invalid, reason={:?}",
