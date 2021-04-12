@@ -13,8 +13,18 @@ use avrio_database::{get_data, open_database};
 use avrio_rpc::block_announce;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
+use avrio_node::mempool::{add_block, Caller};
 extern crate rand;
 extern crate x25519_dalek;
+
+pub fn block_enacted_callback(rec_from: SocketAddr, block: Block) {
+    let _ = block_announce(block.clone());
+    let _ = crate::helper::prop_block_with_ignore(
+    &block, 
+    &rec_from
+    );
+                        
+}
 
 lazy_static! {
     static ref SYNCING_PEERS: Mutex<(u64, Vec<String>)> = Mutex::new((0, vec![]));
@@ -323,7 +333,7 @@ pub fn process_handle_msg(
                 info!("Peer (failed to get addr) accepted our block {}", read_msg.message);
             }
         }
-        0x0c => { // peer accepted our block
+        0x0c => { // peer rejected our block
             if let Ok(addr) =  stream.peer_addr() {
                 debug!("Peer={} rejected our block, reason={}", addr, read_msg.message);
             } else {
@@ -332,7 +342,7 @@ pub fn process_handle_msg(
         }
         0x04 => {
             // the peer just sent us a block,
-            // validate it, save it an enact it
+            // add it to the mempool
             log::trace!("Got block from peer");
             let block: avrio_blockchain::Block = from_compact(read_msg.message).unwrap_or_default();
             if block.is_default() {
@@ -348,83 +358,12 @@ pub fn process_handle_msg(
                     None,
                 );
                 
-            } else if let Err(e) = avrio_blockchain::check_block(block.clone()) {
-                    let curr_invalid_block_count =
-                        crate::peer::get_invalid_block_count(
-                            &stream.peer_addr().unwrap_or_else(|_| SocketAddr::new(
-                                IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                                0,
-                            )),
-                        )
-                        .unwrap_or_default();
-                    let _ = crate::peer::set_invalid_block_count(
-                        &stream.peer_addr().unwrap_or_else(|_| SocketAddr::new(
-                            IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                            0,
-                        )),
-                        curr_invalid_block_count + 1,
-                    );
-                    log::debug!("Got invalid block from peer. New invalid block count: {}. Invalid because: {:?}", curr_invalid_block_count +1, e);
-                    if curr_invalid_block_count + 1 > 10 {
-                        // close the stream
-
-                    }
-                } else if let Err(e) = avrio_blockchain::save_block(block.clone()) {
-                        log::debug!("Saving block gave error: {}", e);
-                        let _ = send(
-                            "sbf".to_owned(),
-                            stream,
-                            0x0c,
-                            true,
-                            None,
-                        );
-                    } else {
-                        let enact_err_holder;
-                        if block.block_type == avrio_blockchain::BlockType::Send {
-                            enact_err_holder = avrio_blockchain::enact_send(block.clone());
-                        } else {
-                            enact_err_holder = avrio_blockchain::enact_block(block.clone());
-                        }
-                        if let Err(e) = enact_err_holder
-                        {
-                            log::error!("Enacting block gave error: {}", e);
-                            log::warn!("This could cause undefined behavour. Please consider restarting with --re-enact-from {}", block.header.prev_hash);
-                            log::error!("Please subbmit the following bug report to the developers:");
-                            println!("------ Error Report Begin -----");
-                            println!(
-                                "Failed to enact block {} due to error: {}",
-                                block.hash, e
-                            );
-                            println!("Block dump: {:#?}", block);
-                            println!("------ Error Report End -----");
-                            let _ = send(
-                                "ebf".to_owned(),
-                                stream,
-                                0x0c,
-                                true,
-                                None,
-                            );
-                            log::error!("");
-                        } else {
-                            log::debug!("Recieved and processed block from peer, sending block ack and propigating");
-                            let _ = block_announce(block.clone());
-                            let _ = crate::helper::prop_block_with_ignore(
-                                &block, 
-                                &stream.peer_addr()
-                                .unwrap_or(
-                                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
-                                )
-                            );
-                            let _ = send(
-                                block.hash,
-                                stream,
-                                0x0b,
-                                true,
-                                None,
-                            );
-                        }
-                    }
-                
+            }
+            let callback_struct = Caller {
+                callback: Box::new(block_enacted_callback),
+                rec_from: stream.peer_addr().unwrap()
+            };
+            add_block(&block, callback_struct);   
             
         }
         0x60 => {
