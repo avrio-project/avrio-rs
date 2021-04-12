@@ -165,12 +165,13 @@ pub fn launch_handle_client(
                     );
                     if peer_syncing(&stream.peer_addr().unwrap()).unwrap_or(true) {
                         debug!("Aborting ping message: reason=Peer Syncing");
+                        last_ping_time = SystemTime::now();
                     } else {
                         match send(ping_nonce.to_string(), &mut stream, 0x91, true, None) {
                             Ok(_) => {
                                 debug!("Sent ping message to peer, waiting for pong");
                                 let mut tries = 0;
-                                const MAX_TRIES: i32 = 3;
+                                const MAX_TRIES: i32 = 5;
                                 loop {
                                     match read(&mut stream, Some(10000), None) {
                                         Ok(pong) => {
@@ -363,7 +364,7 @@ pub fn process_handle_msg(
                 callback: Box::new(block_enacted_callback),
                 rec_from: stream.peer_addr().unwrap()
             };
-            add_block(&block, callback_struct);   
+            let _ = add_block(&block, callback_struct);   
             
         }
         0x60 => {
