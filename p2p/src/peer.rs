@@ -43,6 +43,7 @@ pub fn get_peers_addr() -> Result<Vec<SocketAddr>, Box<dyn Error>> {
     let iter = val.iter();
 
     for peer in iter {
+        log::trace!("peer: {:?}", peer);
         peers.push(peer.peer_addr()?)
     }
     log::trace!("Added all incoming peers to vec");
