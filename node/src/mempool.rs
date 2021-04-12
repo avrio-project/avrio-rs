@@ -16,8 +16,8 @@ use std::io::prelude::*;
 /// The time a block can be in the mempool before being removed
 const MEMPOOL_ENTRY_EXPIREY_TIME: u64 = (3 * 60) * 1000; // 3hr
 
-/// Time (in ms) beetween mempool "purges" (Removing blocks that have been in the mempool for over MEMPOOL_ENTRY_EXPIREY_TIME ms)
-const PURGE_EVERY: u64 = 6000000; // 10 mins
+/// Time (in ms) beetween mempool "purges" (Removing blocks that have been in the mempool for over MEMPOOL_ENTRY_EXPIREY_TIME ms) & enact now valid blocks
+const PURGE_EVERY: u64 = 5000; // 5 secconds
 
 #[derive(Debug, PartialEq, Clone)]
 enum MempoolState {
