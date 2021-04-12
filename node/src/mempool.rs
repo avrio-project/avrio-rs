@@ -23,7 +23,6 @@ const PURGE_EVERY: u64 = 6000000; // 10 mins
 enum MempoolState {
     Initialized,
     Uninitialized,
-    ShuttingDown,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
