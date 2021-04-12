@@ -8,8 +8,8 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     let mut message_types = HashMap::new();
 
     message_types.insert(0, "Raw / Invalid");
-    message_types.insert(0x01, "Ping");
-    message_types.insert(0x02, "Pong");
+    message_types.insert(0x91, "Ping");
+    message_types.insert(0x92, "Pong");
     message_types.insert(0x03, "Rehandshake");
     message_types.insert(0x04, "Block");
     message_types.insert(0x8f, "Send peerlist (ask)");
