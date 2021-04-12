@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::Mutex};
 extern crate avrio_blockchain;
-use avrio_blockchain::{Block, BlockType};
+use avrio_blockchain::{check_block, enact_block, enact_send, save_block, Block, BlockType};
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,7 +9,6 @@ use std::thread::JoinHandle;
 use std::time::SystemTime;
 extern crate avrio_config;
 use avrio_config::config;
-use std::borrow::Cow;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -258,15 +257,24 @@ impl Mempool {
         for (k, _) in blocks_to_check.iter() {
             if map.contains_key(k) {
                 let block = map[k].0.clone();
-                let check_result = avrio_blockchain::check_block(block.clone());
+                let check_result = check_block(block.clone());
                 if check_result.is_ok() {
-                    let e_res = avrio_blockchain::save_block(block.clone());
+                    let e_res = save_block(block.clone());
                     if e_res.is_ok() {
-                        if let Err(enact_res) = avrio_blockchain::enact_block(block.clone()) {
-                            error!(
+                        if block.block_type == BlockType::Recieve {
+                            if let Err(enact_res) = enact_block(block.clone()) {
+                                error!(
                                 "Failed to enact saved & valid block from mempool. Gave error: {}",
                                 enact_res
                             );
+                            }
+                        } else {
+                            if let Err(enact_res) = enact_send(block.clone()) {
+                                error!(
+                                "Failed to enact saved & valid block from mempool. Gave error: {}",
+                                enact_res
+                            );
+                            }
                         }
                     } else {
                         error!(
