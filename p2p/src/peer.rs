@@ -41,17 +41,23 @@ pub fn get_peers_addr() -> Result<Vec<SocketAddr>, Box<dyn Error>> {
     let val = INCOMING.lock()?;
     log::trace!("Got lock on incoming peers");
     let iter = val.iter();
+    log::trace!("Iter: {:#?}", iter);
 
     for peer in iter {
-        log::trace!("peer: {:?}", peer);
-        peers.push(peer.peer_addr()?)
+        if let Ok(peer_addr) = peer.peer_addr() {
+            log::trace!("Peer addr: {}", peer_addr);
+            peers.push(peer_addr);
+        }
     }
     log::trace!("Added all incoming peers to vec");
     let val = OUTGOING.lock()?;
     log::trace!("Got lock on outgoing peers");
     let iter = val.iter();
     for peer in iter {
-        peers.push(peer.peer_addr()?)
+        if let Ok(peer_addr) = peer.peer_addr() {
+            log::trace!("Peer addr: {}", peer_addr);
+            peers.push(peer_addr);
+        }
     }
     log::trace!("Added all outgoing peers to vec");
 
