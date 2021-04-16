@@ -188,6 +188,17 @@ impl Transaction {
             }
             trace!("Saving acc");
             let _ = acc.save();
+        } else if txn_type == *"lock" {
+            trace!("Getting sender acc");
+            let mut acc: Account = open_or_create(&self.sender_key);
+            if acc.balance > (self.amount + self.fee()) {
+                acc.balance -= self.amount;
+                acc.locked += self.amount;
+            } else {
+                return Err("Account balance insufficent".into());
+            }
+            trace!("Saving acc");
+            let _ = acc.save();
         } else {
             return Err("unsupported txn type".into());
         }
@@ -247,7 +258,7 @@ impl Transaction {
             );
             return Err(TransactionValidationErrors::TransactionExists);
         }
-        if !['c', 'n', 'b', 'u'].contains(&self.flag) {
+        if !['c', 'n', 'b', 'u', 'l'].contains(&self.flag) {
             error!(
                 "Transaction {} has unsupported type={} ({})",
                 self.hash,
@@ -393,6 +404,40 @@ impl Transaction {
                 }
                 if self.amount < 1 {
                     error!("Burn transaction {} amount too small", self.hash);
+                    return Err(TransactionValidationErrors::InsufficentAmount);
+                }
+                if sender_account.balance < (self.amount + (self.gas * self.gas_price)) {
+                    error!("Sender {} of transaction {}'s balance too low, amount {} fee={} ({} * {}), required delta={}", sender_account.public_key, self.hash, self.amount, self.gas * self.gas_price, self.gas , self.gas_price, (self.amount + (self.gas * self.gas_price)) - sender_account.balance);
+                    return Err(TransactionValidationErrors::InsufficentBalance);
+                }
+                if self.gas
+                    < (TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64))
+                {
+                    error!("Transaction {} gas low", self.hash);
+                    return Err(TransactionValidationErrors::LowGas);
+                }
+                if self.max_gas < self.gas {
+                    error!(
+                        "Transaction {} max_gas expended, max_gas={}, used_gas={}",
+                        self.hash, self.max_gas, self.gas
+                    );
+                    return Err(TransactionValidationErrors::MaxGasExpended);
+                }
+                if self.unlock_time != 0 {
+                    return Err(TransactionValidationErrors::UnsupportedType);
+                }
+            }
+            'l' => {
+                let size_of_extra = std::mem::size_of_val(&self.extra);
+                if size_of_extra > 100 {
+                    error!(
+                        "Lock type transaction {}'s extra ({}) too large, {} > 100",
+                        self.hash, self.extra, size_of_extra
+                    );
+                    return Err(TransactionValidationErrors::ExtraTooLarge);
+                }
+                if self.amount < 1 {
+                    error!("Lock transaction {} amount too small", self.hash);
                     return Err(TransactionValidationErrors::InsufficentAmount);
                 }
                 if sender_account.balance < (self.amount + (self.gas * self.gas_price)) {
