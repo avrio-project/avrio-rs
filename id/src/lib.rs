@@ -31,8 +31,8 @@ pub fn check_difficulty(hash: &str, difficulty: u128) -> bool {
     difficulty > difficulty_bytes_as_u128(&hash.as_bytes().to_vec())
 }
 
-fn _calculate_hash_params(prev_block_hash: String) -> HashParams {
-    let cu = prev_block_hash.as_bytes();
+fn _calculate_hash_params(seed: String) -> HashParams {
+    let cu = seed.as_bytes();
     let b: Vec<u8> = cu.to_vec();
     let mut a: u32 = 0;
     let _i = 0;
