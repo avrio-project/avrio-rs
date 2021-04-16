@@ -138,6 +138,8 @@ mod tests {
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
         let peer_public_key_bytes = key_pair.public_key().as_ref();
+        let pkcs8_bytes_invite = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
+        //let key_pair_invite = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
         let _target = 600 * 1000;
 
         println!(
@@ -150,7 +152,7 @@ mod tests {
             &bs58::encode(pkcs8_bytes).into_string(),
             &bs58::encode("txn hashhhh").into_string(),
             diff,
-            "inv".into(),
+            bs58::encode(pkcs8_bytes_invite).into_string(),
         )
         .unwrap();
 
@@ -441,8 +443,19 @@ impl Certificate {
 }
 
 /// irelavant clone from blockchain lib to preven cylic dependencys
-#[derive(Serialize, Deserialize, Default)]
-pub struct HeaderClone {
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+enum BlockTypeClone {
+    Send,
+    Recieve,
+}
+impl Default for BlockTypeClone {
+    fn default() -> Self {
+        BlockTypeClone::Recieve
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
+struct HeaderClone {
     pub version_major: u8,
     pub version_breaking: u8,
     pub version_minor: u8,
@@ -453,25 +466,31 @@ pub struct HeaderClone {
     pub network: Vec<u8>,
 }
 
-/// irelavant clone from blockchain lib to preven cylic dependencys
-#[derive(Serialize, Deserialize, Default)]
-pub struct BlockClone {
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
+struct BlockClone {
     pub header: HeaderClone,
+    pub block_type: BlockTypeClone,
+    pub send_block: Option<String>, // the send block this recieve block is in refrence to
     pub txns: Vec<Transaction>,
     pub hash: String,
     pub signature: String,
     pub confimed: bool,
-    pub node_signatures: Vec<BlockSignatureClone>,
+    pub node_signatures: Vec<BlockSignatureClone>, // a block must be signed by at least 2/3 of the commitee's verifyer nodes to be valid (ensures at least one honest node has signed it)
 }
 
-/// irelavant clone from blockchain lib to preven cylic dependencys
-#[derive(Serialize, Deserialize, Default)]
-pub struct BlockSignatureClone {
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
+struct BlockSignatureClone {
+    /// The signature of the vote
     pub hash: String,
+    /// The timestamp at which the signature was created
     pub timestamp: u64,
+    /// The hash of the block this signature is about        
     pub block_hash: String,
+    /// The public key of the node which created this vote
     pub signer_public_key: String,
+    /// The hash of the sig signed by the voter        
     pub signature: String,
+    /// A nonce to prevent sig replay attacks
     pub nonce: u64,
 }
 
@@ -480,12 +499,147 @@ use std::io::prelude::*;
 
 /// irelavant clone from blockchain lib to preven cylic dependencys
 fn get_block_from_raw(hash: String) -> BlockClone {
-    // returns the block when you only know the hash by opeining the raw blk-HASH.dat file (where hash == the block hash)
-    let mut file =
-        File::open(config().db_path + &"/blocks/blk-".to_owned() + &hash + ".dat").unwrap();
-    let mut contents = String::new();
+    let try_open = File::open(config().db_path + &"/blocks/blk-".to_owned() + &hash + ".dat");
+    if let Ok(mut file) = try_open {
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).unwrap();
+        let mut ret = BlockClone::default();
+        if let Ok(_) = ret.decode_compressed(contents) {
+            return ret;
+        } else {
+            return BlockClone::default();
+        }
+    } else {
+        trace!(
+            "Opening raw block file (hash={}) failed. Reason={}",
+            hash,
+            try_open.unwrap_err()
+        );
+        BlockClone::default()
+    }
+}
 
-    let _ = file.read_to_string(&mut contents);
+impl BlockClone {
+    pub fn encode_compressed(&self) -> String {
+        match self.block_type {
+            BlockTypeClone::Recieve => {
+                let mut transactions: String = String::from("");
+                for txn in &self.txns {
+                    transactions += &(txn.encode_compressed() + ","); // TODO: replace with a vector of txn hashes
+                }
+                return format!(
+                    "{}│{}│{}│{}│{}│0│[]",
+                    self.header.encode_compressed(),
+                    self.send_block.clone().unwrap_or_default(),
+                    transactions,
+                    self.hash,
+                    self.signature,
+                );
+            }
+            BlockTypeClone::Send => {
+                let mut transactions: String = String::from("");
+                for txn in &self.txns {
+                    transactions += &(txn.encode_compressed() + ",");
+                }
+                return format!(
+                    "{}│{}│{}│{}│0│[]",
+                    self.header.encode_compressed(),
+                    transactions,
+                    self.hash,
+                    self.signature,
+                );
+            }
+        }
+    }
 
-    serde_json::from_str(&contents).unwrap_or_default()
+    pub fn decode_compressed(&mut self, encoded: String) -> Result<(), Box<dyn std::error::Error>> {
+        let components: Vec<&str> = encoded.split('│').collect();
+
+        if components.len() == 7 {
+            // rec block
+            self.header.decode_compressed(components[0].to_string())?;
+            self.send_block = Some(components[1].to_string());
+            self.block_type = BlockTypeClone::Recieve;
+            let transactions_string: Vec<&str> = components[2].split(',').collect();
+            for txn_string in transactions_string {
+                if txn_string != "" {
+                    let mut txn_new = Transaction::default();
+                    txn_new.decode_compressed(txn_string.to_string())?;
+                    self.txns.push(txn_new);
+                }
+            }
+            self.hash = components[3].to_string();
+            self.signature = components[4].to_string();
+            if components[4] == "0" {
+                self.confimed = false;
+            } else {
+                self.confimed = false;
+            }
+            self.node_signatures = vec![]; // TODO: read from the encoded string (currently unneeded)
+        } else if components.len() == 6 {
+            // send block
+            self.header.decode_compressed(components[0].to_string())?;
+            self.send_block = None;
+            self.block_type = BlockTypeClone::Send;
+            let transactions_string: Vec<&str> = components[1].split(',').collect();
+            for txn_string in transactions_string {
+                if txn_string != "" {
+                    let mut txn_new = Transaction::default();
+                    txn_new.decode_compressed(txn_string.to_string())?;
+                    self.txns.push(txn_new);
+                }
+            }
+            self.hash = components[2].to_string();
+            self.signature = components[3].to_string();
+            if components[4] == "0" {
+                self.confimed = false;
+            } else {
+                self.confimed = false;
+            }
+            self.node_signatures = vec![]; // TODO: read from the encoded string (currently unneeded)
+        } else {
+            error!(
+                "Failed to decode block, expected len=7 or len=6, got len={}",
+                components.len()
+            );
+            println!("Encoded={}, components={:#?}", encoded, components);
+            return Err(format!("components wrong len: {}", components.len()).into());
+        }
+        Ok(())
+    }
+}
+impl HeaderClone {
+    pub fn encode_compressed(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}|{}",
+            self.version_major,
+            self.version_breaking,
+            self.version_minor,
+            self.chain_key,
+            self.prev_hash,
+            self.height,
+            self.timestamp,
+            bs58::encode(self.network.clone()).into_string()
+        )
+    }
+    pub fn decode_compressed(&mut self, encoded: String) -> Result<(), Box<dyn std::error::Error>> {
+        let components: Vec<&str> = encoded.split('|').collect();
+        if components.len() != 8 {
+            error!(
+                "Failed to decode header, expected len=8, got len={}",
+                components.len()
+            );
+            debug!("Encoded={}, components={:#?}", encoded, components);
+            return Err(format!("components wrong len, {}", components.len()).into());
+        }
+        self.version_major = components[0].parse()?;
+        self.version_breaking = components[1].parse()?;
+        self.version_minor = components[2].parse()?;
+        self.chain_key = components[3].to_string();
+        self.prev_hash = components[4].to_string();
+        self.height = components[5].parse()?;
+        self.timestamp = components[6].parse()?;
+        self.network = bs58::decode(components[7]).into_vec()?;
+        Ok(())
+    }
 }
