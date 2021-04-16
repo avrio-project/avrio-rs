@@ -1,6 +1,15 @@
-use std::io::{self, Write};
 use std::thread;
+use std::{
+    io::{self, Write},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
+use avrio_core::{
+    account::to_dec,
+    certificate::generate_certificate,
+    invite::{generate_invite, new},
+    transaction::Transaction,
+};
 use avrio_rpc::*;
 extern crate clap;
 use clap::{App, Arg};
@@ -519,6 +528,83 @@ fn main() {
             );
             info!("Username: {}, Publickey: {}", acc.username, acc.public_key);
             info!("____________________________");
+        } else if read == *"register_fullnode" {
+            info!("Enter lock commitment: (tip you get this from locking funds in the wallet!)");
+            let commitment: String = read!();
+            // the commitment should be a valid txn hash, check it
+            let block_txn_is_in =
+                get_data(config().db_path + &"/transactions".to_owned(), &commitment);
+            let mut commitment_txn: Transaction = Transaction::default();
+            if block_txn_is_in == *"-1" {
+                error!("Can not find comitment");
+            } else {
+                let blk: Block = get_block_from_raw(block_txn_is_in);
+                if blk == Block::default() {
+                    error!("Couldnt find a block with that commitment in");
+                } else {
+                    for txn in blk.txns {
+                        if txn.hash == commitment {
+                            commitment_txn = txn;
+                        }
+                    }
+                }
+            }
+            if commitment_txn == Transaction::default() {
+                error!("Block did not contain commitment as expected");
+            } else {
+                if commitment_txn.flag != 'l' {
+                    error!(
+                        "Comitment transaction type wrong, expected flag=l, got={}",
+                        commitment_txn.flag
+                    );
+                } else if commitment_txn.amount != config().fullnode_lock_amount {
+                    error!("Commitment transaction has insufficent amount, expected={} AIO, got={} AIO", to_dec(config().fullnode_lock_amount), to_dec(commitment_txn.amount));
+                } else {
+                    debug!("Found valid comitment, proceeding");
+                    info!("Please enter the private key of the wallet you wish to register as a fullnode:");
+                    let private_key_string: String = read!();
+                    let wallet = Wallet::from_private_key(private_key_string);
+                    info!("Please enter the invite:");
+                    let invite: String = read!();
+                    info!(
+                        "Registering as fullnode with publickey={}? (y/n)",
+                        wallet.public_key
+                    );
+                    let confirm: String = read!();
+                    if confirm.to_ascii_uppercase() == "N" {
+                        error!("Aboring...");
+                    } else if confirm.to_ascii_uppercase() == "Y" {
+                        info!("Forming fullnode certificate, this can take upto 10 mins");
+                        if let Ok(cert) = generate_certificate(
+                            &wallet.public_key,
+                            &wallet.private_key,
+                            &commitment,
+                            4,
+                            invite,
+                        ) {
+                            info!(
+                                "Generated certificate {:?} in {} secconds.",
+                                cert,
+                                (SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .expect("Time went backwards")
+                                    .as_millis() as u64
+                                    - cert.timestamp)
+                                    / 1000
+                            );
+                        }
+                    } else {
+                        error!("Unknown response: {}", confirm);
+                    }
+                }
+            }
+        } else if read == "generate_invite" {
+            // TODO: Only let fullnodes generate invites, also broadcast new invite to other nodes so they can validate it
+            let invite = generate_invite();
+            match new(&invite.0) {
+                Ok(_) => info!("Invite: {}", invite.1),
+                Err(e) => error!("Failed to create new invire, got error={}", e),
+            }
         } else {
             info!("Unknown command: {}", read);
         }
