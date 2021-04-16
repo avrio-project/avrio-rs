@@ -265,20 +265,42 @@ pub fn new_ann(ann: Announcement) {
             if let Ok(blk) = serde_json::from_str::<Block>(&ann.content) {
                 if blk.block_type == BlockType::Recieve {
                     let balance_before = locked.balance;
+                    let locked_balance_before = locked.locked;
                     for txn in blk.txns {
                         trace!("Txn: {:#?}", txn);
-                        if txn.sender_key == locked.wallet.as_ref().unwrap().public_key
-                            && txn.flag != 'c'
-                        {
-                            locked.balance -= txn.amount;
-                            locked.balance -= txn.gas * txn.gas_price;
-                            if txn.flag == 'u' {
-                                // In this txn we register a username
-                                locked.username = txn.extra;
-                                info!("Registered new username: {}", locked.username);
+                        if txn.sender_key == locked.wallet.as_ref().unwrap().public_key {
+                            match txn.flag {
+                                'n' => {
+                                    locked.balance -= txn.amount;
+                                    locked.balance -= txn.gas * txn.gas_price;
+                                }
+                                'c' => {
+                                    locked.balance += txn.amount;
+                                }
+                                'u' => {
+                                    locked.username = txn.extra;
+                                    locked.balance -= txn.amount;
+                                    locked.balance -= txn.gas * txn.gas_price;
+                                    info!("Registered new username: {}", locked.username);
+                                }
+                                'l' => {
+                                    locked.balance -= txn.amount;
+                                    locked.locked += txn.amount;
+                                    locked.balance -= txn.gas * txn.gas_price;
+                                    info!("Locked funds, commitment: {}", txn.hash);
+                                }
+                                'b' => {
+                                    locked.balance -= txn.amount;
+                                    locked.balance -= txn.gas * txn.gas_price;
+                                }
+                                _ => {
+                                    error!(
+                                        "Involved in unsupported transaction type, flag={}",
+                                        txn.flag
+                                    );
+                                    debug!("Txn dump: {:#?}", txn);
+                                }
                             }
-                        } else if txn.receive_key == locked.wallet.as_ref().unwrap().public_key {
-                            locked.balance += txn.amount;
                         }
                     }
                     if balance_before != locked.balance {
@@ -289,6 +311,12 @@ pub fn new_ann(ann: Announcement) {
                             to_dec(balance_before),
                             to_dec(locked.balance)
                         );
+                        if locked_balance_before != locked.locked {
+                            info!(
+                                "Locked funds changed: old={} AIO, new={} AIO",
+                                locked_balance_before, locked.locked
+                            );
+                        }
                     } else {
                         debug!("Block contained no transactions affecting us");
                     }
@@ -346,7 +374,7 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
     let mut blocks: Vec<String> = vec![];
     let block_json = serde_json::to_string(&blk)?;
     blocks.push(block_json);
-    // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+    // now for each txn to a unique reciver form the rec block of the block we just formed and prop + enact that
     let mut proccessed_accs: Vec<String> = vec![];
 
     let mut failed = false;
@@ -1054,7 +1082,7 @@ async fn main() {
                             info!("exit : Safely shutsdown thr program. PLEASE use instead of ctrl + c");
                             info!("help : shows this help");
                         } else if read_split[0] == "generate" {
-                            if read_split.len() == 3 {
+                            /*if read_split.len() == 3 {
                                 let amount: u64 = read_split[1].parse().unwrap_or(1);
                                 let txn_per_block: u64 = read_split[2].parse().unwrap_or(1);
                                 let mut blocks: Vec<Block> = vec![];
@@ -1342,6 +1370,87 @@ async fn main() {
                                         }
                                     }
                                 }
+                            }*/
+                        } else if read_split[0] == "lock" {
+                            info!("Enter amount:");
+                            let amount: String = read!();
+                            if let Ok(amount_int) = amount.parse::<f64>() {
+                                let mut txn = Transaction {
+                                    hash: String::from(""),
+                                    amount: to_atomc(amount_int),
+                                    extra: String::from(""),
+                                    flag: 'l',
+                                    sender_key: wall.public_key.clone(),
+                                    receive_key: wall.public_key.clone(),
+                                    access_key: String::from(""),
+                                    unlock_time: 0,
+                                    gas_price: 20,
+                                    max_gas: u64::MAX,
+                                    gas: 30,
+                                    nonce: 0,
+                                    timestamp: SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .expect("time went backwards ono")
+                                        .as_millis()
+                                        as u64,
+                                    signature: String::from(""),
+                                };
+                                let request_url = format!(
+                                    "{}/api/v1/transactioncount/{}",
+                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                    wall.public_key
+                                );
+                                if let Ok(response) = reqwest::get(&request_url).await {
+                                    if let Ok(transactioncount) =
+                                        response.json::<Transactioncount>().await
+                                    {
+                                        txn.nonce = transactioncount.transaction_count;
+
+                                        let request_url = format!(
+                                            "{}/api/v1/balances/{}",
+                                            SERVER_ADDR.lock().unwrap().to_string(),
+                                            wall.public_key
+                                        );
+                                        if let Ok(response_undec) = reqwest::get(&request_url).await
+                                        {
+                                            if let Ok(response) =
+                                                response_undec.json::<Balances>().await
+                                            {
+                                                if txn.amount + txn.fee() > response.balance {
+                                                    txn.hash();
+                                                    match txn.sign(&wall.private_key) {
+                                                        Ok(_) => {
+                                                            match send_transaction(
+                                                                txn,
+                                                                wall.clone(),
+                                                            )
+                                                            .await
+                                                            {
+                                                                Ok(_) => {
+                                                                    info!(
+                                                                        "Locked {} AIO",
+                                                                        amount_int
+                                                                    );
+                                                                }
+                                                                Err(e) => {
+                                                                    error!(
+                                                                        "Failed to send txn: {}",
+                                                                        e
+                                                                    );
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            error!("Failed to sign transaction, got error={}", e);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                error!("{} is not a valid number", amount);
                             }
                         } else {
                             error!("Unknown command: {}", read);
