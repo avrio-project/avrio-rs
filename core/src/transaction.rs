@@ -100,7 +100,7 @@ impl Transaction {
             'r' => "reward".to_string(),
             'f' => "fullnode registration".to_string(),
             'u' => "username registraion".to_string(),
-            'l' => "fund lock".to_string(),
+            'l' => "lock".to_string(),
             'b' => "burn".to_string(),
             'w' => "burn with return".to_string(),
             'm' => "message".to_string(),
