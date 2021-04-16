@@ -202,7 +202,7 @@ pub fn generate_certificate(
         .as_millis() as u64;
 
     let diff_cert = diff; //config().certificate_difficulty;
-    let block_hash = get_data(config().db_path + "/transactions.db", &cert.txn_hash);
+    let block_hash = get_data(config().db_path + "/transactions", &cert.txn_hash);
     let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
     let mut txn: Transaction = Default::default();
 
@@ -269,7 +269,7 @@ impl Certificate {
         {
             return Err(CertificateErrors::TimestampHigh);
         }
-        let block_hash = get_data(config().db_path + "/transactions.db", &cert.txn_hash);
+        let block_hash = get_data(config().db_path + "/transactions", &cert.txn_hash);
         let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
         let mut txn: Transaction = Default::default();
 
