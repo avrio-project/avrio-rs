@@ -1416,7 +1416,7 @@ async fn main() {
                                             if let Ok(response) =
                                                 response_undec.json::<Balances>().await
                                             {
-                                                if txn.amount + txn.fee() > response.balance {
+                                                if txn.amount + txn.fee() < response.balance {
                                                     txn.hash();
                                                     match txn.sign(&wall.private_key) {
                                                         Ok(_) => {
