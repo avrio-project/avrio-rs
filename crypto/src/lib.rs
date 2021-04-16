@@ -20,9 +20,12 @@ use ring::{
     signature::{self, KeyPair},
 };
 
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
+
 // avrio config, for getting the address prefix
 extern crate avrio_config;
-
+use primitive_types::U512;
 // static MAX_ADDR_DEC: &str =
 //     "115792089237316195423570985008687907853269984665640564039457584007913129639935";
 pub struct Keypair {
@@ -207,7 +210,6 @@ pub fn get_vrf(
 
     // VRF proof and hash output
     let pi = vrf.prove(&secret_key, &message).unwrap();
-    // as the VRF hash is derived from the proof, do we really need to include this when saving, sending etc? 
     let hash = vrf.proof_to_hash(&pi).unwrap();
     return Ok((
         bs58::encode(pi).into_string(),
@@ -230,17 +232,50 @@ pub fn validate_vrf(public_key: String, proof: String, message: String) -> bool 
     false
 }
 
-pub fn vrf_hash_to_integer(hash: String) -> u64 {
-    let as_vec = hash.as_bytes();
-    let mut int: u64 = 0;
-    for n_bit in as_vec {
-        if n_bit % 5 == 0 {
-            int -= *n_bit as u64;
-        } else {
-            int += *n_bit as u64;
-        }
+pub fn vrf_hash_to_integer(hash: String) -> BigDecimal {
+    let mut as_binary: String = String::from("");
+    for hash_bit in hash.as_bytes() {
+        as_binary += &format!("{:b}", hash_bit);
     }
-    int
+    let before_normal = binary_to_u512(as_binary.clone());
+    let two_u518: U512 = 2.into();
+
+    let bn_dec = BigDecimal::from_str(&before_normal.to_string()).unwrap();
+    BigDecimal::from_str(&format!("0.{}", bn_dec.normalized())).unwrap()
+}
+
+fn binary_to_u512(s: String) -> U512 {
+    let mut binary_digit = s.chars().count();
+    let mut real_num: U512 = U512::zero();
+    let two_u518: U512 = 2.into();
+    for c in s.chars() {
+        let mut temp_var = two_u518.pow(binary_digit.into());
+        temp_var /= 2;
+        if c == '1' {
+            real_num += temp_var;
+        }
+        binary_digit -= 1;
+    }
+    return real_num;
+}
+
+fn divide_two_vec(a: Vec<u8>, b: Vec<u8>) -> Vec<f64> {
+    if a.len() != b.len() {
+        return vec![];
+    }
+    let mut out: Vec<f64> = vec![];
+    for i in 0..a.len() {
+        out.push(a[i] as f64 / b[i] as f64);
+    }
+    out
+}
+
+fn max_vec(len: u64) -> Vec<u8> {
+    let mut out: Vec<u8> = vec![];
+    for _ in 0..len {
+        out.push(255);
+    }
+    out
 }
 
 pub fn valid_address(address: &str) -> bool {
@@ -434,3 +469,43 @@ mod tests {
         Ok(())
     }
 }
+#[test]
+fn test_hashrate() {
+    use std::time::SystemTime;
+    let start = SystemTime::now();
+    let amount = 10000;
+    for n in 0..amount {
+        raw_hash(&n.to_string());
+    }
+    let time_took = SystemTime::now()
+        .duration_since(start)
+        .expect("negative time")
+        .as_millis();
+    let time_took = SystemTime::now()
+        .duration_since(start)
+        .expect("negative time")
+        .as_millis();
+    let start_lyra = SystemTime::now();
+    let amount = 10000;
+    for n in 0..amount {
+        raw_lyra(&n.to_string());
+    }
+
+    println!(
+        "Raw_hash: Hashed {}k hashes in {} ms, {} h/s",
+        amount / 1000,
+        time_took,
+        1000 / (time_took / amount)
+    );
+    let time_took = SystemTime::now()
+        .duration_since(start_lyra)
+        .expect("negative time")
+        .as_millis();
+    println!(
+        "Raw_lyra: Hashed {}k hashes in {} ms, {} h/s",
+        amount / 1000,
+        time_took,
+        1000 / (time_took + 1 / amount + 1)
+    );
+}
+mod vrf_test;
