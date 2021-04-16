@@ -8,3 +8,4 @@ extern crate log;
 //pub mod consensus;
 pub mod mempool;
 //pub mod validator;
+pub mod comitee;
