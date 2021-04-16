@@ -1373,7 +1373,7 @@ async fn main() {
                             }*/
                         } else if read_split[0] == "lock" {
                             info!("Enter amount:");
-                            let amount: String = read!();
+                            let amount: String = trim_newline(&mut read!());
                             if let Ok(amount_int) = amount.parse::<f64>() {
                                 let mut txn = Transaction {
                                     hash: String::from(""),
@@ -1444,10 +1444,24 @@ async fn main() {
                                                             error!("Failed to sign transaction, got error={}", e);
                                                         }
                                                     }
+                                                } else {
+                                                    error!(
+                                                        "Insufficent balance, have={}, need={}",
+                                                        response.balance,
+                                                        txn.amount + txn.fee()
+                                                    )
                                                 }
+                                            } else {
+                                                error!("Failed to parse balance")
                                             }
+                                        } else {
+                                            error!("Failed to get balance")
                                         }
+                                    } else {
+                                        error!("Failed to parse txn count");
                                     }
+                                } else {
+                                    error!("Failed tog et txn count for chain");
                                 }
                             } else {
                                 error!("{} is not a valid number", amount);
