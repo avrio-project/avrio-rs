@@ -7,7 +7,6 @@ version = "0.1.0"
 name = "avrio_id"
 path = "src/lib.rs"
 [dependencies]
-avrio_blockchain = {path = "../blockchain/"}
 avrio_crypto = {path = "../crypto"}
 avrio_database = {path = "../database"}
 hex = "0.4"

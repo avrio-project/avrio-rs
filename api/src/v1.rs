@@ -6,12 +6,12 @@
     This file handles the JSON API version 1 of the Daemon.
 */
 
-use avrio_blockchain::{
-    check_block, enact_block, enact_send, get_block, get_block_from_raw, save_block, Block,
-    BlockType,
-};
 use avrio_config::config;
-use avrio_core::account::get_account;
+use avrio_core::{
+    account::get_account,
+    block::{get_block, get_block_from_raw, save_block, Block, BlockType},
+    validate::Verifiable,
+};
 use avrio_crypto::public_key_to_address;
 use avrio_database::{get_data, open_database};
 use avrio_p2p::helper::prop_block;
@@ -254,31 +254,19 @@ pub fn submit_block_v1(block_data: rocket::Data) -> String {
             let try_string_to_block = serde_json::from_str::<Block>(&block);
             if let Ok(blk) = try_string_to_block {
                 debug!("Block submited by API, block={:?}", blk);
-                if let Err(e) = check_block(blk.clone()) {
+                if let Err(e) = blk.valid() {
                     return format!(" {{ \"error\" : \" {:?} }}\"", e);
                 } else if let Err(e_) = save_block(blk.clone()) {
                     return format!(" {{ \"error\" : \" {:?} }}\"", e_);
                 } else {
-                    if blk.block_type == BlockType::Send {
-                        if let Err(ee) = enact_send(blk.clone()) {
-                            return format!(" {{ \"error\" : \" {:?} }}\"", ee);
-                        } else if let Err(ep) = prop_block(&blk) {
-                            return format!(" {{ \"error\" : \" {:?} }}\"", ep);
-                        } else if let Err(eann) = block_announce(blk) {
-                            return format!(" {{ \"error\" : \" {:?} }}\"", eann);
-                        } else {
-                            return "{ \"result\" : \"sent block\" }".to_owned();
-                        }
+                    if let Err(ee) = blk.enact() {
+                        return format!(" {{ \"error\" : \" {:?} }}\"", ee);
+                    } else if let Err(ep) = prop_block(&blk) {
+                        return format!(" {{ \"error\" : \" {:?} }}\"", ep);
+                    } else if let Err(eann) = block_announce(blk) {
+                        return format!(" {{ \"error\" : \" {:?} }}\"", eann);
                     } else {
-                        if let Err(ee) = enact_block(blk.clone()) {
-                            return format!(" {{ \"error\" : \" {:?} }}\"", ee);
-                        } else if let Err(ep) = prop_block(&blk) {
-                            return format!(" {{ \"error\" : \" {:?} }}\"", ep);
-                        } else if let Err(eann) = block_announce(blk) {
-                            return format!(" {{ \"error\" : \" {:?} }}\"", eann);
-                        } else {
-                            return "{ \"result\" : \"sent block\" }".to_owned();
-                        }
+                        return "{ \"result\" : \"sent block\" }".to_owned();
                     }
                 }
             } else {

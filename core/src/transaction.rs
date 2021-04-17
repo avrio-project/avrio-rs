@@ -594,51 +594,6 @@ impl Transaction {
         self.gas() * self.gas_price
     }
 
-    pub fn encode_compressed(&self) -> String {
-        format!(
-            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
-            self.hash,
-            self.amount,
-            self.extra,
-            self.flag,
-            self.sender_key,
-            self.receive_key,
-            self.access_key,
-            self.unlock_time,
-            self.gas_price,
-            self.max_gas,
-            self.nonce,
-            self.timestamp,
-        )
-    }
-    pub fn decode_compressed(&mut self, encoded: String) -> Result<(), Box<dyn std::error::Error>> {
-        let components: Vec<&str> = encoded.split(':').collect();
-        if components.len() != 12 {
-            error!(
-                "Failed to decode compressed transaction, expected component count=14, got={}",
-                components.len()
-            );
-            println!(
-                "Faulty encoded transaction: encoded={}, components={:#?}",
-                encoded, components
-            );
-            return Err("components len not 14".into());
-        }
-        self.hash = components[0].to_string();
-        self.amount = components[1].parse()?;
-        self.extra = components[2].to_string();
-        self.flag = components[3].parse()?;
-        self.sender_key = components[4].to_string();
-        self.receive_key = components[5].to_string();
-        self.access_key = components[6].to_string();
-        self.unlock_time = components[7].parse()?;
-        self.gas_price = components[8].parse()?;
-        self.max_gas = components[9].parse()?;
-        self.nonce = components[10].parse()?;
-        self.timestamp = components[11].parse()?;
-        Ok(())
-    }
-
     pub fn hash(&mut self) {
         self.hash = self.hash_item();
     }

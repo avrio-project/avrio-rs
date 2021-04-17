@@ -9,11 +9,11 @@
 
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
-use avrio_blockchain::{
+use avrio_config::config;
+use avrio_core::block::{
     genesis::{generate_genesis_block, get_genesis_block, GenesisBlockErrors},
     Block, BlockType, Header,
 };
-use avrio_config::config;
 use avrio_core::{account::*, transaction::Transaction};
 use avrio_crypto::Wallet;
 use avrio_database::*;
@@ -101,7 +101,6 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 .level_for("avrio_wallet", log::LevelFilter::Error)
                 .level_for("avrio_core", log::LevelFilter::Error)
                 .level_for("avrio_crypto", log::LevelFilter::Error)
-                .level_for("avrio_blockchain", log::LevelFilter::Error)
                 .level_for("avrio_rpc", log::LevelFilter::Error)
                 .level_for("avrio_p2p", log::LevelFilter::Error)
         }
@@ -115,8 +114,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_crypto", log::LevelFilter::Warn)
             .level_for("avrio_wallet", log::LevelFilter::Warn)
             .level_for("avrio_p2p", log::LevelFilter::Warn)
-            .level_for("avrio_rpc", log::LevelFilter::Warn)
-            .level_for("avrio_blockchain", log::LevelFilter::Warn),
+            .level_for("avrio_rpc", log::LevelFilter::Warn),
         2 => base_config
             .level(log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Info)
@@ -126,8 +124,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_crypto", log::LevelFilter::Info)
             .level_for("avrio_p2p", log::LevelFilter::Info)
             .level_for("avrio_wallet", log::LevelFilter::Info)
-            .level_for("avrio_rpc", log::LevelFilter::Info)
-            .level_for("avrio_blockchain", log::LevelFilter::Info),
+            .level_for("avrio_rpc", log::LevelFilter::Info),
         3 => base_config
             .level(log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Debug)
@@ -137,8 +134,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_crypto", log::LevelFilter::Debug)
             .level_for("avrio_p2p", log::LevelFilter::Debug)
             .level_for("avrio_wallet", log::LevelFilter::Debug)
-            .level_for("avrio_rpc", log::LevelFilter::Debug)
-            .level_for("avrio_blockchain", log::LevelFilter::Debug),
+            .level_for("avrio_rpc", log::LevelFilter::Debug),
         _ => base_config
             .level(log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Trace)
@@ -148,8 +144,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_wallet", log::LevelFilter::Trace)
             .level_for("avrio_p2p", log::LevelFilter::Trace)
             .level_for("avrio_crypto", log::LevelFilter::Trace)
-            .level_for("avrio_rpc", log::LevelFilter::Trace)
-            .level_for("avrio_blockchain", log::LevelFilter::Trace),
+            .level_for("avrio_rpc", log::LevelFilter::Trace),
     };
 
     // Separate file config so we can include year, month and day in file logs
@@ -366,8 +361,6 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
         txns: vec![txn],
         hash: "".to_owned(),
         signature: "".to_owned(),
-        confimed: false,
-        node_signatures: vec![],
     };
     blk.hash();
     let _ = blk.sign(&wall.private_key);

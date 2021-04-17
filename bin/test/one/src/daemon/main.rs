@@ -4,12 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use avrio_core::{
-    account::to_dec,
-    certificate::generate_certificate,
-    invite::{generate_invite, new},
-    transaction::Transaction,
-};
+use avrio_core::{account::to_dec, certificate::generate_certificate, invite::{generate_invite, new}, states::form_state_digest, transaction::Transaction, validate::Verifiable};
 use avrio_rpc::*;
 extern crate clap;
 use clap::{App, Arg};
@@ -27,8 +22,7 @@ use avrio_p2p::{
     core::new_connection, core::rec_server, helper::sync_in_order, helper::sync_needed,
 };
 
-extern crate avrio_blockchain;
-use avrio_blockchain::{genesis::genesis_blocks, *};
+use avrio_core::block::{genesis::genesis_blocks, *};
 
 extern crate avrio_database;
 use avrio_database::{get_data, get_peerlist};
@@ -78,7 +72,6 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 .level_for("avrio_daemon", log::LevelFilter::Error)
                 .level_for("avrio_core", log::LevelFilter::Error)
                 .level_for("avrio_crypto", log::LevelFilter::Error)
-                .level_for("avrio_blockchain", log::LevelFilter::Error)
                 .level_for("avrio_rpc", log::LevelFilter::Error)
                 .level_for("avrio_api", log::LevelFilter::Error)
                 .level_for("avrio_p2p", log::LevelFilter::Error)
@@ -96,8 +89,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_p2p", log::LevelFilter::Warn)
             .level_for("avrio_rpc", log::LevelFilter::Warn)
             .level_for("avrio_api", log::LevelFilter::Warn)
-            .level_for("avrio_node", log::LevelFilter::Warn)
-            .level_for("avrio_blockchain", log::LevelFilter::Warn),
+            .level_for("avrio_node", log::LevelFilter::Warn),
         2 => base_config
             .level(log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Info)
@@ -109,8 +101,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_daemon", log::LevelFilter::Info)
             .level_for("avrio_rpc", log::LevelFilter::Info)
             .level_for("avrio_api", log::LevelFilter::Info)
-            .level_for("avrio_node", log::LevelFilter::Info)
-            .level_for("avrio_blockchain", log::LevelFilter::Info),
+            .level_for("avrio_node", log::LevelFilter::Info),
         3 => base_config
             .level(log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Debug)
@@ -121,8 +112,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_p2p", log::LevelFilter::Debug)
             .level_for("avrio_daemon", log::LevelFilter::Debug)
             .level_for("avrio_api", log::LevelFilter::Debug)
-            .level_for("avrio_node", log::LevelFilter::Debug)
-            .level_for("avrio_blockchain", log::LevelFilter::Debug),
+            .level_for("avrio_node", log::LevelFilter::Debug),
         _ => base_config
             .level(log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Trace)
@@ -134,8 +124,7 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_crypto", log::LevelFilter::Trace)
             .level_for("avrio_rpc", log::LevelFilter::Trace)
             .level_for("avrio_api", log::LevelFilter::Trace)
-            .level_for("avrio_node", log::LevelFilter::Trace)
-            .level_for("avrio_blockchain", log::LevelFilter::Trace),
+            .level_for("avrio_node", log::LevelFilter::Trace),
     };
 
     // Separate file config so we can include year, month and day in file logs
@@ -190,7 +179,7 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
         );
         if get_block_from_raw(block.hash.clone()) != block {
             save_block(block.clone())?;
-            enact_block(block)?;
+            block.enact()?;
         }
     }
     Ok(())
@@ -327,7 +316,7 @@ fn main() {
     if statedigest == *"-1" {
         generate_chains().unwrap();
         statedigest =
-            avrio_blockchain::form_state_digest(config().db_path + &"/chaindigest".to_owned())
+            form_state_digest(config().db_path + &"/chaindigest".to_owned())
                 .unwrap_or_default();
         info!("State digest: {}", statedigest);
     } else {

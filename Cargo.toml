@@ -1,6 +1,5 @@
 [workspace]
 members = [
-  "blockchain",
   "config",
   "core",
   "database",

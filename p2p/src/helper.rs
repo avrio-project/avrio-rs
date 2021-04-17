@@ -4,11 +4,8 @@ use crate::{
     peer::{get_peers_addr, lock, locked, unlock_peer},
     utils::*,
 };
-use avrio_blockchain::{
-    check_block, enact_block, enact_send, form_state_digest, from_compact, save_block, Block,
-    BlockType,
-};
 use avrio_config::config;
+use avrio_core::{block::{Block, BlockType, from_compact, get_block_from_raw, save_block}, states::{form_state_digest}, validate::Verifiable};
 use avrio_database::get_data;
 
 //use bson;
@@ -264,7 +261,7 @@ pub fn sync() -> Result<u64, String> {
     }
 
     info!("Synced all chains, checking chain digest with peers");
-    let cd = avrio_blockchain::form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
+    let cd = form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
     if cd != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
         error!("Our CD: {}, expected: {}", cd, mode_hash);
@@ -481,16 +478,12 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                                 );
 
                                 for block in blocks {
-                                    if let Err(e) = check_block(block.clone()) {
+                                    if let Err(e) = block.valid() {
                                         error!("Recieved invalid block with hash: {} from peer, validation gave error: {:#?}. Invalid blocks from peer: {}", block.hash, e, invalid_blocks);
                                         invalid_blocks += 1;
                                     } else {
                                         save_block(block.clone())?;
-                                        if block.block_type == BlockType::Send {
-                                            enact_send(block)?;
-                                        } else {
-                                            enact_block(block)?;
-                                        }
+                                        block.enact()?;
                                         synced_blocks += 1;
                                     }
                                     if synced_blocks % print_synced_every == 0 {
@@ -557,7 +550,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                         }
                     }
                     info!("Synced all blocks, checking chain digest with peers");
-                    let cd = avrio_blockchain::form_state_digest(config().db_path + "/chaindigest")
+                    let cd = form_state_digest(config().db_path + "/chaindigest")
                         .unwrap(); //  recalculate our state digest
                     if cd != mode_hash {
                         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or register_username etc) then ignore this. If not please delete your data dir and resync");
@@ -578,7 +571,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
     }
 
     info!("Synced all chains, checking chain digest with peers");
-    let cd = avrio_blockchain::form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
+    let cd = form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
     if cd != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
         error!("Our CD: {}, expected: {}", cd, mode_hash);
@@ -740,16 +733,12 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
                 );
 
                 for block in blocks {
-                    if let Err(e) = check_block(block.clone()) {
+                    if let Err(e) = block.valid() {
                         error!("Recieved invalid block with hash: {} from peer, validation gave error: {:#?}. Invalid blocks from peer: {}", block.hash, e, invalid_blocks);
                         invalid_blocks += 1;
                     } else {
                         save_block(block.clone())?;
-                        if block.block_type == BlockType::Send {
-                            enact_send(block)?;
-                        } else {
-                            enact_block(block)?;
-                        }
+                        block.enact()?;
                         synced_blocks += 1;
                     }
                     if synced_blocks % print_synced_every == 0 {
@@ -842,7 +831,7 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
 }
 
 pub fn send_block_with_hash(hash: String, peer: &mut TcpStream) -> Result<(), Box<dyn Error>> {
-    let block = avrio_blockchain::get_block_from_raw(hash);
+    let block = get_block_from_raw(hash);
     if block.hash == Block::default().hash {
         Err("block does not exist".into())
     } else {

@@ -10,7 +10,6 @@ edition = "2018"
 [dependencies]
 avrio_config = { path = "../config/" }
 avrio_database = { path = "../database" }
-avrio_blockchain = { path = "../blockchain" }
 avrio_core = { path = "../core" }
 avrio_crypto = { path = "../crypto" }
 avrio_node = { path = "../node" }

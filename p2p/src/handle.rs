@@ -7,7 +7,7 @@ use std::{
     thread
 };
 
-use avrio_blockchain::{get_block, get_block_from_raw, Block, from_compact};
+use avrio_core::block::{get_block, get_block_from_raw, Block, from_compact};
 use avrio_config::config;
 use avrio_database::{get_data, open_database};
 use avrio_rpc::block_announce;
@@ -345,7 +345,7 @@ pub fn process_handle_msg(
             // the peer just sent us a block,
             // add it to the mempool
             log::trace!("Got block from peer");
-            let block: avrio_blockchain::Block = from_compact(read_msg.message).unwrap_or_default();
+            let block: Block = from_compact(read_msg.message).unwrap_or_default();
             if block.is_default() {
                 log::trace!("Could not decode block");
                 let _ = send("dsf".to_owned(), stream, 0x0c, true, None);

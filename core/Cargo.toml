@@ -16,8 +16,9 @@ avrio_database = { path = "../database" }
 log = "0.4"
 avrio_config = { path = "../config" }
 hex = "0.4"
-rand = "0.7"
 bs58 = "0.3.0"
 avrio_crypto = { path = "../crypto" }
 rocksdb = "0.13"
 thiserror = "1.0"
+simple_logger = "1.5.0"
+rand = "0.8.3"

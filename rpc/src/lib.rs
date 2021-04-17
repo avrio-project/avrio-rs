@@ -1,4 +1,4 @@
-use avrio_blockchain::{Block, BlockType};
+use avrio_core::block::{Block, BlockType};
 use lazy_static::*;
 use log::*;
 use serde::{Deserialize, Serialize};

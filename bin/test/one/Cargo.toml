@@ -22,7 +22,6 @@ log = "0.4"
 avrio_core = { path = "../../../core" }
 avrio_database = { path = "../../../database" }
 avrio_config = { path = "../../../config" }
-avrio_blockchain = { path = "../../../blockchain" }
 avrio_p2p = { path = "../../../p2p" }
 avrio_crypto = { path = "../../../crypto" }
 avrio_node = { path = "../../../node" }
