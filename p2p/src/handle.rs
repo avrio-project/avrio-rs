@@ -362,13 +362,13 @@ pub fn process_handle_msg(
                     None,
                 );
                 
+            } else {
+                let callback_struct = Caller {
+                    callback: Box::new(block_enacted_callback),
+                    rec_from: stream.peer_addr().unwrap()
+                };
+                let _ = add_block(&block, callback_struct);   
             }
-            let callback_struct = Caller {
-                callback: Box::new(block_enacted_callback),
-                rec_from: stream.peer_addr().unwrap()
-            };
-            let _ = add_block(&block, callback_struct);   
-            
         }
         0x60 => {
             log::trace!(
