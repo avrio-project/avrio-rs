@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
 use avrio_config::config;
 extern crate avrio_database;
-use crate::{invite::valid, transaction::Transaction};
+use crate::{invite::invite_valid, transaction::Transaction};
 use avrio_database::get_data;
 
 use avrio_crypto::Hashable;
@@ -14,8 +14,7 @@ use ring::signature::{self, KeyPair};
 use serde::{Deserialize, Serialize};
 extern crate bs58;
 
-#[derive(Debug)]
-
+#[derive(Debug, PartialEq)]
 pub enum CertificateErrors {
     TransactionNotFound,
     WalletAlreadyRegistered,
@@ -30,11 +29,11 @@ pub enum CertificateErrors {
     TransactionNotLock,
     DifficultyLow,
     InvalidInvite,
+    HashMissmatch,
     Unknown,
 }
 
 #[derive(Deserialize, Serialize, Default, Debug)]
-
 pub struct Certificate {
     pub hash: String,
     pub public_key: String,
@@ -211,7 +210,6 @@ pub fn generate_certificate(
             txn = transaction;
         }
     }
-
     if txn == Transaction::default() {
         return Err(CertificateErrors::OtherTransactionIssue);
     }
@@ -250,13 +248,13 @@ impl Hashable for Certificate {
 }
 
 impl Certificate {
-    pub fn validate(&mut self) -> Result<(), CertificateErrors> {
+    pub fn validate(&self) -> Result<(), CertificateErrors> {
         let cert = self;
 
-        cert.hash();
-
+        if cert.hash != cert.hash_item() {
+            return Err(CertificateErrors::HashMissmatch);
+        }
         let diff_cert = config().certificate_difficulty;
-
         if !cert.check_diff(&diff_cert) {
             return Err(CertificateErrors::DifficultyLow);
         } else if !cert.valid_signature() {
@@ -320,7 +318,7 @@ impl Certificate {
                     + (config().fullnode_lock_time * config().target_epoch_length)
         {
             Err(CertificateErrors::FundLockTimeInsufficent)
-        } else if !valid(&cert.invite) {
+        } else if !invite_valid(&cert.invite) {
             Err(CertificateErrors::InvalidInvite)
         } else {
             Ok(())
