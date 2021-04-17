@@ -9,3 +9,4 @@ pub mod invite;
 pub mod transaction;
 pub mod username;
 pub mod votes;
+pub mod validate;
