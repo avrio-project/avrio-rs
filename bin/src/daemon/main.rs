@@ -239,7 +239,7 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
     let matches = App::new("Avrio Daemon")
-        .version("Testnet Pre-alpha 0.0.1")
+        .version("Testnet alpha v0.1.0")
         .about("This is the offical daemon for the avrio network.")
         .author("Leo Cornelius")
         .subcommand(App::new("seednode").about("Runs the node as a seednode"))
@@ -295,7 +295,7 @@ fn main() {
      ▀         ▀          ▀          ▀         ▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀ 
                                                                            ";
     println!("{}", art);
-    info!("Avrio Daemon Testnet v1.0.0 (pre-alpha)");
+    info!("Avrio Daemon Testnet v0.1.0 (alpha)");
     warn!("Warning, this software is not stable");
     if seednode {
         warn!("Running in seednode mode, if you don't know what you are doing this is a mistake");

@@ -422,7 +422,7 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
 #[tokio::main]
 async fn main() {
     let matches = App::new("Avrio Wallet")
-        .version("Testnet Pre-alpha 0.0.1")
+        .version("Testnet alpha v0.1.0")
         .about("This is the offical CLI wallet for the avrio network.")
         .author("Leo Cornelius")
         .arg(
@@ -475,7 +475,7 @@ async fn main() {
             .unwrap_or(2),
     )
     .expect("Failed to setup logging");
-    info!("Avrio Wallet Testnet v1.0.0 (pre-alpha)");
+    info!("Avrio Wallet Testnet v0.1.0 (alpha)");
     let config_ = config();
     let _ = config_.save();
     info!("Welcome to the avrio wallet, please choose an option");
