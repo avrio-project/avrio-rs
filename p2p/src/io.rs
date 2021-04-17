@@ -196,7 +196,7 @@ pub fn read(
                 let len_striped: String = len_s.trim_start_matches('0').to_string(); // trims 0 which pad the LEN BYTES number to make it always LEN_DECL_BYTES long
                 let len: usize = len_striped.parse()?; // turn string (eg 129) into a usize (unsized int)
                 trace!("LEN_S={}", len_s);
-                let mut k: Aes256Gcm;
+                let k: Aes256Gcm;
                 if let Some(key_unwrapped) = key {
                     // if we were passed a custom key use that
                     k = Aes256Gcm::new(GenericArray::from_slice(key_unwrapped));

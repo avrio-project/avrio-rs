@@ -9,7 +9,7 @@ use avrio_config::config;
 use std::time::Duration;
 use std::{
     convert::TryInto,
-    net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr},
+    net::{Shutdown, SocketAddr},
 };
 use x25519_dalek::EphemeralSecret;
 use x25519_dalek::PublicKey;

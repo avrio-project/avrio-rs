@@ -9,7 +9,7 @@
 use avrio_config::config;
 use avrio_core::{
     account::get_account,
-    block::{get_block, get_block_from_raw, save_block, Block, BlockType},
+    block::{get_block, get_block_from_raw, save_block, Block},
     validate::Verifiable,
 };
 use avrio_crypto::public_key_to_address;

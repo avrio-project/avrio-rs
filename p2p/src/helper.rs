@@ -5,7 +5,7 @@ use crate::{
     utils::*,
 };
 use avrio_config::config;
-use avrio_core::{block::{Block, BlockType, from_compact, get_block_from_raw, save_block}, states::{form_state_digest}, validate::Verifiable};
+use avrio_core::{block::{Block, from_compact, get_block_from_raw, save_block}, states::{form_state_digest}, validate::Verifiable};
 use avrio_database::get_data;
 
 //use bson;

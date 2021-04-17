@@ -13,7 +13,7 @@ use avrio_database::{get_data, open_database};
 use avrio_rpc::block_announce;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
-use avrio_node::mempool::{add_block, Caller};
+use avrio_core::mempool::{add_block, Caller};
 extern crate rand;
 extern crate x25519_dalek;
 

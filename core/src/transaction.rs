@@ -454,7 +454,7 @@ impl Verifiable for Transaction {
         Ok(())
     }
 
-    fn get(hash: String) -> Result<Box<Self>, Box<dyn std::error::Error>> {
+    fn get(_hash: String) -> Result<Box<Self>, Box<dyn std::error::Error>> {
         todo!()
     }
 

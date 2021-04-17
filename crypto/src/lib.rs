@@ -238,7 +238,7 @@ pub fn vrf_hash_to_integer(hash: String) -> BigDecimal {
         as_binary += &format!("{:b}", hash_bit);
     }
     let before_normal = binary_to_u512(as_binary.clone());
-    let two_u518: U512 = 2.into();
+    let _two_u518: U512 = 2.into();
 
     let bn_dec = BigDecimal::from_str(&before_normal.to_string()).unwrap();
     BigDecimal::from_str(&format!("0.{}", bn_dec.normalized())).unwrap()
@@ -477,7 +477,7 @@ fn test_hashrate() {
     for n in 0..amount {
         raw_hash(&n.to_string());
     }
-    let time_took = SystemTime::now()
+    let _time_took = SystemTime::now()
         .duration_since(start)
         .expect("negative time")
         .as_millis();

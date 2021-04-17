@@ -4,7 +4,14 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use avrio_core::{account::to_dec, certificate::generate_certificate, invite::{generate_invite, new}, states::form_state_digest, transaction::Transaction, validate::Verifiable};
+use avrio_core::{
+    account::to_dec,
+    certificate::generate_certificate,
+    invite::{generate_invite, new},
+    states::form_state_digest,
+    transaction::Transaction,
+    validate::Verifiable,
+};
 use avrio_rpc::*;
 extern crate clap;
 use clap::{App, Arg};
@@ -22,11 +29,13 @@ use avrio_p2p::{
     core::new_connection, core::rec_server, helper::sync_in_order, helper::sync_needed,
 };
 
-use avrio_core::block::{genesis::genesis_blocks, *};
+use avrio_core::{
+    block::{genesis::genesis_blocks, *},
+    mempool::Mempool,
+};
 
 extern crate avrio_database;
 use avrio_database::{get_data, get_peerlist};
-use avrio_node::mempool::Mempool;
 #[macro_use]
 extern crate log;
 
@@ -316,8 +325,7 @@ fn main() {
     if statedigest == *"-1" {
         generate_chains().unwrap();
         statedigest =
-            form_state_digest(config().db_path + &"/chaindigest".to_owned())
-                .unwrap_or_default();
+            form_state_digest(config().db_path + &"/chaindigest".to_owned()).unwrap_or_default();
         info!("State digest: {}", statedigest);
     } else {
         info!("State digest: {}", statedigest);

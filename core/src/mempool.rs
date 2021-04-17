@@ -1,17 +1,17 @@
-use std::{net::SocketAddr, sync::Mutex};
-use avrio_core::block::{save_block, Block, BlockType};
+use crate::block::{save_block, Block, BlockType};
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 use std::time::SystemTime;
+use std::{net::SocketAddr, sync::Mutex};
 extern crate avrio_config;
+use crate::validate::Verifiable;
 use avrio_config::config;
+use lazy_static::*;
 use std::fs::File;
 use std::io::prelude::*;
-use avrio_core::validate::Verifiable;
-
 /// The time a block can be in the mempool before being removed
 const MEMPOOL_ENTRY_EXPIREY_TIME: u64 = (3 * 60) * 1000; // 3hr
 
@@ -261,14 +261,12 @@ impl Mempool {
                 if check_result.is_ok() {
                     let e_res = save_block(block.clone());
                     if e_res.is_ok() {
-                        
-                            if let Err(enact_res) = block.enact() {
-                                error!(
+                        if let Err(enact_res) = block.enact() {
+                            error!(
                                 "Failed to enact saved & valid block from mempool. Gave error: {}",
                                 enact_res
                             );
-                            }
-                        
+                        }
                     } else {
                         error!(
                             "Failed to save validated block from mempool. Gave error: {}",

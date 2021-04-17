@@ -12,7 +12,6 @@ avrio_config = { path = "../config/" }
 avrio_database = { path = "../database" }
 avrio_core = { path = "../core" }
 avrio_crypto = { path = "../crypto" }
-avrio_node = { path = "../node" }
 log = "~0.4"
 rand = "~0.7.3"
 serde = "~1.0.82"
