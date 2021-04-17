@@ -5,7 +5,11 @@ use crate::{
     utils::*,
 };
 use avrio_config::config;
-use avrio_core::{block::{Block, from_compact, get_block_from_raw, save_block}, states::{form_state_digest}, validate::Verifiable};
+use avrio_core::{
+    block::{from_compact, get_block_from_raw, save_block, Block},
+    states::form_state_digest,
+    validate::Verifiable,
+};
 use avrio_database::get_data;
 
 //use bson;
@@ -287,8 +291,6 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
     let mut chain_digests: Vec<ChainDigestPeer> = vec![];
 
     for peer in pl.iter_mut() {
-        //let _ = lock_peer(&peer.peer_addr().unwrap().to_string()).unwrap();
-
         if let Ok(peer_new) = lock(peer, 1000) {
             let mut cloned_peer = peer_new.try_clone().unwrap();
             _peers.push(peer_new);
@@ -347,7 +349,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
             unlock_peer(peer.try_clone().unwrap()).unwrap();
         }
     }
-    drop(_peers); // destroy all remaining streams
+    drop(_peers); // destroy all remaining stream clones
 
     let try_ack = syncack_peer(&mut peer_to_use_unwraped);
     if let Err(e) = try_ack {
@@ -450,16 +452,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
 
                         trace!(target: "avrio_p2p::sync", "got blocks: {:#?}", deformed);
 
-                        if deformed.message_type != 0x04 {
-                            // TODO: Ask for block(s) again rather than returning err
-                            error!(
-                                "Failed to get block, wrong message type: {}",
-                                deformed.message_type
-                            );
-                            let _ =
-                                send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None);
-                            return Err("failed to get block".into());
-                        } else {
+                        if deformed.message_type == 0x04 {
                             let blocks_encoded: Vec<String> =
                                 serde_json::from_str(&deformed.message).unwrap_or_default();
                             let mut blocks: Vec<Block> = vec![];
@@ -550,13 +543,12 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                         }
                     }
                     info!("Synced all blocks, checking chain digest with peers");
-                    let cd = form_state_digest(config().db_path + "/chaindigest")
-                        .unwrap(); //  recalculate our state digest
+                    let cd = form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
                     if cd != mode_hash {
                         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or register_username etc) then ignore this. If not please delete your data dir and resync");
                         error!("Our CD: {}, expected: {}", cd, mode_hash);
                         let _ = send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None);
-                        return sync_in_order(); // this should sync again, why is it not?
+                        return sync_in_order(); // try syncing again
                     } else {
                         info!("Finalised syncing, releasing lock on peer");
                         let _ = send("".to_string(), &mut peer_to_use_unwraped, 0x23, true, None)
@@ -574,9 +566,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
     let cd = form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
     if cd != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
-        error!("Our CD: {}, expected: {}", cd, mode_hash);
-
-        //return sync(); // this should sync again, why is it not?
+        error!("Our SD: {}, expected: {}", cd, mode_hash);
     } else {
         info!("Finalised syncing, releasing lock on peer");
         let _ = unlock_peer(peer_to_use_unwraped).unwrap();
@@ -686,7 +676,6 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
 
     loop {
         let mut no_read: bool = true;
-
         while no_read {
             if let Ok(a) = peer.peek(&mut buf) {
                 if a == 0 {
@@ -704,14 +693,7 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
 
         trace!(target: "avrio_p2p::sync", "got blocks: {:#?}", deformed);
 
-        if deformed.message_type != 0x04 {
-            // TODO: Ask for block(s) again rather than returning err
-            error!(
-                "Failed to get block, wrong message type: {}",
-                deformed.message_type
-            );
-            return Err("failed to get block".into());
-        } else {
+        if deformed.message_type == 0x04 {
             let blocks_encoded: Vec<String> =
                 serde_json::from_str(&deformed.message).unwrap_or_default();
             let mut blocks: Vec<Block> = vec![];
@@ -803,16 +785,6 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
             return Err(e);
         }
     }
-    /* now we are done recalculate the chain digest for this chain
-    debug!(
-        "Recalculating chain digest for synced chain={}, result={:#?}",
-        chain,
-        avrio_blockchain::form_chain_digest(
-            &avrio_database::open_database(config().db_path + &"/chaindigest").unwrap(),
-            vec![chain.to_owned()]
-        )
-        .unwrap()
-    );*/
     Ok(amount_to_sync)
 }
 
@@ -890,7 +862,7 @@ fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     } else if deformed.message == *"syncdec" {
         info!("Peer rejected sync request, choosing new peer...");
 
-        // choose the next fasted peer from our socket list
+        // choose the next fastest peer from our socket list
         Err("rejected syncack".into())
     } else {
         info!("Recieved incorect message from peer (in context syncrequest). Message: {}. This could be caused by outdated software - check you are up to date!", deformed.message);
@@ -901,36 +873,22 @@ fn syncack_peer(peer: &mut TcpStream) -> Result<TcpStream, Box<dyn Error>> {
     }
 }
 
-/// Sends our chain digest, this is a merkle root of all the blocks we have.avrio_blockchain.avrio_blockchain
-/// it is calculated with the generateChainDigest function which is auto called every time we get a new block
-fn send_chain_digest(peer: &mut TcpStream) {
-    let cd_db = config().db_path + &"/chaindigest".to_owned();
-    let chains_digest = avrio_database::get_data(cd_db.to_owned(), "master");
-    // let chains_digest = get_data(config().db_path + &"/chaindigest".to_owned(), &"master");
-
-    trace!("sending our chain digest: {}", chains_digest);
-
-    if chains_digest == *"-1" || chains_digest == *"0" {
-        let _ = send(
-            form_state_digest(cd_db).unwrap_or_else(|_| "".to_owned()),
-            peer,
-            0x01,
-            true,
-            None,
-        );
-    } else {
-        let _ = send(chains_digest, peer, 0x01, true, None);
-    }
-}
-
 fn get_chain_digest_string(peer: &mut TcpStream, _unlock: bool) -> String {
-    let _ = send("".to_owned(), peer, 0x1c, true, None);
-    read(peer, Some(10000), None)
-        .unwrap_or_else(|e| {
+    let mut tries = 0;
+    loop {
+        let _ = send("".to_owned(), peer, 0x1c, true, None);
+        let msg = read(peer, Some(10000), None).unwrap_or_else(|e| {
             error!("Failed to read p2pdata: {}", e);
             P2pData::default()
-        })
-        .message
+        });
+        if msg.message_type == 0xcd {
+            return msg.message;
+        }
+        tries += 1;
+        if tries >= 5 {
+            return String::from("-1");
+        }
+    }
 }
 
 /// this asks the peer for their chain digest
