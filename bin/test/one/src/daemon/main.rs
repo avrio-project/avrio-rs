@@ -500,9 +500,9 @@ fn main() {
                             info!("Txn type: {}", txn.type_transaction());
                             info!(
                                 "Used gas: {}, Gas price: {}, Fee: {}",
-                                txn.gas,
+                                txn.gas(),
                                 txn.gas_price,
-                                txn.gas * txn.gas_price
+                                txn.gas() * txn.gas_price
                             );
                             info!("Extra (appened data): {}", txn.extra);
                             info!("____________________________");

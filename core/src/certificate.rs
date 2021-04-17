@@ -12,24 +12,40 @@ use avrio_database::get_data;
 use avrio_crypto::Hashable;
 use ring::signature::{self, KeyPair};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 extern crate bs58;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Error)]
 pub enum CertificateErrors {
+    #[error("Lock transaction not found")]
     TransactionNotFound,
+    #[error("Already a fullnode")]
     WalletAlreadyRegistered,
+    #[error("Locked funds too low")]
     LockedFundsInsufficent,
+    #[error("Lock transaction unlocks too early")]
     FundLockTimeInsufficent,
+    #[error("Failed to parse certificate")]
     ParsingError,
+    #[error("Internal error while processing certificate")]
     InternalError,
+    #[error("Signature invalid")]
     SignatureError,
+    #[error("Transaction other issue")]
     OtherTransactionIssue,
+    #[error("Timestamp too far in future")]
     TimestampHigh,
+    #[error("Lock transaction not sent by registering party")]
     TransactionNotOwnedByAccount,
+    #[error("Transaction wrong type")]
     TransactionNotLock,
+    #[error("Bad PoW")]
     DifficultyLow,
+    #[error("Invite invalid")]
     InvalidInvite,
+    #[error("Certificate hash mismatch")]
     HashMissmatch,
+    #[error("Unknown/Other error")]
     Unknown,
 }
 

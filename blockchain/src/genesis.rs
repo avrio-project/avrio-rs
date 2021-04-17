@@ -75,11 +75,9 @@ pub fn get_genesis_txns() -> Vec<Transaction> {
             access_key: String::from(""),
             unlock_time: 0,
             gas_price: 0,
-            gas: 0,
             max_gas: u64::max_value(),
             nonce: 0,
             timestamp: 0,
-            signature: String::from(""),
         },
     ];
 }

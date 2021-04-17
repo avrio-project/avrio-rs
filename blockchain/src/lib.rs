@@ -3,10 +3,7 @@ extern crate avrio_core;
 extern crate avrio_database;
 use crate::genesis::{get_genesis_block, GenesisBlockErrors};
 use avrio_config::config;
-use avrio_core::{
-    account::{get_account, set_account, Account},
-    transaction::*,
-};
+use avrio_core::{account::{get_account, set_account, Account}, transaction::*, validate::Verifiable};
 use avrio_database::*;
 use serde::{Deserialize, Serialize};
 #[macro_use]
@@ -32,7 +29,7 @@ pub enum BlockValidationErrors {
     IndexMissmatch,
     InvalidPreviousBlockhash,
     BlockCollision,
-    InvalidTransaction(TransactionValidationErrors),
+    InvalidTransaction(Box<dyn std::error::Error>),
     AccountExists,
     FailedToGetAccount(u8),
     TransactionCountNotZero,
@@ -901,12 +898,7 @@ pub fn enact_block(block: Block) -> std::result::Result<(), Box<dyn std::error::
         }
         for txn in block.txns {
             trace!("enacting txn with hash: {}", txn.hash);
-            txn.enact(
-                config().db_path
-                    + &"/chains/".to_owned()
-                    + &txn.sender_key
-                    + &"-chainindex".to_owned(),
-            )?;
+            txn.enact()?;
             trace!("Enacted txn. Saving txn to txindex db (db_name  = transactions)");
             if save_data(
                 &block.hash,
@@ -1462,9 +1454,7 @@ mod tests {
                     access_key: String::from(""),
                     gas_price: rng.gen::<u16>() as u64,
                     max_gas: rng.gen::<u16>() as u64,
-                    gas: rng.gen::<u16>() as u64,
                     nonce: rng.gen(),
-                    signature: String::from(""),
                     timestamp: 0,
                     unlock_time: 0,
                 };
@@ -1472,7 +1462,6 @@ mod tests {
                 txn.hash();
                 // Sign the hash
                 let msg: &[u8] = txn.hash.as_bytes();
-                txn.signature = bs58::encode(key_pair.sign(msg)).into_string();
                 let _peer_public_key =
                     signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
                 //peer_public_key.verify(msg, bs58::decode(&txn.signature.to_owned()).unwrap().as_ref()).unwrap();

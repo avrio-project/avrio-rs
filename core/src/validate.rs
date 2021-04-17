@@ -6,11 +6,11 @@ use std::error::Error;
 /// When validating, saving or enacting fails you should return a custom enum which inherits the error trait. For example:
 /// BlockValidationErrors::HashMissmatch
 pub trait Verifiable {
-    fn verify(&self) -> Result<(), Box<dyn Error>>;
+    fn valid(&self) -> Result<(), Box<dyn Error>>;
     fn get(hash: String) -> Result<Box<Self>, Box<dyn Error>>;
     fn save(&self) -> Result<(), Box<dyn Error>>;
     fn enact(&self) -> Result<(), Box<dyn Error>>;
     fn is_valid(&self) -> bool {
-        self.verify().is_ok()
+        self.valid().is_ok()
     }
 }

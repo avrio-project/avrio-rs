@@ -272,26 +272,26 @@ pub fn new_ann(ann: Announcement) {
                             match txn.flag {
                                 'n' => {
                                     locked.balance -= txn.amount;
-                                    locked.balance -= txn.gas * txn.gas_price;
+                                    locked.balance -= txn.gas() * txn.gas_price;
                                 }
                                 'c' => {
                                     locked.balance += txn.amount;
                                 }
                                 'u' => {
-                                    locked.username = txn.extra;
+                                    locked.username = txn.extra.clone();
                                     locked.balance -= txn.amount;
-                                    locked.balance -= txn.gas * txn.gas_price;
+                                    locked.balance -= txn.gas() * txn.gas_price;
                                     info!("Registered new username: {}", locked.username);
                                 }
                                 'l' => {
                                     locked.balance -= txn.amount;
                                     locked.locked += txn.amount;
-                                    locked.balance -= txn.gas * txn.gas_price;
+                                    locked.balance -= txn.gas() * txn.gas_price;
                                     info!("Locked funds, commitment: {}", txn.hash);
                                 }
                                 'b' => {
                                     locked.balance -= txn.amount;
-                                    locked.balance -= txn.gas * txn.gas_price;
+                                    locked.balance -= txn.gas() * txn.gas_price;
                                 }
                                 _ => {
                                     error!(
@@ -748,9 +748,6 @@ async fn main() {
                                     access_key: String::from(""),
                                     unlock_time: 0,
                                     gas_price: 10, // 0.001 AIO
-                                    gas: avrio_core::gas::TX_GAS as u64
-                                        + (avrio_core::gas::GAS_PER_EXTRA_BYTE_NORMAL as u64
-                                            * extra_data.len() as u64),
 
                                     max_gas: u64::max_value(),
                                     nonce: 0,
@@ -759,7 +756,6 @@ async fn main() {
                                         .expect("Time went backwards")
                                         .as_millis()
                                         as u64,
-                                    signature: String::from(""),
                                 };
                                 let request_url = format!(
                                     "{}/api/v1/balances/{}",
@@ -807,7 +803,6 @@ async fn main() {
                                                 {
                                                     txn.nonce = transactioncount.transaction_count;
                                                     txn.hash();
-                                                    let _ = txn.sign(&wall.private_key);
                                                     if let Err(e) =
                                                         send_transaction(txn, wall.clone()).await
                                                     {
@@ -842,14 +837,12 @@ async fn main() {
                                 access_key: String::from(""),
                                 unlock_time: 0,
                                 gas_price: 10, // 0.001 AIO
-                                gas: avrio_core::gas::TX_GAS as u64,
                                 max_gas: u64::max_value(),
                                 nonce: 0,
                                 timestamp: SystemTime::now()
                                     .duration_since(UNIX_EPOCH)
                                     .expect("Time went backwards")
                                     .as_millis() as u64,
-                                signature: String::from(""),
                             };
                             let request_url = format!(
                                 "{}/api/v1/transactioncount/{}",
@@ -862,7 +855,6 @@ async fn main() {
                                 {
                                     txn.nonce = transactioncount.transaction_count;
                                     txn.hash();
-                                    let _ = txn.sign(&wall.private_key);
                                     if let Err(e) = send_transaction(txn, wall.clone()).await {
                                         error!("Failed to send txn, got error={}", e);
                                     }
@@ -913,7 +905,6 @@ async fn main() {
                                                         access_key: String::from(""),
                                                         unlock_time: 0,
                                                         gas_price: 10, // 0.001 AIO
-                                                        gas: avrio_core::gas::TX_GAS as u64 + ((avrio_core::gas::GAS_PER_EXTRA_BYTE_NORMAL / 2) as u64 * desired_username.len() as u64),
                                                         max_gas: u64::max_value(),
                                                         nonce: 0,
                                                         timestamp: SystemTime::now()
@@ -921,7 +912,6 @@ async fn main() {
                                                             .expect("Time went backwards")
                                                             .as_millis()
                                                             as u64,
-                                                        signature: String::from(""),
                                                     };
                                                     let request_url = format!(
                                                         "{}/api/v1/balances/{}",
@@ -958,8 +948,6 @@ async fn main() {
                                                                     txn.nonce = transactioncount
                                                                         .transaction_count;
                                                                     txn.hash();
-                                                                    let _ =
-                                                                        txn.sign(&wall.private_key);
                                                                     if let Err(e) =
                                                                         send_transaction(
                                                                             txn,
@@ -1026,14 +1014,12 @@ async fn main() {
                                 access_key: String::from(""),
                                 unlock_time: 0,
                                 gas_price: 10, // 0.001 AIO
-                                gas: 20,
                                 max_gas: u64::max_value(),
                                 nonce: 0,
                                 timestamp: SystemTime::now()
                                     .duration_since(UNIX_EPOCH)
                                     .expect("Time went backwards")
                                     .as_millis() as u64,
-                                signature: String::from(""),
                             };
                             let request_url = format!(
                                 "{}/api/v1/balances/{}",
@@ -1056,7 +1042,6 @@ async fn main() {
                                             {
                                                 txn.nonce = transactioncount.transaction_count;
                                                 txn.hash();
-                                                let _ = txn.sign(&wall.private_key);
                                                 if let Err(e) =
                                                     send_transaction(txn, wall.clone()).await
                                                 {
@@ -1386,14 +1371,12 @@ async fn main() {
                                     unlock_time: 0,
                                     gas_price: 20,
                                     max_gas: u64::MAX,
-                                    gas: 30,
                                     nonce: 0,
                                     timestamp: SystemTime::now()
                                         .duration_since(UNIX_EPOCH)
                                         .expect("time went backwards ono")
                                         .as_millis()
                                         as u64,
-                                    signature: String::from(""),
                                 };
                                 let request_url = format!(
                                     "{}/api/v1/transactioncount/{}",
@@ -1418,30 +1401,14 @@ async fn main() {
                                             {
                                                 if txn.amount + txn.fee() < response.balance {
                                                     txn.hash();
-                                                    match txn.sign(&wall.private_key) {
+
+                                                    match send_transaction(txn, wall.clone()).await
+                                                    {
                                                         Ok(_) => {
-                                                            match send_transaction(
-                                                                txn,
-                                                                wall.clone(),
-                                                            )
-                                                            .await
-                                                            {
-                                                                Ok(_) => {
-                                                                    info!(
-                                                                        "Locked {} AIO",
-                                                                        amount_int
-                                                                    );
-                                                                }
-                                                                Err(e) => {
-                                                                    error!(
-                                                                        "Failed to send txn: {}",
-                                                                        e
-                                                                    );
-                                                                }
-                                                            }
+                                                            info!("Locked {} AIO", amount_int);
                                                         }
                                                         Err(e) => {
-                                                            error!("Failed to sign transaction, got error={}", e);
+                                                            error!("Failed to send txn: {}", e);
                                                         }
                                                     }
                                                 } else {

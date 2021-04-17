@@ -149,13 +149,10 @@ fn test_encodeing() {
             unlock_time: 0,
             gas_price: 1,
             max_gas: 12124124,
-            gas: 1249,
             nonce,
             timestamp: 2352352352,
-            signature: String::from(""),
         };
         txn.hash();
-        txn.sign(&wall.private_key).unwrap();
         block.txns.push(txn);
     }
     block.header = Header {
