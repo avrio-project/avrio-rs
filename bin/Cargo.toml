@@ -19,11 +19,11 @@ path = "src/wallet/main.rs"
 
 [dependencies]
 log = "0.4"
-avrio_core = { path = "../../../core" }
-avrio_database = { path = "../../../database" }
-avrio_config = { path = "../../../config" }
-avrio_p2p = { path = "../../../p2p" }
-avrio_crypto = { path = "../../../crypto" }
+avrio_core = { path = "../core" }
+avrio_database = { path = "../database" }
+avrio_config = { path = "../config" }
+avrio_p2p = { path = "../p2p" }
+avrio_crypto = { path = "../crypto" }
 clap = "2.33.0"
 ring = "0.16.11"
 serde_json = "1"
@@ -32,11 +32,11 @@ aes-gcm = "0.5.0"
 aead = "0.2.0"
 hex = "0.4.2"
 text_io = "0.1.8"
-avrio_api = { path = "../../../api" }
+avrio_api = { path = "../api" }
 fern = { version = "0.6", features = ["colored"] }
 chrono = "0.4"
 ctrlc = "3.1.8"
-avrio_rpc = { path = "../../../rpc" }
+avrio_rpc = { path = "../rpc" }
 lazy_static = "1.4.0"
 reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
