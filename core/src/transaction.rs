@@ -6,15 +6,15 @@ extern crate bs58;
 use avrio_config::config;
 extern crate rand;
 use avrio_database::{get_data, save_data};
-
 use ring::signature;
 
 extern crate avrio_database;
 
 use crate::{
     account::{get_account, get_by_username, open_or_create, Accesskey, Account},
-    certificate::Certificate,
+    certificate::{Certificate, CertificateErrors},
     gas::*,
+    invite::{invite_valid, new},
 };
 
 use std::{
@@ -24,6 +24,8 @@ use std::{
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionValidationErrors {
+    InviteAlreadyExists,
+    NotFullNode,
     TransactionExists,
     CouldNotGetSenderAcc,
     CouldNotGetRecieverAcc,
@@ -40,7 +42,7 @@ pub enum TransactionValidationErrors {
     BadTimestamp,
     InsufficentBurnForUsername,
     BadUnlockTime,
-    InvalidCertificate,
+    InvalidCertificate(CertificateErrors),
     BadHash,
     NonMessageWithoutRecipitent,
     ExtraTooLarge,
@@ -48,6 +50,7 @@ pub enum TransactionValidationErrors {
     UnsupportedType,
     ExtraNotAlphanumeric,
     WouldOverflowBalance,
+    InviteInvalid,
     Other,
 }
 
@@ -258,7 +261,7 @@ impl Transaction {
             );
             return Err(TransactionValidationErrors::TransactionExists);
         }
-        if !['c', 'n', 'b', 'u', 'l'].contains(&self.flag) {
+        if !['c', 'n', 'b', 'u', 'l', 'i'].contains(&self.flag) {
             error!(
                 "Transaction {} has unsupported type={} ({})",
                 self.hash,
@@ -394,7 +397,7 @@ impl Transaction {
                 }
             }
             'b' => {
-                let size_of_extra = std::mem::size_of_val(&self.extra);
+                let size_of_extra = self.extra.len();
                 if size_of_extra > 100 {
                     error!(
                         "Burn type transaction {}'s extra ({}) too large, {} > 100",
@@ -428,7 +431,7 @@ impl Transaction {
                 }
             }
             'l' => {
-                let size_of_extra = std::mem::size_of_val(&self.extra);
+                let size_of_extra = self.extra.len();
                 if size_of_extra > 100 {
                     error!(
                         "Lock type transaction {}'s extra ({}) too large, {} > 100",
@@ -459,6 +462,52 @@ impl Transaction {
                 }
                 if self.unlock_time != 0 {
                     return Err(TransactionValidationErrors::UnsupportedType); // TODO: Implement unlock time
+                }
+            }
+            'i' => {
+                let size_of_extra = self.extra.len();
+                if size_of_extra != 44 {
+                    error!(
+                        "Create invite type transaction {}'s extra ({}) wrong size, {} != 44",
+                        self.hash, self.extra, size_of_extra
+                    );
+                    return Err(TransactionValidationErrors::ExtraTooLarge);
+                }
+                // check if the sender is a fullnode
+                if get_data(
+                    config().db_path + &"/fn-certificates".to_owned(),
+                    &(self.sender_key.to_owned() + &"-cert".to_owned()),
+                ) == "-1"
+                {
+                    error!("Non fullnode {} tried to create a invite", self.sender_key);
+                    return Err(TransactionValidationErrors::NotFullNode);
+                }
+                // check the invite does not already exist
+                if get_data(config().db_path + &"/invites".to_owned(), &self.extra) != "-1" {
+                    error!(
+                        "Fullnode {} tried creating an invite that already exists ({})",
+                        self.sender_key, self.extra
+                    );
+                    return Err(TransactionValidationErrors::InviteAlreadyExists);
+                }
+                // check the invite is valid format (len = 44, can be decoded into a valid public key)
+                if !invite_valid(&self.extra) {
+                    error!(
+                        "Invite: {} (created by {}) is invalid",
+                        self.extra, self.sender_key
+                    );
+                    return Err(TransactionValidationErrors::InviteInvalid);
+                }
+            }
+            'f' => {
+                if let Ok(cert) = serde_json::from_str::<Certificate>(&self.extra) {
+                    match cert.validate() {
+                        Err(e) => {
+                            error!("Invalid fullnode register certificate {} in transaction {} by sender {}, error={:#?}", cert.hash, self.hash, self.sender_key, e);
+                            return Err(TransactionValidationErrors::InvalidCertificate(e));
+                        }
+                        _ => {}
+                    }
                 }
             }
             _ => {
@@ -627,10 +676,10 @@ impl Transaction {
             if self.extra.len() > 296 {
                 return Err(TransactionValidationErrors::TooLarge);
             } else {
-                let mut certificate: Certificate =
+                let certificate: Certificate =
                     serde_json::from_str(&self.extra).unwrap_or_default();
-                if certificate.validate().is_err() {
-                    return Err(TransactionValidationErrors::InvalidCertificate);
+                if let Err(er) = certificate.validate() {
+                    return Err(TransactionValidationErrors::InvalidCertificate(er));
                 }
             }
         }
