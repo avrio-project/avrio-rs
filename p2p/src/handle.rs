@@ -101,9 +101,6 @@ pub fn launch_handle_client(
         move || {
             let mut ping_nonce = 0;
             let mut paused = false;
-            if !incoming {
-                thread::sleep(Duration::from_millis(2000));
-            }
             let mut last_ping_time = SystemTime::now();
             loop {
                 if let Ok(msg) = rx.try_recv() {
@@ -122,39 +119,6 @@ pub fn launch_handle_client(
                         }
                     }
                 }
-                if let Ok(a) = peek(&mut stream) {
-                    if let Ok(msg) = rx.try_recv() {
-                        log::debug!("Read msg={}", msg);
-                        if msg == "pause" {
-                            log::trace!("Pausing stream for peer");
-                            loop {
-                                if let Ok(msg) = rx.try_recv() {
-                                    if msg == "run" {
-                                        log::trace!("Resuming stream for peer");
-                                        paused = true;
-                                        break;
-                                    }
-                                }
-                                std::thread::sleep(std::time::Duration::from_millis(10));
-                            }
-                        }
-                    }
-                    if a != 0 && !paused {
-                        let read_data = read(&mut stream, Some(1000), None);
-                        if let Ok(read_msg) = read_data {
-                            if process_handle_msg(read_msg, &mut stream, &mut last_ping_time)
-                                .is_some()
-                            {
-                                debug!("Got some while handling peer, returning");
-                                return Ok(());
-                            }
-                        }
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                } else {
-                    return Err("failed to peek peer");
-                }
-                paused = false;
                 let mut to_process_after_ping: Vec<P2pData> = vec![];
                 if SystemTime::now()
                     .duration_since(last_ping_time)
@@ -181,6 +145,12 @@ pub fn launch_handle_client(
                                             if pong.message != ping_nonce.to_string()
                                                 || pong.message_type != 0x92
                                             {
+                                                if pong.message_type == 0x91 {
+                                                    // the peer pinged us, ping them back
+                                                    send(pong.message, &mut stream, 0x92, true, None);
+                                                    last_ping_time = SystemTime::now();
+                                                    break;
+                                                }
                                                 tries += 1;
                                                 if tries == MAX_TRIES {
                                                     // close the stream
@@ -194,7 +164,7 @@ pub fn launch_handle_client(
                                                     let _ = stream.shutdown(Shutdown::Both);
                                                     return Err("Incorrect pong response");
                                                 } else {
-                                                    error!("Incorrect pong response, appending to 'to_process_after_ping' vec (tries = {}/{})", tries, MAX_TRIES);
+                                                    error!("Incorrect pong response, appending to 'to_process_after_ping' vec (tries = {}/{}) (type={}, nonce={})", tries, MAX_TRIES, pong.message_type, pong.message);
                                                     to_process_after_ping.push(pong);
                                                 }
                                             } else {
@@ -248,6 +218,39 @@ pub fn launch_handle_client(
                         }
                     }
                 }
+                if let Ok(a) = peek(&mut stream) {
+                    if let Ok(msg) = rx.try_recv() {
+                        log::debug!("Read msg={}", msg);
+                        if msg == "pause" {
+                            log::trace!("Pausing stream for peer");
+                            loop {
+                                if let Ok(msg) = rx.try_recv() {
+                                    if msg == "run" {
+                                        log::trace!("Resuming stream for peer");
+                                        paused = true;
+                                        break;
+                                    }
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(10));
+                            }
+                        }
+                    }
+                    if a != 0 && !paused {
+                        let read_data = read(&mut stream, Some(1000), None);
+                        if let Ok(read_msg) = read_data {
+                            if process_handle_msg(read_msg, &mut stream, &mut last_ping_time)
+                                .is_some()
+                            {
+                                debug!("Got some while handling peer, returning");
+                                return Ok(());
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                } else {
+                    return Err("failed to peek peer");
+                }
+                paused = false;
                 std::thread::sleep(Duration::from_millis(50));
             }
         },
@@ -271,7 +274,9 @@ pub fn process_handle_msg(
         0x91 => {
             debug!("Got ping message from peer");
             *last_ping_time = SystemTime::now();
-            let _= send(read_msg.message, stream, 0x92, true, None);
+            if let Err(e) =  send(read_msg.message, stream, 0x92, true, None) {
+                error!("Failed to respond to ping, error={}", e);
+            }
         }
         0xff => {
             // shutdown
