@@ -57,7 +57,7 @@ pub fn mark_spent(invite: &str) -> Result<(), &str> {
 }
 
 /// Saves the public key into our invites db (and sets to unspent)
-pub fn new(invite: &str) -> Result<(), &str> {
+pub fn new_invite(invite: &str) -> Result<(), &str> {
     if get_data(config().db_path + &"/invites".to_owned(), invite) != *"-1" {
         Err("Error creating invite")
     } else if save_data(
