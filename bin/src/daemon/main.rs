@@ -576,7 +576,6 @@ fn main() {
                             &wallet.public_key,
                             &wallet.private_key,
                             &commitment,
-                            4,
                             invite,
                         ) {
                             info!(
