@@ -6,8 +6,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
 use avrio_config::config;
 extern crate avrio_database;
-use crate::{invite::invite_valid, transaction::Transaction, block::get_block_from_raw};
-use avrio_database::get_data;
+use crate::{
+    block::get_block_from_raw, invite::invite_valid, transaction::Transaction, validate::Verifiable,
+};
+use avrio_database::{get_data, save_data};
 
 use avrio_crypto::Hashable;
 use ring::signature::{self, KeyPair};
@@ -54,7 +56,6 @@ pub struct Certificate {
     pub hash: String,
     pub public_key: String,
     pub txn_hash: String,
-    pub nonce: u64,
     pub timestamp: u64,
     pub valid_until: u64,
     pub invite: String,
@@ -62,133 +63,10 @@ pub struct Certificate {
     pub signature: String,
 }
 
-pub fn difficulty_bytes_as_u128(v: &[u8]) -> u128 {
-    ((v[31] as u128) << (0xf * 8))
-        | ((v[30] as u128) << (0xe * 8))
-        | ((v[29] as u128) << (0xd * 8))
-        | ((v[28] as u128) << (0xc * 8))
-        | ((v[27] as u128) << (0xb * 8))
-        | ((v[26] as u128) << (0xa * 8))
-        | ((v[25] as u128) << (0x9 * 8))
-        | ((v[24] as u128) << (0x8 * 8))
-        | ((v[23] as u128) << (0x7 * 8))
-        | ((v[22] as u128) << (0x6 * 8))
-        | ((v[21] as u128) << (0x5 * 8))
-        | ((v[20] as u128) << (0x4 * 8))
-        | ((v[19] as u128) << (0x3 * 8))
-        | ((v[18] as u128) << (0x2 * 8))
-        | ((v[17] as u128) << 8)
-        | v[18] as u128
-        | v[19] as u128
-        | v[20] as u128
-        | v[21] as u128
-        | v[22] as u128
-        | v[23] as u128
-        | v[24] as u128
-        | v[25] as u128
-}
-
-pub fn number_of_proceding_a(s: String) -> u8 {
-    let mut fufilled: u8 = 0;
-
-    for c in s.chars() {
-        if c != 'A' {
-            break;
-        } else {
-            fufilled += 1;
-        }
-    }
-
-    fufilled
-}
-
-#[cfg(test)]
-mod tests {
-    pub use crate::certificate::*;
-    use avrio_config::config;
-    use ring::{
-        rand as randc,
-        signature::{self, KeyPair},
-    };
-
-    #[test]
-    fn hash_rate() {
-        println!("Starting hashrate test");
-
-        let start = SystemTime::now();
-        let mut cert: Certificate = Certificate {
-            hash: String::from(""),
-            public_key: String::from(""),
-            txn_hash: String::from(""),
-            nonce: 0,
-            timestamp: 0,
-            valid_until: 0,
-            invite: "inv".into(),
-            invite_sig: "inv_sig".into(),
-            signature: String::from(""),
-        };
-
-        while SystemTime::now()
-            .duration_since(start)
-            .expect("Time went backwards")
-            .as_millis()
-            < 120 * 1000
-        {
-            cert.nonce += 1;
-            cert.hash();
-        }
-
-        let hashrate = cert.nonce / 120;
-
-        println!("hashrate: {} h/s", hashrate);
-    }
-
-    #[test]
-    fn test_cert_diff() {
-        let conf = config();
-        let diff = 4;
-
-        let _ = conf.save();
-        let rngc = randc::SystemRandom::new();
-        let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
-        let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
-        let peer_public_key_bytes = key_pair.public_key().as_ref();
-        let pkcs8_bytes_invite = signature::Ed25519KeyPair::generate_pkcs8(&rngc).unwrap();
-        //let key_pair_invite = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).unwrap();
-        let _target = 600 * 1000;
-
-        println!(
-            "Generating cerificate with public key {}...",
-            bs58::encode(peer_public_key_bytes).into_string()
-        );
-
-        let cert = generate_certificate(
-            &bs58::encode(peer_public_key_bytes).into_string(),
-            &bs58::encode(pkcs8_bytes).into_string(),
-            &bs58::encode("txn hashhhh").into_string(),
-            diff,
-            bs58::encode(pkcs8_bytes_invite).into_string(),
-        )
-        .unwrap();
-
-        println!(
-            "Generated certificate {:?} in {} secconds.",
-            cert,
-            (SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_millis() as u64
-                - cert.timestamp)
-                / 1000
-        );
-    }
-}
-
 pub fn generate_certificate(
     pk: &str,
     private_key: &str,
     txn_hash: &str,
-    diff: u128,
     invite: String,
 ) -> Result<Certificate, CertificateErrors> {
     let key_pair =
@@ -201,7 +79,6 @@ pub fn generate_certificate(
         hash: String::from(""),
         public_key: String::from(""),
         txn_hash: String::from(""),
-        nonce: 0,
         valid_until: 0,
         invite: bs58::encode(peer_public_key_bytes).into_string(),
         invite_sig: "inv_sig".into(),
@@ -215,8 +92,6 @@ pub fn generate_certificate(
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_millis() as u64;
-
-    let diff_cert = diff; //config().certificate_difficulty;
     let block_hash = get_data(config().db_path + "/transactions", &cert.txn_hash);
     let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
     let mut txn: Transaction = Default::default();
@@ -232,13 +107,7 @@ pub fn generate_certificate(
 
     cert.valid_until = txn.unlock_time;
 
-    for nonce in 0..u64::max_value() {
-        cert.nonce = nonce;
-        cert.hash();
-        if cert.check_diff(&diff_cert) {
-            break;
-        }
-    }
+    cert.hash();
 
     if let Err(_e) = cert.sign(&private_key, invite) {
         Err(CertificateErrors::SignatureError)
@@ -253,9 +122,7 @@ impl Hashable for Certificate {
 
         bytes.extend(self.public_key.bytes());
         bytes.extend(self.txn_hash.bytes());
-        bytes.extend(self.nonce.to_owned().to_string().bytes());
         bytes.extend(self.invite.bytes());
-        bytes.extend(self.invite_sig.bytes());
         bytes.extend(self.timestamp.to_owned().to_string().bytes());
         bytes.extend(self.valid_until.to_owned().to_string().bytes());
 
@@ -263,25 +130,22 @@ impl Hashable for Certificate {
     }
 }
 
-impl Certificate {
-    pub fn validate(&self) -> Result<(), CertificateErrors> {
+impl Verifiable for Certificate {
+    fn valid(&self) -> Result<(), Box<dyn std::error::Error>> {
         let cert = self;
 
         if cert.hash != cert.hash_item() {
-            return Err(CertificateErrors::HashMissmatch);
+            return Err(Box::new(CertificateErrors::HashMissmatch));
         }
-        let diff_cert = config().certificate_difficulty;
-        if !cert.check_diff(&diff_cert) {
-            return Err(CertificateErrors::DifficultyLow);
-        } else if !cert.valid_signature() {
-            return Err(CertificateErrors::SignatureError);
+        if !cert.valid_signature() {
+            return Err(Box::new(CertificateErrors::SignatureError));
         } else if cert.timestamp
             > SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64
         {
-            return Err(CertificateErrors::TimestampHigh);
+            return Err(Box::new(CertificateErrors::TimestampHigh));
         }
         let block_hash = get_data(config().db_path + "/transactions", &cert.txn_hash);
         let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
@@ -294,33 +158,28 @@ impl Certificate {
         }
 
         if txn == Transaction::default() {
-            return Err(CertificateErrors::OtherTransactionIssue);
+            return Err(Box::new(CertificateErrors::OtherTransactionIssue));
         }
 
         if txn.sender_key != cert.public_key {
-            return Err(CertificateErrors::TransactionNotOwnedByAccount);
+            return Err(Box::new(CertificateErrors::TransactionNotOwnedByAccount));
         } else if txn.type_transaction() != "lock" {
-            return Err(CertificateErrors::TransactionNotLock);
+            return Err(Box::new(CertificateErrors::TransactionNotLock));
         } else if txn.amount != config().fullnode_lock_amount {
-            return Err(CertificateErrors::LockedFundsInsufficent);
+            return Err(Box::new(CertificateErrors::LockedFundsInsufficent));
         }
-        let got_data = get_data(
-            config().db_path + &"/fn-certificates".to_owned(),
-            &(cert.public_key.to_owned() + &"-cert".to_owned()),
-        );
 
-        if got_data != *"-1" {
-            let exisiting_cert: Certificate = serde_json::from_str(&got_data).unwrap_or_default();
+        if let Ok(exisiting_cert) = Certificate::get(cert.public_key.clone()) {
             if exisiting_cert.valid_until
                 > (SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards")
                     .as_millis() as u64)
             {
-                return Err(CertificateErrors::WalletAlreadyRegistered);
+                return Err(Box::new(CertificateErrors::WalletAlreadyRegistered));
             }
         }
-        if txn.unlock_time - (config().transaction_timestamp_max_offset as u64)
+        /*if txn.unlock_time - (config().transaction_timestamp_max_offset as u64)
             < (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
@@ -333,14 +192,47 @@ impl Certificate {
                     .as_millis() as u64)
                     + (config().fullnode_lock_time * config().target_epoch_length)
         {
-            Err(CertificateErrors::FundLockTimeInsufficent)
-        } else if !invite_valid(&cert.invite) {
-            Err(CertificateErrors::InvalidInvite)
+            Err(Box::new(CertificateErrors::FundLockTimeInsufficent))
+        } else */
+        if !invite_valid(&cert.invite) {
+            Err(Box::new(CertificateErrors::InvalidInvite))
         } else {
             Ok(())
         }
     }
 
+    fn get(public_key: String) -> Result<Box<Self>, Box<dyn std::error::Error>> {
+        let got_data = get_data(
+            config().db_path + &"/fn-certificates".to_owned(),
+            &(public_key + &"-cert".to_owned()),
+        );
+        if got_data != "-1" {
+            let decoded: Certificate = serde_json::from_str(&got_data)?;
+            return Ok(Box::new(decoded));
+        } else {
+            return Err("Certificate not found".into());
+        }
+    }
+
+    fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if save_data(
+            &serde_json::to_string(self)?,
+            &(config().db_path + &"/fn-certificates".to_owned()),
+            self.public_key.clone() + &"-cert".to_owned(),
+        ) == 1
+        {
+            return Ok(());
+        } else {
+            return Err("Certificate not found".into());
+        }
+    }
+
+    fn enact(&self) -> Result<(), Box<dyn std::error::Error>> {
+        todo!()
+    }
+}
+
+impl Certificate {
     pub fn sign(
         &mut self,
         private_key: &str,
@@ -443,12 +335,6 @@ impl Certificate {
         // ^ wont unwrap if sig is invalid
 
         true
-    }
-
-    pub fn check_diff(&self, diff: &u128) -> bool {
-        let _fufilled: u8 = 0;
-
-        number_of_proceding_a(self.hash.clone()) as u128 == *diff
     }
 
     pub fn hash(&mut self) {
