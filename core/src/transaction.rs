@@ -5,7 +5,7 @@ extern crate avrio_config;
 extern crate bs58;
 use avrio_config::config;
 extern crate rand;
-use avrio_database::get_data;
+use avrio_database::{get_data, save_data};
 use thiserror::Error;
 extern crate avrio_database;
 
@@ -13,13 +13,13 @@ use crate::{
     account::{get_account, open_or_create, Accesskey, Account},
     certificate::{Certificate, CertificateErrors},
     gas::*,
-    invite::invite_valid,
+    invite::{invite_valid, new_invite},
     validate::Verifiable,
 };
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, Error)]
 pub enum TransactionValidationErrors {
     #[error("Tried to create an existing invite")]
     InviteAlreadyExists,
@@ -58,7 +58,7 @@ pub enum TransactionValidationErrors {
     #[error("Bad unlocktime")]
     BadUnlockTime,
     #[error("Certificate invalid: {0}")]
-    InvalidCertificate(CertificateErrors),
+    InvalidCertificate(Box<dyn std::error::Error>),
     #[error("Hash invalid")]
     BadHash,
     #[error("Non message type, but no recipient")]
@@ -397,19 +397,20 @@ impl Verifiable for Transaction {
                     return Err(Box::new(TransactionValidationErrors::InviteInvalid));
                 }
             }
-            'f' => {
-                if let Ok(cert) = serde_json::from_str::<Certificate>(&self.extra) {
-                    match cert.validate() {
-                        Err(e) => {
-                            error!("Invalid fullnode register certificate {} in transaction {} by sender {}, error={:#?}", cert.hash, self.hash, self.sender_key, e);
-                            return Err(Box::new(TransactionValidationErrors::InvalidCertificate(
-                                e,
-                            )));
-                        }
-                        _ => {}
+            'f' => match serde_json::from_str::<Certificate>(&self.extra) {
+                Ok(cert) => {
+                    if let Err(e) = cert.valid() {
+                        error!("Invalid fullnode register certificate {} in transaction {} by sender {}, error={:#?}", cert.hash, self.hash, self.sender_key, e);
+                        return Err(Box::new(TransactionValidationErrors::InvalidCertificate(e)));
                     }
                 }
-            }
+                Err(e) => {
+                    error!("Failed to decode certificate, gave error: {}", e);
+                    return Err(Box::new(TransactionValidationErrors::InvalidCertificate(
+                        Box::new(e),
+                    )));
+                }
+            },
             _ => {
                 error!("Transaction {} has unhandled type {}", self.hash, self.flag);
                 return Err(Box::new(TransactionValidationErrors::UnsupportedType));
@@ -463,8 +464,8 @@ impl Verifiable for Transaction {
     }
 
     fn enact(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let txn_type: String = self.type_transaction();
-        if txn_type == *"normal" {
+        let txn_type = self.flag;
+        if txn_type == 'n' {
             trace!("Opening senders account");
             let mut sendacc = open_or_create(&self.sender_key);
             if self.sender_key != self.receive_key {
@@ -483,14 +484,14 @@ impl Verifiable for Transaction {
             sendacc.save().unwrap();
             trace!("Get txn count");
         // TODO: Check we are on the testnet
-        } else if txn_type == *"claim" {
+        } else if txn_type == 'c' {
             // »!testnet only!«
             trace!("Getting sender acc");
             let mut acc: Account = open_or_create(&self.sender_key);
             acc.balance += self.amount;
             trace!("Saving acc");
             let _ = acc.save();
-        } else if txn_type == *"username registraion" {
+        } else if txn_type == 'u' {
             trace!("Getting acc (uname reg)");
             let mut acc = get_account(&self.sender_key).unwrap_or_default();
             if acc == Account::default() {
@@ -506,7 +507,7 @@ impl Verifiable for Transaction {
                     return Err("failed to save account (after username addition)".into());
                 }
             }
-        } else if txn_type == *"burn" {
+        } else if txn_type == 'b' {
             trace!("Getting sender acc");
             let mut acc: Account = open_or_create(&self.sender_key);
             if acc.balance > (self.amount + self.fee()) {
@@ -516,7 +517,7 @@ impl Verifiable for Transaction {
             }
             trace!("Saving acc");
             let _ = acc.save();
-        } else if txn_type == *"lock" {
+        } else if txn_type == 'l' {
             trace!("Getting sender acc");
             let mut acc: Account = open_or_create(&self.sender_key);
             if acc.balance > (self.amount + self.fee()) {
@@ -527,6 +528,23 @@ impl Verifiable for Transaction {
             }
             trace!("Saving acc");
             let _ = acc.save();
+        } else if txn_type == 'i' {
+            trace!(
+                "Creating invite {}, created by {} in txn {}",
+                self.extra,
+                self.sender_key,
+                self.hash
+            );
+            new_invite(&self.extra)?;
+        } else if txn_type == 'f' {
+            trace!(
+                "Adding {} to list of fullnode candidates (caused by txn {})",
+                self.sender_key,
+                self.hash
+            );
+            if save_data("", &(config().db_path + "/candidates"), self.sender_key.clone()) != 1{
+                return Err("failed to save new fullnode candidate".into());
+            }
         } else {
             return Err("unsupported txn type".into());
         }
