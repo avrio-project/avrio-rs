@@ -704,7 +704,16 @@ fn main() {
                                                                         );
                                                                     } else {
                                                                         info!("Done! Registered as new fullnode candidate");
-                                                                        // TODO: save details, set config value so we load in 'fullnode mode' next startup
+                                                                        let mut current_config =
+                                                                            config();
+                                                                        current_config.node_type =
+                                                                            'c'; // set node type to candidate
+                                                                        if let Err(e) =
+                                                                            current_config.create()
+                                                                        {
+                                                                            error!("Failed to save new config to disk, gave error={}",e );
+                                                                        }
+                                                                        // TODO: Encrypt private key and save to disk
                                                                     }
                                                                 }
                                                             }
