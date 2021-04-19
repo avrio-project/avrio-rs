@@ -76,10 +76,5 @@ pub fn new_invite(invite: &str) -> Result<(), &str> {
 /// * 1) The invite format is valid
 /// * 2) It is on the blockchain and unspent.
 pub fn invite_valid(invite: &str) -> bool {
-    if !is_spent(invite) {
-        if invite.len() != 44 {
-            return true;
-        }
-    }
-    return false;
+    !is_spent(invite)
 }
