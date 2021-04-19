@@ -670,36 +670,36 @@ fn main() {
                                                 send_block.hash, e
                                             );
                                         } else {
-                                            if let Err(e) = rec_block.valid() {
+                                            if let Err(e) = send_block.save() {
                                                 error!(
-                                                    "Created rec block {} invalid, reason={}",
-                                                    rec_block.hash, e
+                                                    "Failed to save send block {}, error={}",
+                                                    send_block.hash, e
                                                 );
                                             } else {
-                                                if let Err(e) = send_block.save() {
+                                                debug!("Saved blocks, enacting");
+                                                if let Err(e) = send_block.enact() {
                                                     error!(
-                                                        "Failed to save send block {}, error={}",
+                                                        "Failed to enact send block {}, error={}",
                                                         send_block.hash, e
                                                     );
                                                 } else {
-                                                    if let Err(e) = rec_block.save() {
+                                                    if let Err(e) = rec_block.valid() {
                                                         error!(
-                                                            "Failed to save rec block {}, error={}",
-                                                            rec_block.hash, e
-                                                        );
+                                                                        "Created rec block {} invalid, reason={}",
+                                                                        rec_block.hash, e
+                                                                    );
                                                     } else {
-                                                        debug!("Saved blocks, enacting");
-                                                        if let Err(e) = send_block.enact() {
+                                                        if let Err(e) = rec_block.save() {
                                                             error!(
-                                                                "Failed to enact send block {}, error={}",
-                                                                send_block.hash, e
-                                                            );
+                                                                        "Failed to save rec block {}, error={}",
+                                                                        rec_block.hash, e
+                                                                    );
                                                         } else {
                                                             if let Err(e) = rec_block.enact() {
                                                                 error!(
-                                                                    "Failed to enact rec block {}, error={}",
-                                                                    rec_block.hash, e
-                                                                );
+                                                                            "Failed to enact rec block {}, error={}",
+                                                                            rec_block.hash, e
+                                                                        );
                                                             } else {
                                                                 debug!("Enacted blocks, sending to rpc and peers");
                                                                 let _ = block_announce(
