@@ -69,6 +69,16 @@ pub fn safe_exit() {
     *(MEMPOOL.lock().unwrap()) = None;
     std::process::exit(0);
 }
+fn trim_newline(s: &mut String) -> String {
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+    s.clone()
+}
+
 fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
     let mut base_config = fern::Dispatch::new();
     base_config = match verbosity {
@@ -566,7 +576,7 @@ fn main() {
                 } else {
                     debug!("Found valid comitment, proceeding");
                     info!("Please enter the private key of the wallet you wish to register as a fullnode:");
-                    let private_key_string: String = read!();
+                    let private_key_string: String = trim_newline(&mut read!());
                     let wallet = Wallet::from_private_key(private_key_string);
                     info!("Please enter the invite:");
                     let invite: String = read!();
@@ -632,7 +642,7 @@ fn main() {
                                         .expect("time went backwards ONO")
                                         .as_millis()
                                         as u64,
-                                    network: prev_block.header.network,
+                                    network: config().network_id,
                                 },
                                 block_type: BlockType::Send,
                                 send_block: None,
