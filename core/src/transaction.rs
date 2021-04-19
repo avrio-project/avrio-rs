@@ -397,20 +397,25 @@ impl Verifiable for Transaction {
                     return Err(Box::new(TransactionValidationErrors::InviteInvalid));
                 }
             }
-            'f' => match serde_json::from_str::<Certificate>(&self.extra) {
-                Ok(cert) => {
-                    if let Err(e) = cert.valid() {
-                        error!("Invalid fullnode register certificate {} in transaction {} by sender {}, error={:#?}", cert.hash, self.hash, self.sender_key, e);
-                        return Err(Box::new(TransactionValidationErrors::InvalidCertificate(e)));
+            'f' => {
+                let base_decoded = String::from_utf8(bs58::decode(&self.extra).into_vec()?)?;
+                match serde_json::from_str::<Certificate>(&base_decoded) {
+                    Ok(cert) => {
+                        if let Err(e) = cert.valid() {
+                            error!("Invalid fullnode register certificate {} in transaction {} by sender {}, error={:#?}", cert.hash, self.hash, self.sender_key, e);
+                            return Err(Box::new(TransactionValidationErrors::InvalidCertificate(
+                                e,
+                            )));
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to decode certificate, gave error: {}", e);
+                        return Err(Box::new(TransactionValidationErrors::InvalidCertificate(
+                            Box::new(e),
+                        )));
                     }
                 }
-                Err(e) => {
-                    error!("Failed to decode certificate, gave error: {}", e);
-                    return Err(Box::new(TransactionValidationErrors::InvalidCertificate(
-                        Box::new(e),
-                    )));
-                }
-            },
+            }
             _ => {
                 error!("Transaction {} has unhandled type {}", self.hash, self.flag);
                 return Err(Box::new(TransactionValidationErrors::UnsupportedType));
@@ -543,7 +548,8 @@ impl Verifiable for Transaction {
                 self.hash
             );
             // Decode the certificate into a struct, enact it and save it to disk
-            let cert: Certificate = serde_json::from_str(&self.extra)?;
+            let cert: Certificate =
+                serde_json::from_str(&String::from_utf8(bs58::decode(&self.extra).into_vec()?)?)?;
             cert.save()?;
             cert.enact()?;
         } else {

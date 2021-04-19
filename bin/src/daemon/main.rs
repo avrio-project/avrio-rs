@@ -599,7 +599,11 @@ fn main() {
                             let mut txn: Transaction = Transaction {
                                 hash: String::from(""),
                                 amount: 1,
-                                extra: serde_json::to_string(&cert).unwrap(),
+                                extra: bs58::encode(
+                                    serde_json::to_string(&cert).unwrap().as_bytes(),
+                                )
+                                .to_vec()
+                                .unwrap(),
                                 flag: 'f',
                                 sender_key: wallet.public_key.clone(),
                                 receive_key: wallet.public_key.clone(),
