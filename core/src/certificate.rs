@@ -6,12 +6,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
 use avrio_config::config;
 extern crate avrio_database;
-use crate::{
-    block::get_block_from_raw, invite::invite_valid, transaction::Transaction, validate::Verifiable,
-};
+use crate::{block::get_block_from_raw, invite::{invite_valid, mark_spent}, transaction::Transaction, validate::Verifiable};
 use avrio_database::{get_data, save_data};
 
-use avrio_crypto::Hashable;
+use avrio_crypto::{Hashable, public_key_to_address};
 use ring::signature::{self, KeyPair};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -228,7 +226,12 @@ impl Verifiable for Certificate {
     }
 
     fn enact(&self) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
+        mark_spent(&self.invite)?;
+        if save_data("", &(config().db_path + "/candidates"), self.public_key.clone()) != 1{
+            return Err("failed to save new fullnode candidate".into());
+        }
+        info!("New fullnode candidate {}!", public_key_to_address(&self.public_key));
+        Ok(())
     }
 }
 

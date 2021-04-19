@@ -538,13 +538,14 @@ impl Verifiable for Transaction {
             new_invite(&self.extra)?;
         } else if txn_type == 'f' {
             trace!(
-                "Adding {} to list of fullnode candidates (caused by txn {})",
+                "Enacting fullnode certificate sent by {} in txn {}",
                 self.sender_key,
                 self.hash
             );
-            if save_data("", &(config().db_path + "/candidates"), self.sender_key.clone()) != 1{
-                return Err("failed to save new fullnode candidate".into());
-            }
+            // Decode the certificate into a struct, enact it and save it to disk
+            let cert: Certificate = serde_json::from_str(&self.extra)?;
+            cert.save()?;
+            cert.enact()?;
         } else {
             return Err("unsupported txn type".into());
         }
