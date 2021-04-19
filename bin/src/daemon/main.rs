@@ -597,7 +597,15 @@ fn main() {
                                 unlock_time: 0,
                                 gas_price: 20,
                                 max_gas: u64::MAX,
-                                nonce: 0,
+                                nonce: get_data(
+                                    config().db_path
+                                        + &"/chains/".to_owned()
+                                        + &wallet.public_key
+                                        + &"-chainindex".to_owned(),
+                                    &"txncount".to_owned(),
+                                )
+                                .parse()
+                                .unwrap_or(0),
                                 timestamp: SystemTime::now()
                                     .duration_since(UNIX_EPOCH)
                                     .expect("time went backwards ONO")
