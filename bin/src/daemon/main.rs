@@ -602,8 +602,7 @@ fn main() {
                                 extra: bs58::encode(
                                     serde_json::to_string(&cert).unwrap().as_bytes(),
                                 )
-                                .to_vec()
-                                .unwrap(),
+                                .into_string(),
                                 flag: 'f',
                                 sender_key: wallet.public_key.clone(),
                                 receive_key: wallet.public_key.clone(),
