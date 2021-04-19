@@ -10,9 +10,9 @@ use sha2::{Digest, Sha256};
 #[macro_use]
 extern crate lazy_static;
 extern crate hex;
-
+use std::sync::RwLock;
 lazy_static! {
-    static ref CONFIG_STACK: Config = config_read();
+    static ref CONFIG_STACK: RwLock<Config> = RwLock::new(config_read());
 }
 
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
@@ -142,7 +142,7 @@ pub fn config_read() -> Config {
 }
 
 pub fn config() -> Config {
-    CONFIG_STACK.clone()
+    CONFIG_STACK.read().unwrap().clone()
 }
 
 fn hash_id(id: u64) -> String {
@@ -352,7 +352,8 @@ impl Config {
     pub fn create(self) -> io::Result<()> {
         // create file
         let mut file = File::create("node.conf")?;
-
+        let mut write_lock = CONFIG_STACK.write().unwrap();
+        *write_lock = self.clone();
         file.write_all(serde_json::to_string(&self.prep_save()).unwrap().as_bytes())?;
 
         Ok(())
@@ -362,7 +363,8 @@ impl Config {
     pub fn save(self) -> io::Result<()> {
         // save to exisiting/ update
         let mut file = File::open("node.conf")?;
-
+        let mut write_lock = CONFIG_STACK.write().unwrap();
+        *write_lock = self.clone();
         file.write_all(serde_json::to_string(&self.prep_save()).unwrap().as_bytes())?;
 
         Ok(())
