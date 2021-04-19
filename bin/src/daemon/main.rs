@@ -1,3 +1,5 @@
+use aead::{generic_array::GenericArray, Aead, NewAead};
+use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use std::thread;
 use std::{
     io::{self, Write},
@@ -37,7 +39,7 @@ use avrio_core::{
 };
 
 extern crate avrio_database;
-use avrio_database::{get_data, get_peerlist};
+use avrio_database::{get_data, get_peerlist, save_data};
 #[macro_use]
 extern crate log;
 
@@ -729,12 +731,30 @@ fn main() {
                                                                             config();
                                                                         current_config.node_type =
                                                                             'c'; // set node type to candidate
+                                                                        current_config.chain_key =
+                                                                            wallet
+                                                                                .public_key
+                                                                                .clone();
                                                                         if let Err(e) =
                                                                             current_config.create()
                                                                         {
                                                                             error!("Failed to save new config to disk, gave error={}",e );
                                                                         }
-                                                                        // TODO: Encrypt private key and save to disk
+                                                                        // Save the keyfile to disk
+                                                                        if let Err(e) = save_keyfile(
+                                                                            &[
+                                                                                wallet
+                                                                                    .public_key
+                                                                                    .clone(),
+                                                                                wallet.private_key,
+                                                                            ],
+                                                                            String::from(
+                                                                                "fullnode",
+                                                                            ),
+                                                                            wallet.public_key,
+                                                                        ) {
+                                                                            error!("Failed to save keypair to disk; error={}", e);
+                                                                        }
                                                                     }
                                                                 }
                                                             }
@@ -766,4 +786,72 @@ fn main() {
             info!("Unknown command: {}", read);
         }
     }
+}
+
+pub fn save_keyfile(
+    keypair: &[String],
+    password: String,
+    keyfile: String,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut conf = config();
+    let path = conf.db_path.clone() + &"/wallets/".to_owned() + &keyfile;
+    let mut padded = password.as_bytes().to_vec();
+    while padded.len() != 32 && padded.len() < 33 {
+        padded.push(b"n"[0]);
+    }
+    let padded_string = String::from_utf8(padded).unwrap();
+    trace!("key: {}", padded_string);
+    let key = GenericArray::clone_from_slice(padded_string.as_bytes());
+    let aead = Aes256Gcm::new(key);
+    let mut padded = b"nonce".to_vec();
+    while padded.len() != 12 {
+        padded.push(b"n"[0]);
+    }
+    let padded_string = String::from_utf8(padded).unwrap();
+    let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
+    trace!("nonce: {}", padded_string);
+    let publickey_en = hex::encode(
+        aead.encrypt(nonce, keypair[0].as_bytes().as_ref())
+            .expect("wallet public key encryption failure!"),
+    );
+    let privatekey_en = hex::encode(
+        aead.encrypt(nonce, keypair[1].as_bytes().as_ref())
+            .expect("wallet private key encryption failure!"),
+    );
+    let _ = save_data(&publickey_en, &path, "pubkey".to_owned());
+    let _ = save_data(&privatekey_en, &path, "privkey".to_owned());
+    info!("Saved wallet to {}", path);
+    conf.chain_key = keypair[0].clone();
+    conf.create()?;
+    Ok(())
+}
+
+pub fn open_keypair(keyfile: String, password: String) -> Wallet {
+    // can we just hash the public key with some local data on the computer (maybe mac address)? Or is that insufficent (TODO: find out)
+    let mut padded = password.as_bytes().to_vec();
+    while padded.len() != 32 && padded.len() < 33 {
+        padded.push(b"n"[0]);
+    }
+    let padded_string = String::from_utf8(padded).unwrap();
+    trace!("key: {}", padded_string);
+    let key = GenericArray::clone_from_slice(padded_string.as_bytes());
+    let aead = Aes256Gcm::new(key);
+    let mut padded = b"nonce".to_vec();
+    while padded.len() != 12 {
+        padded.push(b"n"[0]);
+    }
+    let padded_string = String::from_utf8(padded).unwrap();
+    let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
+    trace!("nonce: {}", padded_string);
+    let ciphertext = hex::decode(get_data(
+        config().db_path + &"/wallets/".to_owned() + &keyfile,
+        &"privkey".to_owned(),
+    ))
+    .expect("failed to parse hex");
+    let privkey = String::from_utf8(
+        aead.decrypt(nonce, ciphertext.as_ref())
+            .expect("decryption failure!"),
+    )
+    .expect("failed to parse utf8 (i1)");
+    Wallet::from_private_key(privkey)
 }
