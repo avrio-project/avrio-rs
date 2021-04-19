@@ -1531,8 +1531,6 @@ pub fn save_wallet(
     let _ = save_data(&publickey_en, &path, "pubkey".to_owned());
     let _ = save_data(&privatekey_en, &path, "privkey".to_owned());
     info!("Saved wallet to {}", path);
-    conf.chain_key = keypair[0].clone();
-    conf.create()?;
     Ok(())
 }
 
@@ -1541,8 +1539,6 @@ pub fn generate_keypair(out: &mut Vec<String>) {
     out.push(wallet.public_key.clone());
     out.push(wallet.private_key);
     let mut conf = config();
-    conf.chain_key = wallet.public_key;
-    let _ = conf.save();
 }
 
 pub fn open_wallet(wallet_name: String, password: String) -> Wallet {
