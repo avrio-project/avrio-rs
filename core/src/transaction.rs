@@ -167,7 +167,7 @@ impl Verifiable for Transaction {
             );
             return Err(Box::new(TransactionValidationErrors::TransactionExists));
         }
-        if !['c', 'n', 'b', 'u', 'l', 'i'].contains(&self.flag) {
+        if !['c', 'n', 'b', 'u', 'l', 'i', 'f'].contains(&self.flag) {
             error!(
                 "Transaction {} has unsupported type={} ({})",
                 self.hash,
