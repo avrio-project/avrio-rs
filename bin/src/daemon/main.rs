@@ -7,7 +7,7 @@ use std::{
 use avrio_core::{
     account::to_dec,
     certificate::generate_certificate,
-    invite::{generate_invite, new},
+    invite::{generate_invite, new_invite},
     states::form_state_digest,
     transaction::Transaction,
     validate::Verifiable,
@@ -26,7 +26,9 @@ use std::sync::Mutex;
 extern crate avrio_core;
 
 use avrio_p2p::{
-    core::new_connection, core::rec_server, helper::sync_in_order, helper::sync_needed,
+    core::new_connection,
+    core::rec_server,
+    helper::{prop_block, sync_in_order, sync_needed},
 };
 
 use avrio_core::{
@@ -191,6 +193,11 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
             block.enact()?;
         }
     }
+    // Create the seed invite
+    // TODO: change this to a block on the 0 chain
+    new_invite("FZ2YbpGw1ZjRW2dkwMRfy7N98iZCkcfezy5BxCGWRPgZ")?;
+    // invite priv key:
+    // GD8M1Qm17WXoukx8QqqfvYRJDoxmjf1jSXFXyVYHFeQtCX67cpw6otCpeporyLaNmLKrKAj8nFSNfszJYyuTL1UFt6SFeodz3QJ8iDkvwBPM4SMMGkV3
     Ok(())
 }
 
@@ -571,23 +578,147 @@ fn main() {
                     if confirm.to_ascii_uppercase() == "N" {
                         error!("Aboring...");
                     } else if confirm.to_ascii_uppercase() == "Y" {
-                        info!("Forming fullnode certificate, this can take upto 10 mins");
+                        info!("Forming fullnode certificate...");
                         if let Ok(cert) = generate_certificate(
                             &wallet.public_key,
                             &wallet.private_key,
                             &commitment,
                             invite,
                         ) {
-                            info!(
-                                "Generated certificate {:?} in {} secconds.",
-                                cert,
-                                (SystemTime::now()
+                            // form a transaction using the private key given before, add it to a block and send
+                            let mut txn: Transaction = Transaction {
+                                hash: String::from(""),
+                                amount: 1,
+                                extra: serde_json::to_string(&cert).unwrap(),
+                                flag: 'f',
+                                sender_key: wallet.public_key.clone(),
+                                receive_key: wallet.public_key.clone(),
+                                access_key: String::from(""),
+                                unlock_time: 0,
+                                gas_price: 20,
+                                max_gas: u64::MAX,
+                                nonce: 0,
+                                timestamp: SystemTime::now()
                                     .duration_since(UNIX_EPOCH)
-                                    .expect("Time went backwards")
-                                    .as_millis() as u64
-                                    - cert.timestamp)
-                                    / 1000
-                            );
+                                    .expect("time went backwards ONO")
+                                    .as_millis() as u64,
+                            };
+                            txn.hash();
+                            let prev_block = get_block_from_raw(get_data(
+                                config().db_path
+                                    + &"/chains/".to_owned()
+                                    + &wallet.public_key
+                                    + &"-chainindex".to_owned(),
+                                "topblockhash",
+                            ));
+                            let mut send_block = Block {
+                                header: Header {
+                                    version_major: 0,
+                                    version_breaking: 1,
+                                    version_minor: 0,
+                                    chain_key: wallet.public_key.clone(),
+                                    prev_hash: prev_block.hash.clone(),
+                                    height: prev_block.header.height + 1,
+                                    timestamp: SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .expect("time went backwards ONO")
+                                        .as_millis()
+                                        as u64,
+                                    network: prev_block.header.network,
+                                },
+                                block_type: BlockType::Send,
+                                send_block: None,
+                                txns: vec![txn],
+                                hash: String::from(""),
+                                signature: String::from(""),
+                            };
+                            send_block.hash();
+                            if let Err(e) = send_block.sign(&wallet.private_key) {
+                                error!(
+                                    "Failed to sign send block {}, gave error={}",
+                                    send_block.hash, e
+                                );
+                            } else {
+                                match send_block.form_receive_block(Some(wallet.public_key.clone()))
+                                {
+                                    Ok(rec_block) => {
+                                        info!("Created blocks {} and {} containing fullnode registration; broadcasting", send_block.hash, rec_block.hash);
+                                        if let Err(e) = send_block.valid() {
+                                            error!(
+                                                "Created send block {} invalid, reason={}",
+                                                send_block.hash, e
+                                            );
+                                        } else {
+                                            if let Err(e) = rec_block.valid() {
+                                                error!(
+                                                    "Created rec block {} invalid, reason={}",
+                                                    rec_block.hash, e
+                                                );
+                                            } else {
+                                                if let Err(e) = send_block.save() {
+                                                    error!(
+                                                        "Failed to save send block {}, error={}",
+                                                        send_block.hash, e
+                                                    );
+                                                } else {
+                                                    if let Err(e) = rec_block.save() {
+                                                        error!(
+                                                            "Failed to save rec block {}, error={}",
+                                                            rec_block.hash, e
+                                                        );
+                                                    } else {
+                                                        debug!("Saved blocks, enacting");
+                                                        if let Err(e) = send_block.enact() {
+                                                            error!(
+                                                                "Failed to enact send block {}, error={}",
+                                                                send_block.hash, e
+                                                            );
+                                                        } else {
+                                                            if let Err(e) = rec_block.enact() {
+                                                                error!(
+                                                                    "Failed to enact rec block {}, error={}",
+                                                                    rec_block.hash, e
+                                                                );
+                                                            } else {
+                                                                debug!("Enacted blocks, sending to rpc and peers");
+                                                                let _ = block_announce(
+                                                                    send_block.clone(),
+                                                                );
+                                                                let _ = block_announce(
+                                                                    rec_block.clone(),
+                                                                );
+                                                                if let Err(e) =
+                                                                    prop_block(&send_block)
+                                                                {
+                                                                    error!(
+                                                                        "Failed to enact send block {}, error={}",
+                                                                        send_block.hash, e
+                                                                    );
+                                                                } else {
+                                                                    if let Err(e) =
+                                                                        prop_block(&rec_block)
+                                                                    {
+                                                                        error!(
+                                                                            "Failed to enact rec block {}, error={}",
+                                                                            rec_block.hash, e
+                                                                        );
+                                                                    } else {
+                                                                        info!("Done! Registered as new fullnode candidate");
+                                                                        // TODO: save details, set config value so we load in 'fullnode mode' next startup
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to form rec block, aborting (error={})", e)
+                                    }
+                                };
+                            }
                         }
                     } else {
                         error!("Unknown response: {}", confirm);
@@ -597,7 +728,7 @@ fn main() {
         } else if read == "generate_invite" {
             // TODO: Only let fullnodes generate invites, also broadcast new invite to other nodes so they can validate it
             let invite = generate_invite();
-            match new(&invite.0) {
+            match new_invite(&invite.0) {
                 Ok(_) => info!("Invite: {}", invite.1),
                 Err(e) => error!("Failed to create new invire, got error={}", e),
             }
