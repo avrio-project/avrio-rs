@@ -23,6 +23,7 @@ pub struct Epoch {
     pub burnt_coins: u64,
     pub locked_coins: u64,
     pub blocks: u64,
+    pub salt: u64,
     pub committees: Vec<Comitee>,
 }
 impl Hashable for Epoch {
@@ -35,6 +36,7 @@ impl Hashable for Epoch {
         bytes.extend(self.burnt_coins.to_string().bytes());
         bytes.extend(self.locked_coins.to_string().bytes());
         bytes.extend(self.blocks.to_string().bytes());
+        bytes.extend(self.salt.to_string().bytes());
         for committee in &self.committees {
             bytes.extend(committee.hash.bytes());
         }
@@ -59,6 +61,7 @@ impl Epoch {
             burnt_coins: 0,
             locked_coins: 0,
             blocks: 0,
+            salt: 0,
             committees: vec![],
         }
     }
