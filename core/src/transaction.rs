@@ -12,6 +12,7 @@ extern crate avrio_database;
 use crate::{
     account::{get_account, open_or_create, Accesskey, Account},
     certificate::{Certificate, CertificateErrors},
+    epoch::{get_top_epoch, Epoch},
     gas::*,
     invite::{invite_valid, new_invite},
     validate::Verifiable,
@@ -484,10 +485,19 @@ impl Verifiable for Transaction {
                     reqacc.save().unwrap();
                 }
             }
-            sendacc.balance -= self.gas() * self.gas_price;
+            sendacc.balance -= self.fee();
             trace!("Saving sender acc");
             sendacc.save().unwrap();
-            trace!("Get txn count");
+            trace!("Get epoch struct");
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.total_coins_movement += self.amount + self.fee();
+            top_epoch.hash();
+            debug!(
+                "Rehashed epoch struct at height={}, new hash={}",
+                top_epoch.epoch_number, top_epoch.hash
+            );
+            top_epoch.save();
+            trace!("Saved epoch");
         // TODO: Check we are on the testnet
         } else if txn_type == 'c' {
             // »!testnet only!«
@@ -496,6 +506,17 @@ impl Verifiable for Transaction {
             acc.balance += self.amount;
             trace!("Saving acc");
             let _ = acc.save();
+            trace!("Get epoch struct");
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.total_coins_movement += self.amount;
+            top_epoch.new_coins += self.amount;
+            top_epoch.hash();
+            debug!(
+                "Rehashed epoch struct at height={}, new hash={}",
+                top_epoch.epoch_number, top_epoch.hash
+            );
+            top_epoch.save();
+            trace!("Saved epoch");
         } else if txn_type == 'u' {
             trace!("Getting acc (uname reg)");
             let mut acc = get_account(&self.sender_key).unwrap_or_default();
@@ -506,34 +527,76 @@ impl Verifiable for Transaction {
             } else {
                 acc.username = self.extra.clone();
                 acc.balance -= self.amount;
-                acc.balance -= self.gas() * self.gas_price;
+                acc.balance -= self.fee();
                 trace!("Saving acc");
                 if acc.save().is_err() {
                     return Err("failed to save account (after username addition)".into());
                 }
             }
+            trace!("Get epoch struct");
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.total_coins_movement += self.amount + self.fee();
+            top_epoch.burnt_coins += self.amount;
+            top_epoch.hash();
+            debug!(
+                "Rehashed epoch struct at height={}, new hash={}",
+                top_epoch.epoch_number, top_epoch.hash
+            );
+            top_epoch.save();
+            trace!("Saved epoch");
         } else if txn_type == 'b' {
             trace!("Getting sender acc");
             let mut acc: Account = open_or_create(&self.sender_key);
             if acc.balance > (self.amount + self.fee()) {
-                acc.balance -= self.amount;
+                acc.balance -= self.amount + self.fee();
             } else {
                 return Err("Account balance insufficent".into());
             }
             trace!("Saving acc");
             let _ = acc.save();
+            trace!("Get epoch struct");
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.total_coins_movement += self.amount + self.fee();
+            top_epoch.burnt_coins += self.amount;
+            top_epoch.hash();
+            debug!(
+                "Rehashed epoch struct at height={}, new hash={}",
+                top_epoch.epoch_number, top_epoch.hash
+            );
+            top_epoch.save();
+            trace!("Saved epoch");
         } else if txn_type == 'l' {
             trace!("Getting sender acc");
             let mut acc: Account = open_or_create(&self.sender_key);
             if acc.balance > (self.amount + self.fee()) {
-                acc.balance -= self.amount;
+                acc.balance -= self.amount + self.fee();
                 acc.locked += self.amount;
             } else {
                 return Err("Account balance insufficent".into());
             }
             trace!("Saving acc");
             let _ = acc.save();
+            trace!("Get epoch struct");
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.total_coins_movement += self.amount + self.fee();
+            top_epoch.locked_coins += self.amount;
+            top_epoch.hash();
+            debug!(
+                "Rehashed epoch struct at height={}, new hash={}",
+                top_epoch.epoch_number, top_epoch.hash
+            );
+            top_epoch.save();
+            trace!("Saved epoch");
         } else if txn_type == 'i' {
+            trace!("Getting sender acc");
+            let mut acc: Account = open_or_create(&self.sender_key);
+            if acc.balance > (self.amount + self.fee()) {
+                acc.balance -= self.amount + self.fee();
+            } else {
+                return Err("Account balance insufficent".into());
+            }
+            trace!("Saving acc");
+            let _ = acc.save();
             trace!(
                 "Creating invite {}, created by {} in txn {}",
                 self.extra,
@@ -541,7 +604,26 @@ impl Verifiable for Transaction {
                 self.hash
             );
             new_invite(&self.extra)?;
+            trace!("Get epoch struct");
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.total_coins_movement += self.amount + self.fee();
+            top_epoch.hash();
+            debug!(
+                "Rehashed epoch struct at height={}, new hash={}",
+                top_epoch.epoch_number, top_epoch.hash
+            );
+            top_epoch.save();
+            trace!("Saved epoch");
         } else if txn_type == 'f' {
+            trace!("Getting sender acc");
+            let mut acc: Account = open_or_create(&self.sender_key);
+            if acc.balance > (self.amount + self.fee()) {
+                acc.balance -= self.amount + self.fee();
+            } else {
+                return Err("Account balance insufficent".into());
+            }
+            trace!("Saving acc");
+            let _ = acc.save();
             trace!(
                 "Enacting fullnode certificate sent by {} in txn {}",
                 self.sender_key,
@@ -552,6 +634,16 @@ impl Verifiable for Transaction {
                 serde_json::from_str(&String::from_utf8(bs58::decode(&self.extra).into_vec()?)?)?;
             cert.save()?;
             cert.enact()?;
+            trace!("Get epoch struct");
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.total_coins_movement += self.amount + self.fee();
+            top_epoch.hash();
+            debug!(
+                "Rehashed epoch struct at height={}, new hash={}",
+                top_epoch.epoch_number, top_epoch.hash
+            );
+            top_epoch.save();
+            trace!("Saved epoch");
         } else {
             return Err("unsupported txn type".into());
         }
