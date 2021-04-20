@@ -1,7 +1,8 @@
 //use avrio_config::config;
 use avrio_crypto::{generate_keypair, raw_hash, Hashable};
 use log::*;
-#[derive(Default, Debug)]
+use serde::{Deserialize, Serialize};
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Comitee {
     pub index: u64,
     pub members: Vec<String>,
@@ -13,7 +14,6 @@ pub fn sort_full_list(full_list: &mut Vec<String>, epoch_salt: u64) {
             .cmp(&raw_hash(&(b.clone() + &epoch_salt.to_string())))
     }); // sort the inital vector alphabeticly but with the node's pubkey hashed with epoch salt to give some dermanistic randomness
 }
-
 impl Comitee {
     pub fn form_comitees(
         sorted_list: &mut Vec<String>,
@@ -68,6 +68,10 @@ impl Comitee {
             to_return.push(formed_comitee);
         }
         return to_return;
+    }
+
+    pub fn get_round_leader(&self) -> Result<String, Box<dyn std::error::Error>> {
+        Ok(self.members[0].clone()) // TODO Implment round leader selection algo
     }
 }
 
