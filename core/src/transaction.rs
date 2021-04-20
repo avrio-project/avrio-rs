@@ -18,6 +18,8 @@ use crate::{
     validate::Verifiable,
 };
 
+use avrio_crypto::{salt_to_hash, validate_vrf, vrf_hash_to_integer};
+use bigdecimal::BigDecimal;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Error)]
@@ -76,6 +78,14 @@ pub enum TransactionValidationErrors {
     WouldOverflowBalance,
     #[error("Invite invalid")]
     InviteInvalid,
+    #[error("Not round leader, but sent consensus message")]
+    UnauthorisedConsensusMessage,
+    #[error("Sent consensus message has wrong reciever")]
+    WrongRecieverConsensusMessage,
+    #[error("Sent consensus message with non 0 amount")]
+    WrongAmountRecieverConsensusMessage,
+    #[error("Sent consensus message contains invalid VRF")]
+    InvalidVrf,
     #[error("Other")]
     Other,
 }
@@ -168,7 +178,7 @@ impl Verifiable for Transaction {
             );
             return Err(Box::new(TransactionValidationErrors::TransactionExists));
         }
-        if !['c', 'n', 'b', 'u', 'l', 'i', 'f'].contains(&self.flag) {
+        if !['c', 'n', 'b', 'u', 'l', 'i', 'f', 'a', 'y', 'z'].contains(&self.flag) {
             error!(
                 "Transaction {} has unsupported type={} ({})",
                 self.hash,
@@ -182,7 +192,7 @@ impl Verifiable for Transaction {
             return Err(Box::new(TransactionValidationErrors::ExtraNotAlphanumeric));
         }
         let gas_price_min = 1; // todo move to config
-        if self.gas_price <= gas_price_min {
+        if self.gas_price <= gas_price_min && !self.consensus_type() {
             error!(
                 "Transaction {}'s gas price too low ({} < {})",
                 self.hash, self.gas_price, gas_price_min
@@ -417,6 +427,81 @@ impl Verifiable for Transaction {
                     }
                 }
             }
+            'a' => {
+                let top_epoch = get_top_epoch().unwrap_or_default();
+                let consensus_round_leader = top_epoch.committees[0].get_round_leader().unwrap();
+                if self.sender_key != consensus_round_leader {
+                    return Err(Box::new(
+                        TransactionValidationErrors::UnauthorisedConsensusMessage,
+                    ));
+                } else if self.receive_key != "0" {
+                    return Err(Box::new(
+                        TransactionValidationErrors::WrongRecieverConsensusMessage,
+                    ));
+                }
+                if self.amount != 0 {
+                    return Err(Box::new(
+                        TransactionValidationErrors::WrongAmountRecieverConsensusMessage,
+                    ));
+                }
+                match serde_json::from_str::<Vec<(String, String)>>(&self.extra) {
+                    Ok(salt_seeds) => {
+                        debug!("Decoded salt_seeds={:#?}", salt_seeds);
+                        let mut salt_string = String::from("");
+                        for (public_key, seed) in salt_seeds {
+                            trace!("Validating seed {}", seed);
+                            if !(validate_vrf(
+                                public_key,
+                                seed.clone(),
+                                top_epoch.epoch_number.to_string(),
+                            )) {
+                                return Err(Box::new(TransactionValidationErrors::InvalidVrf));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to decode epoch salt seeds from extra ({}) in txn {}, gave error={}", self.extra, self.hash, e);
+                    }
+                }
+            }
+            'y' => {
+                let consensus_round_leader = get_top_epoch().unwrap_or_default().committees[0]
+                    .get_round_leader()
+                    .unwrap();
+                if self.sender_key != consensus_round_leader {
+                    return Err(Box::new(
+                        TransactionValidationErrors::UnauthorisedConsensusMessage,
+                    ));
+                } else if self.receive_key != "0" {
+                    return Err(Box::new(
+                        TransactionValidationErrors::WrongRecieverConsensusMessage,
+                    ));
+                }
+                if self.amount != 0 {
+                    return Err(Box::new(
+                        TransactionValidationErrors::WrongAmountRecieverConsensusMessage,
+                    ));
+                }
+            }
+            'z' => {
+                let consensus_round_leader = get_top_epoch().unwrap_or_default().committees[0]
+                    .get_round_leader()
+                    .unwrap();
+                if self.sender_key != consensus_round_leader {
+                    return Err(Box::new(
+                        TransactionValidationErrors::UnauthorisedConsensusMessage,
+                    ));
+                } else if self.receive_key != "0" {
+                    return Err(Box::new(
+                        TransactionValidationErrors::WrongRecieverConsensusMessage,
+                    ));
+                }
+                if self.amount != 0 {
+                    return Err(Box::new(
+                        TransactionValidationErrors::WrongAmountRecieverConsensusMessage,
+                    ));
+                }
+            }
             _ => {
                 error!("Transaction {} has unhandled type {}", self.hash, self.flag);
                 return Err(Box::new(TransactionValidationErrors::UnsupportedType));
@@ -644,6 +729,41 @@ impl Verifiable for Transaction {
             );
             top_epoch.save();
             trace!("Saved epoch");
+        } else if txn_type == 'a' {
+            match serde_json::from_str::<Vec<(String, String)>>(&self.extra) {
+                Ok(salt_seeds) => {
+                    debug!("Decoded salt_seeds={:#?}", salt_seeds);
+                    let mut salt_string = String::from("");
+                    for (_, seed) in salt_seeds {
+                        trace!("Validating seed {}", seed);
+
+                        let vrf_hash = salt_to_hash(&seed).unwrap_or_default();
+                        salt_string += &vrf_hash_to_integer(vrf_hash).to_string();
+                    }
+                    debug!("Final salt_string={}", salt_string);
+                    // now parse the string into a big number
+                    let salt_big = vrf_hash_to_integer(salt_string);
+                    let salt_mod = salt_big % BigDecimal::from(u64::MAX); // now SHOULD be safe to cast to u64
+                    trace!(
+                        "Moduloed big salt: salt_big={}, salt_mod={}",
+                        salt_big,
+                        salt_mod
+                    );
+                    if let Ok(epoch_salt) = salt_mod.to_string().parse::<u64>() {
+                        debug!("Calculated epoch salt: {}", epoch_salt);
+                        // now we create the next epoch on disk
+                        let mut next_epoch = Epoch::new();
+                        next_epoch.salt = epoch_salt;
+                        if let Err(e) = next_epoch.save() {
+                            error!("Failed to save next_epoch to disk, error={}", e);
+                        }
+                        // dont set the top epoch untill we get a announceCommitteeLists txn
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to decode epoch salt seeds from extra ({}) in txn {}, gave error={}", self.extra, self.hash, e);
+                }
+            }
         } else {
             return Err("unsupported txn type".into());
         }
@@ -652,6 +772,10 @@ impl Verifiable for Transaction {
     }
 }
 impl Transaction {
+    pub fn consensus_type(&self) -> bool {
+        self.flag == 'a' || self.flag == 'y' || self.flag == 'z'
+    }
+
     pub fn type_transaction(&self) -> String {
         match self.flag {
             'n' => "normal".to_string(),
@@ -666,6 +790,10 @@ impl Transaction {
             'i' => "create invite".to_owned(),
             'x' => "Block/ restrict account".to_owned(), // means the account (linked via public key in the extra field) you block cannot send you transactions
             'p' => "Unblock account".to_owned(), // reverts the block transaction (linked by the txn hash in extra field)
+            // CONSENSUS ONLY
+            'a' => "Announce epoch salt seed".to_owned(),
+            'y' => "Announce fullnode list".to_owned(),
+            'z' => "Announce shuffle bits".to_owned(),
             _ => "unknown".to_string(),
         }
     }
