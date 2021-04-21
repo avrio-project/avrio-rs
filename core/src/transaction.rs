@@ -12,15 +12,20 @@ extern crate avrio_database;
 use crate::{
     account::{get_account, open_or_create, Accesskey, Account},
     certificate::{Certificate, CertificateErrors},
+    commitee::{sort_full_list, Comitee},
     epoch::{get_top_epoch, Epoch},
     gas::*,
     invite::{invite_valid, new_invite},
     validate::Verifiable,
 };
 
-use avrio_crypto::{salt_to_hash, validate_vrf, vrf_hash_to_integer};
-use bigdecimal::BigDecimal;
-use std::time::{SystemTime, UNIX_EPOCH};
+use avrio_crypto::{proof_to_hash, raw_lyra, validate_vrf, vrf_hash_to_integer};
+use bigdecimal::{BigDecimal, FromPrimitive};
+use std::{
+    collections::HashSet,
+    time::{SystemTime, UNIX_EPOCH},
+    iter::FromIterator,
+};
 
 #[derive(Debug, Error)]
 pub enum TransactionValidationErrors {
@@ -482,6 +487,12 @@ impl Verifiable for Transaction {
                         TransactionValidationErrors::WrongAmountRecieverConsensusMessage,
                     ));
                 }
+                /*//we now calculate the hash of 'fullnodes' which should equal the preshuffle hash (hashes.0)
+                let mut preshuffle_hash = String::from("");
+                for fullnode in &fullnodes {
+                    preshuffle_hash = raw_lyra(&(preshuffle_hash + fullnode));
+                }
+                debug!("Computed preshuffle hash={}, expected={}", preshuffle_hash, hashes.0);*/
             }
             'z' => {
                 let consensus_round_leader = get_top_epoch().unwrap_or_default().committees[0]
@@ -581,7 +592,7 @@ impl Verifiable for Transaction {
                 "Rehashed epoch struct at height={}, new hash={}",
                 top_epoch.epoch_number, top_epoch.hash
             );
-            top_epoch.save();
+            top_epoch.save()?;
             trace!("Saved epoch");
         // TODO: Check we are on the testnet
         } else if txn_type == 'c' {
@@ -600,7 +611,7 @@ impl Verifiable for Transaction {
                 "Rehashed epoch struct at height={}, new hash={}",
                 top_epoch.epoch_number, top_epoch.hash
             );
-            top_epoch.save();
+            top_epoch.save()?;
             trace!("Saved epoch");
         } else if txn_type == 'u' {
             trace!("Getting acc (uname reg)");
@@ -627,7 +638,7 @@ impl Verifiable for Transaction {
                 "Rehashed epoch struct at height={}, new hash={}",
                 top_epoch.epoch_number, top_epoch.hash
             );
-            top_epoch.save();
+            top_epoch.save()?;
             trace!("Saved epoch");
         } else if txn_type == 'b' {
             trace!("Getting sender acc");
@@ -648,7 +659,7 @@ impl Verifiable for Transaction {
                 "Rehashed epoch struct at height={}, new hash={}",
                 top_epoch.epoch_number, top_epoch.hash
             );
-            top_epoch.save();
+            top_epoch.save()?;
             trace!("Saved epoch");
         } else if txn_type == 'l' {
             trace!("Getting sender acc");
@@ -670,7 +681,7 @@ impl Verifiable for Transaction {
                 "Rehashed epoch struct at height={}, new hash={}",
                 top_epoch.epoch_number, top_epoch.hash
             );
-            top_epoch.save();
+            top_epoch.save()?;
             trace!("Saved epoch");
         } else if txn_type == 'i' {
             trace!("Getting sender acc");
@@ -697,7 +708,7 @@ impl Verifiable for Transaction {
                 "Rehashed epoch struct at height={}, new hash={}",
                 top_epoch.epoch_number, top_epoch.hash
             );
-            top_epoch.save();
+            top_epoch.save()?;
             trace!("Saved epoch");
         } else if txn_type == 'f' {
             trace!("Getting sender acc");
@@ -727,7 +738,7 @@ impl Verifiable for Transaction {
                 "Rehashed epoch struct at height={}, new hash={}",
                 top_epoch.epoch_number, top_epoch.hash
             );
-            top_epoch.save();
+            top_epoch.save()?;
             trace!("Saved epoch");
         } else if txn_type == 'a' {
             match serde_json::from_str::<Vec<(String, String)>>(&self.extra) {
@@ -737,13 +748,13 @@ impl Verifiable for Transaction {
                     for (_, seed) in salt_seeds {
                         trace!("Validating seed {}", seed);
 
-                        let vrf_hash = salt_to_hash(&seed).unwrap_or_default();
+                        let vrf_hash = proof_to_hash(&seed).unwrap_or_default();
                         salt_string += &vrf_hash_to_integer(vrf_hash).to_string();
                     }
                     debug!("Final salt_string={}", salt_string);
                     // now parse the string into a big number
                     let salt_big = vrf_hash_to_integer(salt_string);
-                    let salt_mod = salt_big % BigDecimal::from(u64::MAX); // now SHOULD be safe to cast to u64
+                    let salt_mod = salt_big.clone() % BigDecimal::from(u64::MAX); // now SHOULD be safe to cast to u64
                     trace!(
                         "Moduloed big salt: salt_big={}, salt_mod={}",
                         salt_big,
@@ -757,11 +768,136 @@ impl Verifiable for Transaction {
                         if let Err(e) = next_epoch.save() {
                             error!("Failed to save next_epoch to disk, error={}", e);
                         }
-                        // dont set the top epoch untill we get a announceCommitteeLists txn
+                        info!("Next epoch salt: {}", epoch_salt);
+                        // dont set the top epoch until we get a announceCommiteeListDelta txn
+                        // next txn should be an announceShuffleBits txn which sets the vrf used to shuffle the fullnode list for next epoch
+                        // which is followed by an announceCommiteeListDelta which tells you what fullnodes have been removed or added and once enacted starts the next epoch
                     }
                 }
                 Err(e) => {
                     error!("Failed to decode epoch salt seeds from extra ({}) in txn {}, gave error={}", self.extra, self.hash, e);
+                    return Err("failed to decode epoch salt seeds".into());
+                }
+            }
+        } else if self.flag == 'z' {
+            // announceShuffleBitsTxn
+            let top_epoch = get_top_epoch()?;
+            let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
+            let round_leader = top_epoch.committees[0].get_round_leader()?;
+            if !validate_vrf(
+                round_leader.clone(),
+                self.extra.clone(),
+                raw_lyra(
+                    &(new_epoch.salt.to_string()
+                        + &new_epoch.epoch_number.to_string()
+                        + &round_leader),
+                ),
+            ) {
+                error!("Invalid AnnounceShuffleBits txn, VRF invalid");
+                return Err("shuffle bits vrf invalid".into());
+            }
+            let shuffle_bits_big = vrf_hash_to_integer(proof_to_hash(&self.extra)?);
+            let shuffle_bits_mod = shuffle_bits_big.clone() % BigDecimal::from_u128(u128::MAX).unwrap_or_default(); // now SHOULD be safe to cast to u64
+            trace!(
+                "Moduloed big salt: shuffle_bits_big={}, shuffle_bits_mod={}",
+                shuffle_bits_big,
+                shuffle_bits_mod
+            );
+            if let Ok(shuffle_bits) = shuffle_bits_mod.to_string().parse::<u128>() {
+                info!("Shuffle bits for next epoch: {}", shuffle_bits);
+                let mut epoch = Epoch::get(get_top_epoch()?.epoch_number + 1)?;
+                epoch.shuffle_bits = shuffle_bits;
+                if let Err(e) = epoch.save() {
+                    error!("Failed to save epoch to disk, error={}", e);
+                }
+            }
+        } else if self.flag == 'y' {
+            // fullnode list delta
+            // format: ((String, String), Vec<(String, u8, String)) 0.0: Preshuffle hash, 0.1: postshuffle hash, 1.0: publickey, 1.1: reason/type (0 = join via vrf eevrythign else = leave), 1.2: proof (the hash of the block it happened in)
+            match serde_json::from_str::<((String, String), Vec<(String, u8, String)>)>(&self.extra)
+            {
+                Ok((hashes, delta_list)) => {
+                    debug!("Decoded fullnode delta list, len={}, expected preshuffle_hash={}, expected postshuffle_hash={}", delta_list.len(), hashes.0, hashes.1);
+                    trace!(
+                        "fullnode_delta_list={:#?}, hashes: {:#?}",
+                        delta_list,
+                        hashes
+                    );
+                    let top_epoch = get_top_epoch()?;
+                    let mut fullnodes_hashset: HashSet<String> = HashSet::new();
+                    for committee in top_epoch.committees {
+                        for fullnode in committee.members {
+                            fullnodes_hashset.insert(fullnode);
+                        }
+                    }
+                    let mut new_fullnodes = 0;
+                    let mut removed_fullnodes = 0;
+                    for delta in delta_list {
+                        if delta.1 != 0 {
+                            // remove the fullnode
+                            if fullnodes_hashset.contains(&delta.0) {
+                                trace!(
+                                    "Removing {} from fullnode set, reason={}, proof={}",
+                                    delta.0,
+                                    delta.1,
+                                    delta.2
+                                );
+                            } else {
+                                error!("Fullnode set did not contain node removed by delta entry, delta entry={:?}", delta);
+                            }
+                            removed_fullnodes += 1;
+                        } else {
+                            // eclose a candidate
+                            fullnodes_hashset.insert(delta.0.clone());
+                            // now update their on disk flag to validator, from candidate
+                            if save_data("f", &(config().db_path + "/candidates"), delta.0.clone())
+                                != 1
+                            {
+                                return Err("failed to save new fullnode candidate".into());
+                            }
+                            new_fullnodes += 1;
+                        }
+                    }
+                    let mut fullnodes: Vec<String> = Vec::from_iter(fullnodes_hashset);
+
+                    // now we shuffle the list
+                    let mut curr_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
+                    let shuffle_seed = vrf_hash_to_integer(raw_lyra(
+                        &(curr_epoch.shuffle_bits.to_string()
+                            + &curr_epoch.salt.to_string()
+                            + &curr_epoch.epoch_number.to_string()),
+                    ));
+                    let shuffle_seed = (shuffle_seed.clone()
+                        / (shuffle_seed + BigDecimal::from(1))) // map between 0-1
+                    .to_string() // turn to string
+                    .parse::<f64>()?; // parse as f64
+                    sort_full_list(&mut fullnodes, (shuffle_seed * (u64::MAX as f64)) as u64);
+                    // now form the committees from this shuffled list
+                    let mut excluded_nodes: Vec<String> = vec![]; // will contain the publickey of any nodes not included in tis epoch
+                    let number_of_committes = 2; // TODO: calculate number of committees, for now its hardcoded as 2
+                    let committees: Vec<Comitee> = Comitee::form_comitees(
+                        &mut fullnodes,
+                        &mut excluded_nodes,
+                        number_of_committes,
+                    );
+                    // now add the list to the current epoch data, save and set to top epoch
+                    curr_epoch.committees = committees;
+                    curr_epoch.total_fullnodes += new_fullnodes;
+                    curr_epoch.total_fullnodes -= removed_fullnodes;
+                    curr_epoch.save()?;
+                    curr_epoch.set_top_epoch()?;
+                    info!(
+                        "New epoch number {} started, included fullnodes {}, excluded fullnodes {}",
+                        curr_epoch.epoch_number,
+                        curr_epoch.total_fullnodes,
+                        excluded_nodes.len()
+                    );
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to decode delta list from txn extra, got error={}",
+                        e
+                    );
                 }
             }
         } else {
@@ -792,7 +928,7 @@ impl Transaction {
             'p' => "Unblock account".to_owned(), // reverts the block transaction (linked by the txn hash in extra field)
             // CONSENSUS ONLY
             'a' => "Announce epoch salt seed".to_owned(),
-            'y' => "Announce fullnode list".to_owned(),
+            'y' => "Announce fullnode list delta".to_owned(),
             'z' => "Announce shuffle bits".to_owned(),
             _ => "unknown".to_string(),
         }
