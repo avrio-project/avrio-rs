@@ -227,7 +227,7 @@ impl Verifiable for Certificate {
 
     fn enact(&self) -> Result<(), Box<dyn std::error::Error>> {
         mark_spent(&self.invite)?;
-        if save_data("", &(config().db_path + "/candidates"), self.public_key.clone()) != 1{
+        if save_data("c", &(config().db_path + "/candidates"), self.public_key.clone()) != 1{
             return Err("failed to save new fullnode candidate".into());
         }
         info!("New fullnode candidate {}!", public_key_to_address(&self.public_key));
