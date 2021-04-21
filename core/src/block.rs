@@ -3,7 +3,7 @@ extern crate avrio_database;
 use crate::{
     account::{get_account, set_account, Account},
     block::genesis::{get_genesis_block, GenesisBlockErrors},
-    epoch::{get_top_epoch, Epoch},
+    epoch::get_top_epoch,
     states::*,
     transaction::*,
     validate::Verifiable,
@@ -27,11 +27,11 @@ pub mod genesis {
 
     extern crate avrio_config;
     use avrio_config::config;
-    use avrio_crypto::Wallet;
+    //use avrio_crypto::Wallet;
 
     extern crate hex;
     use crate::block::{Block, BlockType, Header};
-    use crate::transaction::Transaction;
+    //use crate::transaction::Transaction;
     use std::time::{SystemTime, UNIX_EPOCH};
     #[derive(Debug, PartialEq)]
     pub enum GenesisBlockErrors {
