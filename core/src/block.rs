@@ -3,9 +3,10 @@ extern crate avrio_database;
 use crate::{
     account::{get_account, set_account, Account},
     block::genesis::{get_genesis_block, GenesisBlockErrors},
+    epoch::{get_top_epoch, Epoch},
+    states::*,
     transaction::*,
     validate::Verifiable,
-    states::*
 };
 use avrio_config::config;
 use avrio_database::*;
@@ -26,6 +27,7 @@ pub mod genesis {
 
     extern crate avrio_config;
     use avrio_config::config;
+    use avrio_crypto::Wallet;
 
     extern crate hex;
     use crate::block::{Block, BlockType, Header};
@@ -41,8 +43,8 @@ pub mod genesis {
     extern crate avrio_crypto;
 
     pub fn genesis_blocks() -> Vec<Block> {
-        /*example
-        let priv_key= "GD8M1Qm17WXoukx8QqqfvXY5t8ft7APi9iUqUXAytM1dUsiZxCwaDyMhn7pNDBaybagw6QVgYkye5oosd2zmoeiFRak1MjoUSi5Nfen6PQHrzj6y3FrR".to_owned();
+        let mut blks: Vec<Block> = vec![];
+        /*let priv_key= "GD8M1Qm17WXoukx8QqqfvXY5t8ft7APi9iUqUXAytM1dUsiZxCwaDyMhn7pNDBaybagw6QVgYkye5oosd2zmoeiFRak1MjoUSi5Nfen6PQHrzj6y3FrR".to_owned();
         let wall = Wallet::from_private_key(priv_key);
         let mut txn = Transaction {
             hash: String::from(""),
@@ -54,14 +56,11 @@ pub mod genesis {
             access_key: String::from(""),
             unlock_time: 0,
             gas_price: 10, // 0.001 AIO
-            gas: 0,        // claim uses 0 fee
             max_gas: u64::max_value(),
             nonce: 0,
             timestamp: 0,
-            signature: String::from(""),
         };
         txn.hash();
-        let _ = txn.sign(&wall.private_key);
         let mut blk = Block {
             header: Header {
                 version_major: 0,
@@ -76,48 +75,19 @@ pub mod genesis {
             txns: vec![txn],
             hash: "".to_owned(),
             signature: "".to_owned(),
-            confimed: false,
-            node_signatures: vec![],
+            block_type: BlockType::Send,
+            send_block: None,
         };
         blk.hash();
         let _ = blk.sign(&wall.private_key);
-        vec![blk]
-        */
-        vec![]
-    }
-
-    pub fn get_genesis_txns() -> Vec<Transaction> {
-        return vec![
-            // any txns to be in the genesis block are defined here, below is a template for one.
-            Transaction {
-                hash: String::from(""),
-                amount: 0,
-                extra: String::from(""),
-                flag: 'n',
-                sender_key: hex::encode(vec![0, 32]),
-                receive_key: String::from(""),
-                access_key: String::from(""),
-                unlock_time: 0,
-                gas_price: 0,
-                max_gas: u64::max_value(),
-                nonce: 0,
-                timestamp: 0,
-            },
-        ];
+        blks.push(blk);*/
+        blks
     }
 
     pub fn generate_genesis_block(
         chain_key: String,
         priv_key: String,
     ) -> Result<Block, GenesisBlockErrors> {
-        let mut my_genesis_txns: Vec<Transaction> = vec![];
-        let genesis_txns = get_genesis_txns();
-        for tx in genesis_txns {
-            if tx.receive_key == chain_key {
-                my_genesis_txns.push(tx);
-            }
-        }
-
         let mut genesis_block = Block {
             header: Header {
                 version_major: 0,
@@ -135,7 +105,7 @@ pub mod genesis {
             block_type: BlockType::Send,
             send_block: None,
             hash: "".to_string(),
-            txns: my_genesis_txns,
+            txns: vec![],
             signature: "".to_string(),
         };
 
@@ -203,7 +173,7 @@ pub enum BlockValidationErrors {
     SendBlockDoesNotExist,
     #[error("Block too far in future")]
     BlockTooFarInTheFuture,
-    #[error("Claimed se block not send block")]
+    #[error("Claimed send block not send block")]
     SendBlockWrongType,
     #[error("Traansaction not found in referenced send block")]
     TransactionsNotInSendBlock,
@@ -211,6 +181,12 @@ pub enum BlockValidationErrors {
     TransactionFromWrongChain,
     #[error("Send block not set on recieve block")]
     SendBlockEmpty,
+    #[error("Send block not consensus")]
+    NonConsensusSendBlock,
+    #[error("Consensus block sender not round leader")]
+    UnauthorisedConsensusBlock,
+    #[error("Consensus block contains non consensus type txn")]
+    ContainsNonConsensusTxn,
     #[error("Unknown/Other error")]
     Other,
 }
@@ -366,109 +342,89 @@ impl Verifiable for Block {
             );
             return Err(Box::new(BlockValidationErrors::BlockHashMismatch));
         }
-        // now see if we have the block saved, if so return
+        // now see if we have the block saved, if so return err
         let got_block = get_block_from_raw(computed_hash);
         if got_block == block {
             // we have this block saved, return Ok
             debug!(
-                "Found block with hash={} in raw-block files (during validation)",
+                "Already have block with hash={} in raw-block files (during validation)",
                 block.hash
             );
-            return Ok(());
+            return Err(Box::new(BlockValidationErrors::BlockCollision));
         } else if got_block != Block::default() {
             // we have a block with the same hash saved, but it is not the same as this one!
             debug!("Block Collision during validation, found block with matching hash on disk: expected={:#?}, got={:#?}", block, got_block);
             return Err(Box::new(BlockValidationErrors::BlockCollision));
         }
         // else: we dont have this block saved; continue
-        // check if this block is the first 'genesis' block
-        if block.header.height == 0 {
-            if block.header.prev_hash != "00000000000" {
-                debug!("Expected block at height 0 (genesis) to have previous hash of 00000000000");
-                return Err(Box::new(BlockValidationErrors::InvalidPreviousBlockhash));
-            }
-            // check if the genesis block is in our hardcoded  genesis blocks (for the avrio swap, please see the WIKI for more details)
-            match get_genesis_block(&block.hash) {
-                Ok(_) => {
-                    // We have already checked the hash of this block, so if there is a hardcoded genesis block with the same hash they must be equal
-                    debug!("Found hardcoded genesis block with correct hash (hash={}) while validating block", block.hash);
-                }
-                Err(e) => {
-                    // we got an error while trying to get the hardcoded genesis block
-                    // if this error is GenesisBlockErrors::BlockNotFound we can safley continue and know this genesis block is dynamic (not hardcoded)
-                    match e {
-                        GenesisBlockErrors::BlockNotFound => {
-                            debug!("Block with hash={} not found in hardcoded genesis blocks, assuming dynamic", block.hash);
-                        }
-                        _ => {
-                            error!("Got error {:?} while trying to check hardcoded genesis blocks for hash {}", e, block.hash);
-                            return Err(Box::new(BlockValidationErrors::FailedToGetGenesisBlock));
-                        }
-                    }
-                }
-            }
-            // if we got here then the genesis block was not found in the hardcoded list BUT there was no error in checking so, continue validation
-            match get_account(&block.header.chain_key) {
-                Ok(acc) => {
-                    if acc != Account::default() {
-                        debug!("Validating genesis block with hash={} for chain={}, account already exists (got account not default)", block.hash, block.header.chain_key);
-                        return Err(Box::new(BlockValidationErrors::AccountExists));
-                    }
-                }
-                Err(e) => {
-                    if e != 0 {
-                        // 0 = account file not found
-                        error!(
-                            "Failed to get account {} while checking if exists, error code={}",
-                            block.header.chain_key, e
-                        );
-                        return Err(Box::new(BlockValidationErrors::FailedToGetAccount(e)));
-                    }
-                }
-            };
-            // now check if the block is a send block (as height == 0) and the send_block feild is None
-            if block.block_type != BlockType::Send || !block.send_block.is_none() {
-                return Err(Box::new(BlockValidationErrors::GenesisNotSendBlock));
-            }
-            // because this is a dynamic genesis block it cannot have any transactions in, check that
-            if block.txns.len() != 0 {
-                return Err(Box::new(BlockValidationErrors::TransactionCountNotZero));
-            }
-            // now finally as this genesis block is dynamic we need to check the signature
-            if block.valid_signature() {
-                debug!(
-                    "Signature={} on block with hash={} (signer={}) valid",
-                    block.signature, block.hash, block.header.chain_key
-                );
-                return Ok(());
-            } else {
-                error!(
-                    "Signature={} on block with hash={} (signer={}) invalid",
-                    block.signature, block.hash, block.header.chain_key
-                );
+        // check if the block is a consensus block (sent by the round leader of the zero committee)
+        if block.header.chain_key == "0" {
+            trace!("Block {} sent from consensus chain", block.hash);
+            if !block.valid_signature() {
+                // check signature even if block is a recieve block (unlike with non consensus blocks)
                 return Err(Box::new(BlockValidationErrors::BadSignature));
             }
-        } else {
-            // Not a genesis block
-            match get_account(&block.header.chain_key) {
-                Ok(acc) => {
-                    if acc == Account::default() {
-                        debug!("Validating block with hash={} for chain={}, account does not exist (got account default)", block.hash, block.header.chain_key);
-                        return Err(Box::new(BlockValidationErrors::AccountDoesNotExist));
+            if block.block_type == BlockType::Recieve {
+                // check the refrenced send block is a valid consensus send block
+                if let Some(send_block) = block.send_block.clone() {
+                    let send_block_struct = get_block_from_raw(send_block.clone());
+                    if send_block_struct.header.chain_key != "0" {
+                        error!("Consensus block {} references non-consensus or non-existing send block {}", block.hash, send_block);
+                        return Err(Box::new(BlockValidationErrors::NonConsensusSendBlock));
+                    } else if send_block_struct.block_type != BlockType::Send {
+                        error!("Consensus block {} references non-send block or non-existing block {} as send block", block.hash, send_block);
+                        return Err(Box::new(BlockValidationErrors::SendBlockWrongType));
                     }
-                }
-                Err(e) => {
+                    for txn in &block.txns {
+                        if !send_block_struct.txns.contains(txn) {
+                            error!("Consensus block {} contains txn {} which is not in consensus send block {}", block.hash, txn.hash, send_block);
+                        }
+                        return Err(Box::new(BlockValidationErrors::TransactionsNotInSendBlock));
+                    }
+                } else {
                     error!(
-                        "Failed to get account {} while checking if exists, error code={}",
-                        block.header.chain_key, e
+                        "Consensus block {} recieve type but does not reference a send block",
+                        block.hash
                     );
-                    return Err(Box::new(BlockValidationErrors::FailedToGetAccount(e)));
+                    return Err(Box::new(BlockValidationErrors::SendBlockEmpty));
                 }
-            };
+            }
+            let curr_epoch = get_top_epoch()?;
+            let round_leader = curr_epoch.committees[0].get_round_leader()?;
+            // check every transaction is a consensus txn and valid
+            for txn in &block.txns {
+                if !txn.consensus_type() {
+                    error!(
+                        "Consensus block {} contains non-consensus txn {}, flag={} (type={})",
+                        block.hash,
+                        txn.hash,
+                        txn.flag,
+                        txn.type_transaction()
+                    );
+                    return Err(Box::new(BlockValidationErrors::ContainsNonConsensusTxn));
+                }
+                if txn.sender_key != round_leader {
+                    error!(
+                        "Consensus block {} contains txn {} not sent by round leader {} (sent by {})",
+                        block.hash,
+                        txn.hash,
+                        round_leader,
+                        txn.sender_key
+                    );
+                    return Err(Box::new(BlockValidationErrors::UnauthorisedConsensusBlock));
+                }
+                if let Err(e) = txn.valid() {
+                    error!(
+                        "Consensus block {} contains invalid txn {}, reason={}",
+                        block.hash, txn.hash, e
+                    );
+                    return Err(Box::new(BlockValidationErrors::InvalidTransaction(e)));
+                }
+            }
             // get previous block
-            let got_block = get_block(&block.header.chain_key, block.header.height - 1);
+            let got_block = get_block("0", block.header.height - 1);
             if got_block == Block::default() {
-                error!("Cannot find block at height={} for chain={} with hash={} (while validating block with hash={})", block.header.height, block.header.chain_key, block.header.prev_hash, block.hash);
+                error!("Cannot find block at height={} for consensus chain with hash={} (while validating consensus block with hash={})", block.header.height, block.header.prev_hash, block.hash);
                 return Err(Box::new(BlockValidationErrors::PreviousBlockDoesNotExist));
             } else if got_block.hash != block.header.prev_hash {
                 error!(
@@ -488,6 +444,136 @@ impl Verifiable for Block {
                     .as_millis() as u64)
             {
                 error!(
+            "Block with hash={} is too far in the future, transaction_timestamp_max_offset={}, block_timestamp={}, delta_timestamp={}, our_time={}", 
+            block.hash,
+            config.transaction_timestamp_max_offset,
+            block.header.timestamp, block.header.timestamp - (config.transaction_timestamp_max_offset as u64),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_millis()
+        );
+                return Err(Box::new(BlockValidationErrors::BlockTooFarInTheFuture));
+            }
+            //check the block has at most 3 transactions in it
+            if block.txns.len() > 3 {
+                return Err(Box::new(BlockValidationErrors::TooManyTxn));
+            } else if std::mem::size_of_val(&block) > 5000000 {
+                // check the block is no larger than 5MiB
+                return Err(Box::new(BlockValidationErrors::BlockTooLarge));
+            }
+        } else {
+            // check if this block is the first 'genesis' block
+            if block.header.height == 0 {
+                if block.header.prev_hash != "00000000000" {
+                    debug!(
+                        "Expected block at height 0 (genesis) to have previous hash of 00000000000"
+                    );
+                    return Err(Box::new(BlockValidationErrors::InvalidPreviousBlockhash));
+                }
+                // check if the genesis block is in our hardcoded  genesis blocks (for the avrio swap, please see the WIKI for more details)
+                match get_genesis_block(&block.hash) {
+                    Ok(_) => {
+                        // We have already checked the hash of this block, so if there is a hardcoded genesis block with the same hash they must be equal
+                        debug!("Found hardcoded genesis block with correct hash (hash={}) while validating block", block.hash);
+                    }
+                    Err(e) => {
+                        // we got an error while trying to get the hardcoded genesis block
+                        // if this error is GenesisBlockErrors::BlockNotFound we can safley continue and know this genesis block is dynamic (not hardcoded)
+                        match e {
+                            GenesisBlockErrors::BlockNotFound => {
+                                debug!("Block with hash={} not found in hardcoded genesis blocks, assuming dynamic", block.hash);
+                            }
+                            _ => {
+                                error!("Got error {:?} while trying to check hardcoded genesis blocks for hash {}", e, block.hash);
+                                return Err(Box::new(
+                                    BlockValidationErrors::FailedToGetGenesisBlock,
+                                ));
+                            }
+                        }
+                    }
+                }
+                // if we got here then the genesis block was not found in the hardcoded list BUT there was no error in checking so, continue validation
+                match get_account(&block.header.chain_key) {
+                    Ok(acc) => {
+                        if acc != Account::default() {
+                            debug!("Validating genesis block with hash={} for chain={}, account already exists (got account not default)", block.hash, block.header.chain_key);
+                            return Err(Box::new(BlockValidationErrors::AccountExists));
+                        }
+                    }
+                    Err(e) => {
+                        if e != 0 {
+                            // 0 = account file not found
+                            error!(
+                                "Failed to get account {} while checking if exists, error code={}",
+                                block.header.chain_key, e
+                            );
+                            return Err(Box::new(BlockValidationErrors::FailedToGetAccount(e)));
+                        }
+                    }
+                };
+                // now check if the block is a send block (as height == 0) and the send_block field is None
+                if block.block_type != BlockType::Send || !block.send_block.is_none() {
+                    return Err(Box::new(BlockValidationErrors::GenesisNotSendBlock));
+                }
+                // because this is a dynamic genesis block it cannot have any transactions in, check that
+                if block.txns.len() != 0 {
+                    return Err(Box::new(BlockValidationErrors::TransactionCountNotZero));
+                }
+                // now finally as this genesis block is dynamic we need to check the signature
+                if block.valid_signature() {
+                    debug!(
+                        "Signature={} on block with hash={} (signer={}) valid",
+                        block.signature, block.hash, block.header.chain_key
+                    );
+                    return Ok(());
+                } else {
+                    error!(
+                        "Signature={} on block with hash={} (signer={}) invalid",
+                        block.signature, block.hash, block.header.chain_key
+                    );
+                    return Err(Box::new(BlockValidationErrors::BadSignature));
+                }
+            } else {
+                // Not a genesis block
+                match get_account(&block.header.chain_key) {
+                    Ok(acc) => {
+                        if acc == Account::default() {
+                            debug!("Validating block with hash={} for chain={}, account does not exist (got account default)", block.hash, block.header.chain_key);
+                            return Err(Box::new(BlockValidationErrors::AccountDoesNotExist));
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to get account {} while checking if exists, error code={}",
+                            block.header.chain_key, e
+                        );
+                        return Err(Box::new(BlockValidationErrors::FailedToGetAccount(e)));
+                    }
+                };
+                // get previous block
+                let got_block = get_block(&block.header.chain_key, block.header.height - 1);
+                if got_block == Block::default() {
+                    error!("Cannot find block at height={} for chain={} with hash={} (while validating block with hash={})", block.header.height, block.header.chain_key, block.header.prev_hash, block.hash);
+                    return Err(Box::new(BlockValidationErrors::PreviousBlockDoesNotExist));
+                } else if got_block.hash != block.header.prev_hash {
+                    error!(
+                        "Previous block hash mismatch, expected={}, got={}",
+                        block.header.prev_hash, got_block.hash
+                    );
+                    return Err(Box::new(BlockValidationErrors::InvalidPreviousBlockhash));
+                }
+                // else: the previous block exists and has the correct hash
+                // check timestamp of block
+                if block.header.timestamp < got_block.header.timestamp {
+                    error!("Block with hash={} older than parent block with hash={}, block_timestamp={}, parent_timestamp={}", block.hash, got_block.hash, block.header.timestamp, got_block.header.timestamp);
+                } else if block.header.timestamp - (config.transaction_timestamp_max_offset as u64)
+                    > (SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards")
+                        .as_millis() as u64)
+                {
+                    error!(
                 "Block with hash={} is too far in the future, transaction_timestamp_max_offset={}, block_timestamp={}, delta_timestamp={}, our_time={}", 
                 block.hash,
                 config.transaction_timestamp_max_offset,
@@ -497,68 +583,73 @@ impl Verifiable for Block {
                     .expect("Time went backwards")
                     .as_millis()
             );
-                return Err(Box::new(BlockValidationErrors::BlockTooFarInTheFuture));
-            }
-            //check the block has at most 10 transactions in it
-            if block.txns.len() > 10 {
-                return Err(Box::new(BlockValidationErrors::TooManyTxn));
-            } else if std::mem::size_of_val(&block) > 2048000 {
-                // check the block is no larger than 2mb
-                return Err(Box::new(BlockValidationErrors::BlockTooLarge));
-            }
-            if block.block_type == BlockType::Send {
-                // check if the block has a valid signature
-                if !block.valid_signature() {
-                    return Err(Box::new(BlockValidationErrors::BadSignature));
+                    return Err(Box::new(BlockValidationErrors::BlockTooFarInTheFuture));
                 }
-                // for every transaction in the block...
-                for txn in &block.txns {
-                    // check if the txn is valid
-                    if let Err(txn_validation_error) = txn.valid() {
-                        error!(
-                            "Validating transaction {} in block {} gave error {:?}",
-                            txn.hash, block.hash, txn_validation_error
-                        );
-                        return Err(Box::new(BlockValidationErrors::InvalidTransaction(
-                            txn_validation_error,
-                        )));
-                        // check the sender of the txn is the creator of this block
-                    } else if txn.sender_key != block.header.chain_key {
-                        error!("Transaction {} in block {} has sender key {} but block has a sender/chain key of {}", txn.hash, block.hash, txn.receive_key, block.header.chain_key);
-                        return Err(Box::new(BlockValidationErrors::TransactionFromWrongChain));
-                    }
+                //check the block has at most 10 transactions in it
+                if block.txns.len() > 10 {
+                    return Err(Box::new(BlockValidationErrors::TooManyTxn));
+                } else if std::mem::size_of_val(&block) > 2048000 {
+                    // check the block is no larger than 2mb
+                    return Err(Box::new(BlockValidationErrors::BlockTooLarge));
                 }
-            } else {
-                if let Some(send_block_hash) = block.send_block {
-                    // get the corosponding send block for this recieve block
-                    let got_send_block = get_block_from_raw(send_block_hash);
-                    // If the block is default it is not found
-                    if got_send_block == Block::default() {
-                        error!("Cannot find send block with hash");
-                        return Err(Box::new(BlockValidationErrors::SendBlockDoesNotExist));
-                    } else if got_send_block.block_type != BlockType::Send {
-                        // check if the claimed send block is really a send block
-                        error!("Block with hash={} claims to be recieve block of {}, but it is a recieve block", block.hash, got_send_block.hash);
-                        return Err(Box::new(BlockValidationErrors::SendBlockWrongType));
+                if block.block_type == BlockType::Send {
+                    // check if the block has a valid signature
+                    if !block.valid_signature() {
+                        return Err(Box::new(BlockValidationErrors::BadSignature));
                     }
                     // for every transaction in the block...
                     for txn in &block.txns {
-                        if !got_send_block.txns.contains(txn) {
-                            // check if the transaction is in the send block for this block
+                        // check if the txn is valid
+                        if let Err(txn_validation_error) = txn.valid() {
                             error!(
-                            "Transaction {} not found in send block {} (recieve block {} invalid)",
-                            txn.hash, got_send_block.hash, block.hash
-                        );
-                            return Err(Box::new(BlockValidationErrors::TransactionsNotInSendBlock));
-                        } else if txn.receive_key != block.header.chain_key {
-                            // check the recieve key of the transaction is the creator of this block (block.header.chain_key)
-                            error!("Transaction {} in block {} has recieve key {} but block has a sender/chain key of {}", txn.hash, block.hash, txn.receive_key, block.header.chain_key);
+                                "Validating transaction {} in block {} gave error {:?}",
+                                txn.hash, block.hash, txn_validation_error
+                            );
+                            return Err(Box::new(BlockValidationErrors::InvalidTransaction(
+                                txn_validation_error,
+                            )));
+                            // check the sender of the txn is the creator of this block
+                        } else if txn.sender_key != block.header.chain_key {
+                            error!("Transaction {} in block {} has sender key {} but block has a sender/chain key of {}", txn.hash, block.hash, txn.receive_key, block.header.chain_key);
                             return Err(Box::new(BlockValidationErrors::TransactionFromWrongChain));
                         }
                     }
                 } else {
-                    // All recieve blocks should have the send_block field set to Some() value
-                    return Err(Box::new(BlockValidationErrors::SendBlockEmpty));
+                    if let Some(send_block_hash) = block.send_block {
+                        // get the corosponding send block for this recieve block
+                        let got_send_block = get_block_from_raw(send_block_hash);
+                        // If the block is default it is not found
+                        if got_send_block == Block::default() {
+                            error!("Cannot find send block with hash");
+                            return Err(Box::new(BlockValidationErrors::SendBlockDoesNotExist));
+                        } else if got_send_block.block_type != BlockType::Send {
+                            // check if the claimed send block is really a send block
+                            error!("Block with hash={} claims to be recieve block of {}, but it is a recieve block", block.hash, got_send_block.hash);
+                            return Err(Box::new(BlockValidationErrors::SendBlockWrongType));
+                        }
+                        // for every transaction in the block...
+                        for txn in &block.txns {
+                            if !got_send_block.txns.contains(txn) {
+                                // check if the transaction is in the send block for this block
+                                error!(
+                            "Transaction {} not found in send block {} (recieve block {} invalid)",
+                            txn.hash, got_send_block.hash, block.hash
+                        );
+                                return Err(Box::new(
+                                    BlockValidationErrors::TransactionsNotInSendBlock,
+                                ));
+                            } else if txn.receive_key != block.header.chain_key {
+                                // check the recieve key of the transaction is the creator of this block (block.header.chain_key)
+                                error!("Transaction {} in block {} has recieve key {} but block has a sender/chain key of {}", txn.hash, block.hash, txn.receive_key, block.header.chain_key);
+                                return Err(Box::new(
+                                    BlockValidationErrors::TransactionFromWrongChain,
+                                ));
+                            }
+                        }
+                    } else {
+                        // All recieve blocks should have the send_block field set to Some() value
+                        return Err(Box::new(BlockValidationErrors::SendBlockEmpty));
+                    }
                 }
             }
         }
@@ -629,37 +720,77 @@ impl Block {
     /// Returns true if signature on block is valid
     pub fn valid_signature(&self) -> bool {
         let msg: &[u8] = self.hash.as_bytes();
-        let peer_public_key = signature::UnparsedPublicKey::new(
-            &signature::ED25519,
-            bs58::decode(&self.header.chain_key)
-                .into_vec()
-                .unwrap_or_else(|e| {
-                    error!(
-                        "Failed to decode public key from bs58 {}, gave error {}",
-                        self.header.chain_key, e
-                    );
-                    return vec![0, 1, 0];
-                }),
-        );
-        let mut res: bool = true;
-        peer_public_key
-            .verify(
-                msg,
-                bs58::decode(&self.signature)
+        if self.header.chain_key != "0" {
+            // not a consensus block
+            let peer_public_key = signature::UnparsedPublicKey::new(
+                &signature::ED25519,
+                bs58::decode(&self.header.chain_key)
                     .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
-                            "failed to decode signature from bs58 {}, gave error {}",
-                            self.signature, e
+                            "Failed to decode public key from bs58 {}, gave error {}",
+                            self.header.chain_key, e
                         );
                         return vec![0, 1, 0];
-                    })
-                    .as_ref(),
-            )
-            .unwrap_or_else(|_e| {
-                res = false;
-            });
-        res
+                    }),
+            );
+            let mut res: bool = true;
+            peer_public_key
+                .verify(
+                    msg,
+                    bs58::decode(&self.signature)
+                        .into_vec()
+                        .unwrap_or_else(|e| {
+                            error!(
+                                "failed to decode signature from bs58 {}, gave error {}",
+                                self.signature, e
+                            );
+                            return vec![0, 1, 0];
+                        })
+                        .as_ref(),
+                )
+                .unwrap_or_else(|_e| {
+                    res = false;
+                });
+            res
+        } else {
+            // a consensus block
+            let curr_epoch = get_top_epoch().unwrap_or_default();
+            let round_leader = curr_epoch.committees[0]
+                .get_round_leader()
+                .unwrap_or_default();
+            let peer_public_key = signature::UnparsedPublicKey::new(
+                &signature::ED25519,
+                bs58::decode(round_leader.clone())
+                    .into_vec()
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "Failed to decode round leader's public key from bs58 {}, gave error {}",
+                            round_leader, e
+                        );
+                        return vec![0, 1, 0];
+                    }),
+            );
+            let mut res: bool = true;
+            peer_public_key
+                .verify(
+                    msg,
+                    bs58::decode(&self.signature)
+                        .into_vec()
+                        .unwrap_or_else(|e| {
+                            error!(
+                                "failed to decode signature from bs58 {}, gave error {}",
+                                self.signature, e
+                            );
+                            return vec![0, 1, 0];
+                        })
+                        .as_ref(),
+                )
+                .unwrap_or_else(|_e| {
+                    res = false;
+                });
+            res
+        }
     }
 
     pub fn is_other_block(&self, other_block: &Block) -> bool {
