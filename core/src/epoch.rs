@@ -25,6 +25,7 @@ pub struct Epoch {
     pub blocks: u64,
     pub salt: u64,
     pub committees: Vec<Comitee>,
+    pub shuffle_bits: u128,
 }
 impl Hashable for Epoch {
     fn bytes(&self) -> Vec<u8> {
@@ -40,6 +41,7 @@ impl Hashable for Epoch {
         for committee in &self.committees {
             bytes.extend(committee.hash.bytes());
         }
+        bytes.extend(self.shuffle_bits.to_string().bytes());
         bytes
     }
 }
@@ -63,6 +65,7 @@ impl Epoch {
             blocks: 0,
             salt: 0,
             committees: vec![],
+            shuffle_bits: 0,
         }
     }
 
