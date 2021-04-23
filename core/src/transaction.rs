@@ -23,8 +23,8 @@ use avrio_crypto::{proof_to_hash, raw_lyra, validate_vrf, vrf_hash_to_integer};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use std::{
     collections::HashSet,
-    time::{SystemTime, UNIX_EPOCH},
     iter::FromIterator,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Error)]
@@ -91,6 +91,12 @@ pub enum TransactionValidationErrors {
     WrongAmountRecieverConsensusMessage,
     #[error("Sent consensus message contains invalid VRF")]
     InvalidVrf,
+    #[error("Could not decode VRF proof and signer from announceEpochSaltSeedTxn")]
+    FailedToDecodeSaltSeeds,
+    #[error("Hashed preshuffle node list does not equal expected hash")]
+    BadPreshuffleHash,
+    #[error("Hashed post shuffle committee list does not equal expected hash")]
+    BadShuffledHash,
     #[error("Other")]
     Other,
 }
@@ -388,11 +394,7 @@ impl Verifiable for Transaction {
                     return Err(Box::new(TransactionValidationErrors::ExtraTooLarge));
                 }
                 // check if the sender is a fullnode
-                if get_data(
-                    config().db_path + &"/fn-certificates".to_owned(),
-                    &(self.sender_key.to_owned() + &"-cert".to_owned()),
-                ) == "-1"
-                {
+                if get_data(config().db_path + "/candidates", &self.sender_key) != "f" {
                     error!("Non fullnode {} tried to create a invite", self.sender_key);
                     return Err(Box::new(TransactionValidationErrors::NotFullNode));
                 }
@@ -452,20 +454,20 @@ impl Verifiable for Transaction {
                 match serde_json::from_str::<Vec<(String, String)>>(&self.extra) {
                     Ok(salt_seeds) => {
                         debug!("Decoded salt_seeds={:#?}", salt_seeds);
-                        let mut salt_string = String::from("");
-                        for (public_key, seed) in salt_seeds {
+                        let message = String::from("");
+                        for (publickey, seed) in salt_seeds {
                             trace!("Validating seed {}", seed);
-                            if !(validate_vrf(
-                                public_key,
-                                seed.clone(),
-                                top_epoch.epoch_number.to_string(),
-                            )) {
+                            if !validate_vrf(publickey.clone(), seed.clone(), message.clone()) {
+                                error!("Invalid VRF as epoch salt seed, proof={}, creator={}, message={}", seed, publickey, message);
                                 return Err(Box::new(TransactionValidationErrors::InvalidVrf));
                             }
                         }
                     }
                     Err(e) => {
                         error!("Failed to decode epoch salt seeds from extra ({}) in txn {}, gave error={}", self.extra, self.hash, e);
+                        return Err(Box::new(
+                            TransactionValidationErrors::FailedToDecodeSaltSeeds,
+                        ));
                     }
                 }
             }
@@ -487,12 +489,96 @@ impl Verifiable for Transaction {
                         TransactionValidationErrors::WrongAmountRecieverConsensusMessage,
                     ));
                 }
-                /*//we now calculate the hash of 'fullnodes' which should equal the preshuffle hash (hashes.0)
-                let mut preshuffle_hash = String::from("");
-                for fullnode in &fullnodes {
-                    preshuffle_hash = raw_lyra(&(preshuffle_hash + fullnode));
+                match serde_json::from_str::<((String, String), Vec<(String, u8, String)>)>(
+                    &self.extra,
+                ) {
+                    Ok((hashes, delta_list)) => {
+                        debug!("Decoded fullnode delta list, len={}, expected preshuffle_hash={}, expected postshuffle_hash={}", delta_list.len(), hashes.0, hashes.1);
+                        trace!(
+                            "fullnode_delta_list={:#?}, hashes: {:#?}",
+                            delta_list,
+                            hashes
+                        );
+                        let top_epoch = get_top_epoch()?;
+                        let mut fullnodes_hashset: HashSet<String> = HashSet::new();
+                        for committee in top_epoch.committees {
+                            for fullnode in committee.members {
+                                fullnodes_hashset.insert(fullnode);
+                            }
+                        }
+                        for delta in delta_list {
+                            if delta.1 != 0 {
+                                // remove the fullnode
+                                // TODO: validate remove proof
+                                if fullnodes_hashset.contains(&delta.0) {
+                                    trace!(
+                                        "Removing {} from fullnode set, reason={}, proof={}",
+                                        delta.0,
+                                        delta.1,
+                                        delta.2
+                                    );
+                                } else {
+                                    error!("Fullnode set did not contain node removed by delta entry, delta entry={:?}", delta);
+                                }
+                            } else {
+                                // eclose a candidate
+                                fullnodes_hashset.insert(delta.0.clone());
+                                // now update their on disk flag to validator, from candidate
+                                if save_data(
+                                    "f",
+                                    &(config().db_path + "/candidates"),
+                                    delta.0.clone(),
+                                ) != 1
+                                {
+                                    return Err("failed to save new fullnode candidate".into());
+                                }
+                            }
+                        }
+                        let mut fullnodes: Vec<String> = Vec::from_iter(fullnodes_hashset);
+                        let mut preshuffle_hash = String::from("");
+                        for fullnode in &fullnodes {
+                            preshuffle_hash = raw_lyra(&(preshuffle_hash + fullnode));
+                        }
+                        if preshuffle_hash != hashes.0 {
+                            error!("Preshuffle hash (after delta) does not equal expected, expected={}, got={}", hashes.0, preshuffle_hash);
+                            return Err(Box::new(TransactionValidationErrors::BadPreshuffleHash));
+                        }
+                        // now we shuffle the list
+                        let curr_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
+                        let shuffle_seed = vrf_hash_to_integer(raw_lyra(
+                            &(curr_epoch.shuffle_bits.to_string()
+                                + &curr_epoch.salt.to_string()
+                                + &curr_epoch.epoch_number.to_string()),
+                        ));
+                        let shuffle_seed = (shuffle_seed.clone()
+                            / (shuffle_seed + BigDecimal::from(1))) // map between 0-1
+                        .to_string() // turn to string
+                        .parse::<f64>()?; // parse as f64
+                        sort_full_list(&mut fullnodes, (shuffle_seed * (u64::MAX as f64)) as u64);
+                        // now form the committees from this shuffled list
+                        let mut excluded_nodes: Vec<String> = vec![]; // will contain the publickey of any nodes not included in tis epoch
+                        let number_of_committes = 2; // TODO: calculate number of committees, for now its hardcoded as 2
+                        let committees: Vec<Comitee> = Comitee::form_comitees(
+                            &mut fullnodes,
+                            &mut excluded_nodes,
+                            number_of_committes,
+                        );
+                        let mut postshuffle_hash = String::from("");
+                        for committee in &committees {
+                            postshuffle_hash = raw_lyra(&(postshuffle_hash + &committee.hash));
+                        }
+                        if postshuffle_hash != hashes.1 {
+                            error!("Post shuffle committee list hash does not equal expected, expected={}, got={}", hashes.1, postshuffle_hash);
+                            return Err(Box::new(TransactionValidationErrors::BadShuffledHash));
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to decode delta list from txn extra, got error={}",
+                            e
+                        );
+                    }
                 }
-                debug!("Computed preshuffle hash={}, expected={}", preshuffle_hash, hashes.0);*/
             }
             'z' => {
                 let consensus_round_leader = get_top_epoch().unwrap_or_default().committees[0]
@@ -511,6 +597,19 @@ impl Verifiable for Transaction {
                     return Err(Box::new(
                         TransactionValidationErrors::WrongAmountRecieverConsensusMessage,
                     ));
+                }
+                let top_epoch = get_top_epoch()?;
+                let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
+                let round_leader = top_epoch.committees[0].get_round_leader()?;
+                let message = &(new_epoch.salt.to_string()
+                    + &new_epoch.epoch_number.to_string()
+                    + &round_leader);
+                if !validate_vrf(round_leader.clone(), self.extra.clone(), raw_lyra(message)) {
+                    error!(
+                        "Invalid VRF as shufflebits , proof={}, creator={}, message={}",
+                        self.extra, round_leader, message
+                    );
+                    return Err(Box::new(TransactionValidationErrors::InvalidVrf));
                 }
             }
             _ => {
@@ -781,23 +880,9 @@ impl Verifiable for Transaction {
             }
         } else if self.flag == 'z' {
             // announceShuffleBitsTxn
-            let top_epoch = get_top_epoch()?;
-            let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
-            let round_leader = top_epoch.committees[0].get_round_leader()?;
-            if !validate_vrf(
-                round_leader.clone(),
-                self.extra.clone(),
-                raw_lyra(
-                    &(new_epoch.salt.to_string()
-                        + &new_epoch.epoch_number.to_string()
-                        + &round_leader),
-                ),
-            ) {
-                error!("Invalid AnnounceShuffleBits txn, VRF invalid");
-                return Err("shuffle bits vrf invalid".into());
-            }
             let shuffle_bits_big = vrf_hash_to_integer(proof_to_hash(&self.extra)?);
-            let shuffle_bits_mod = shuffle_bits_big.clone() % BigDecimal::from_u128(u128::MAX).unwrap_or_default(); // now SHOULD be safe to cast to u64
+            let shuffle_bits_mod =
+                shuffle_bits_big.clone() % BigDecimal::from_u128(u128::MAX).unwrap_or_default(); // now SHOULD be safe to cast to u64
             trace!(
                 "Moduloed big salt: shuffle_bits_big={}, shuffle_bits_mod={}",
                 shuffle_bits_big,
