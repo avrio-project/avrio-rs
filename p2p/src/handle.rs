@@ -93,10 +93,7 @@ pub fn launch_handle_client(
     incoming: bool
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = stream.try_clone()?;
-    let mut ping_every: Duration = Duration::from_millis(10 * 60 * 1000);
-    if incoming {
-        ping_every = Duration::from_millis(5 * 60 * 1000);
-    }
+    let ping_every: Duration = Duration::from_millis(1 * 60 * 1000);
     let _handler: std::thread::JoinHandle<Result<(), &'static str>> = std::thread::spawn(
         move || {
             let mut ping_nonce = 0;
@@ -104,11 +101,13 @@ pub fn launch_handle_client(
             let mut last_ping_time = SystemTime::now();
             loop {
                 if let Ok(msg) = rx.try_recv() {
+                    // check if we have been told to 'pause' and stop reading from stream
                     log::debug!("Read msg={}", msg);
                     if msg == "pause" {
                         log::trace!("Pausing stream for peer");
                         loop {
-                            if let Ok(msg) = rx.try_recv() {
+                            if let Ok(msg) = rx.try_recv() { 
+                                // check if we have been told to resume checking and reading from the stream
                                 if msg == "run" {
                                     log::trace!("Resuming stream for peer");
                                     paused = true;
@@ -124,7 +123,7 @@ pub fn launch_handle_client(
                     .duration_since(last_ping_time)
                     .unwrap_or_default()
                     .as_millis()
-                    >= ping_every.as_millis()
+                    >= ping_every.as_millis() && incoming
                 {
                     debug!(
                         "Waited 5 mins, sending ping message with nonce: {}",
@@ -146,7 +145,7 @@ pub fn launch_handle_client(
                                                 || pong.message_type != 0x92
                                             {
                                                 if pong.message_type == 0x91 {
-                                                    // the peer pinged us, ping them back
+                                                    // the peer pinged our ping, pong them back
                                                     send(pong.message, &mut stream, 0x92, true, None);
                                                     last_ping_time = SystemTime::now();
                                                     break;
