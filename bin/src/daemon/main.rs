@@ -6,14 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use avrio_core::{
-    account::to_dec,
-    certificate::generate_certificate,
-    invite::{generate_invite, new_invite},
-    states::form_state_digest,
-    transaction::Transaction,
-    validate::Verifiable,
-};
+use avrio_core::{account::to_dec, certificate::generate_certificate, epoch::Epoch, invite::{generate_invite, new_invite}, states::form_state_digest, transaction::Transaction, validate::Verifiable};
 use avrio_rpc::*;
 extern crate clap;
 use clap::{App, Arg};
@@ -210,6 +203,9 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
     new_invite("FZ2YbpGw1ZjRW2dkwMRfy7N98iZCkcfezy5BxCGWRPgZ")?;
     // invite priv key:
     // GD8M1Qm17WXoukx8QqqfvYRJDoxmjf1jSXFXyVYHFeQtCX67cpw6otCpeporyLaNmLKrKAj8nFSNfszJYyuTL1UFt6SFeodz3QJ8iDkvwBPM4SMMGkV3
+    // set up the top epoch
+    let genesis_epoch = Epoch::new();
+    genesis_epoch.save()?;
     Ok(())
 }
 
