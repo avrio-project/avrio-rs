@@ -5,15 +5,16 @@ use crate::{
 use aes_gcm::aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm;
 use log::{debug, trace};
-use std::error::Error;
 use std::fmt;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::{error::Error, time::Duration};
 
-const MAX_PEAK_BUFFER_SIZE: usize = 1000000; // 1 Mb, if the message is longer than this you cannot peak it. can be increased but should not need to be
+const MAX_PEAK_BUFFER_SIZE: usize = 5000000; // 5 Mib, if the message is longer than this you cannot peak it. can be increased but should not need to be
 
 pub fn peek(peer: &mut TcpStream) -> Result<usize, std::io::Error> {
     let mut buf = [0; MAX_PEAK_BUFFER_SIZE]; // create a buffer of MAX_BUFFER_SIZE 0s to peak into
+    peer.set_read_timeout(Some(Duration::from_millis(2500)))?; // low level IO calls like peek block without explicit instruction not too
     peer.peek(&mut buf)
 }
 
