@@ -74,8 +74,8 @@ impl Epoch {
         if save_data(
             &serialized,
             &(config().db_path + "/epochdata"),
-            self.hash.clone(),
-        ) != 1
+            self.epoch_number.to_string(),
+        ) == 1
         {
             return Ok(());
         } else {
@@ -84,10 +84,10 @@ impl Epoch {
     }
     pub fn set_top_epoch(&self) -> Result<(), Box<dyn std::error::Error>> {
         if save_data(
-            &self.hash,
+            &self.epoch_number.to_string(),
             &(config().db_path + "/epochdata"),
             "topepoch".to_string(),
-        ) != 1
+        ) == 1
         {
             return Ok(());
         } else {
