@@ -246,8 +246,6 @@ pub fn launch_handle_client(
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(1));
-                } else {
-                    return Err("failed to peek peer");
                 }
                 paused = false;
                 std::thread::sleep(Duration::from_millis(50));
