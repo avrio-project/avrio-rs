@@ -204,8 +204,11 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
     // invite priv key:
     // GD8M1Qm17WXoukx8QqqfvYRJDoxmjf1jSXFXyVYHFeQtCX67cpw6otCpeporyLaNmLKrKAj8nFSNfszJYyuTL1UFt6SFeodz3QJ8iDkvwBPM4SMMGkV3
     // set up the top epoch
-    let genesis_epoch = Epoch::new();
+    let mut genesis_epoch = Epoch::new();
+    genesis_epoch.epoch_number = 0;
+    genesis_epoch.hash();
     genesis_epoch.save()?;
+    genesis_epoch.set_top_epoch()?;
     Ok(())
 }
 
