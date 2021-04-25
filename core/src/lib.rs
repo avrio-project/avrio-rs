@@ -13,4 +13,4 @@ pub mod mempool;
 pub mod states;
 pub mod transaction;
 pub mod validate;
-mod chunk;
+pub mod chunk;
