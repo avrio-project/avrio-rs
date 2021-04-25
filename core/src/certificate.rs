@@ -5,6 +5,7 @@ This file handles the generation, validation and saving of the fullnodes certifi
 use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
 use avrio_config::config;
+use rand::thread_rng;
 extern crate avrio_database;
 use crate::{
     block::get_block_from_raw,
@@ -19,7 +20,9 @@ use ring::signature::{self, KeyPair};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 extern crate bs58;
-
+use bls_signatures::{
+    verify_messages, PrivateKey, PublicKey, Serialize as blsSerialize, Signature,
+};
 #[derive(Debug, PartialEq, Error)]
 pub enum CertificateErrors {
     #[error("Lock transaction not found")]
@@ -79,7 +82,6 @@ pub fn generate_certificate(
             .unwrap();
 
     let peer_public_key_bytes = key_pair.public_key().as_ref();
-
     let mut cert: Certificate = Certificate {
         hash: String::from(""),
         public_key: String::from(""),
@@ -92,6 +94,10 @@ pub fn generate_certificate(
         bls_signature: String::from(""),
         signature: String::from(""),
     };
+    let mut rng = thread_rng();
+    let bls_private_key = PrivateKey::generate(&mut rng);
+    let bls_public_key = bls_private_key.public_key();
+    cert.bls_public_key = bs58::encode(bls_public_key.as_bytes()).into_string();
 
     cert.public_key = pk.to_owned();
     cert.txn_hash = txn_hash.to_owned();
@@ -116,7 +122,7 @@ pub fn generate_certificate(
 
     cert.hash();
 
-    if let Err(_e) = cert.sign(&private_key, invite) {
+    if let Err(_e) = cert.sign(&private_key, invite, &bls_private_key) {
         Err(CertificateErrors::SignatureError)
     } else {
         Ok(cert)
@@ -134,7 +140,6 @@ impl Hashable for Certificate {
         bytes.extend(self.valid_until.to_string().bytes());
         bytes.extend(self.bls_public_key.bytes());
         bytes.extend(self.bls_signature.bytes());
-
 
         bytes
     }
@@ -270,6 +275,7 @@ impl Certificate {
         &mut self,
         private_key: &str,
         invite: String,
+        bls_private_key: &PrivateKey,
     ) -> Result<(), ring::error::KeyRejected> {
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(
             bs58::decode(private_key)
@@ -279,7 +285,7 @@ impl Certificate {
         )?;
 
         let msg: &[u8] = self.hash.as_bytes();
-
+        self.bls_signature = bs58::encode(bls_private_key.sign(msg).as_bytes()).into_string();
         self.signature = bs58::encode(key_pair.sign(msg)).into_string();
 
         // now sign with the invite
@@ -299,75 +305,91 @@ impl Certificate {
 
     pub fn valid_signature(&self) -> bool {
         let msg: &[u8] = self.hash.as_bytes();
-
-        let peer_public_key = signature::UnparsedPublicKey::new(
-            &signature::ED25519,
-            bs58::decode(self.public_key.to_owned())
+        if let Ok(bls_publickey) = PublicKey::from_bytes(
+            &bs58::decode(&self.bls_public_key)
                 .into_vec()
-                .unwrap_or_else(|e| {
-                    error!(
-                        "Failed to decode public key from base58 {}, gave error {}",
-                        self.public_key, e
-                    );
-
-                    return vec![0, 1, 0];
-                }),
-        );
-
-        peer_public_key
-            .verify(
-                msg,
-                bs58::decode(self.signature.to_owned())
+                .unwrap_or_default(),
+        ) {
+            if let Ok(signature) =
+                Signature::from_bytes(&bs58::decode(&self.signature).into_vec().unwrap_or_default())
+            {
+                if !verify_messages(&signature, &[self.hash.as_bytes()], &[bls_publickey]) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+            let peer_public_key = signature::UnparsedPublicKey::new(
+                &signature::ED25519,
+                bs58::decode(self.public_key.to_owned())
                     .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
-                            "failed to decode signature from base58 {}, gave error {}",
-                            self.signature, e
+                            "Failed to decode public key from base58 {}, gave error {}",
+                            self.public_key, e
                         );
 
                         return vec![0, 1, 0];
-                    })
-                    .as_ref(),
-            )
-            .unwrap_or_else(|_e| {});
+                    }),
+            );
 
-        // now invite sig
+            peer_public_key
+                .verify(
+                    msg,
+                    bs58::decode(self.signature.to_owned())
+                        .into_vec()
+                        .unwrap_or_else(|e| {
+                            error!(
+                                "failed to decode signature from base58 {}, gave error {}",
+                                self.signature, e
+                            );
 
-        let msg: &[u8] = self.public_key.as_bytes();
+                            return vec![0, 1, 0];
+                        })
+                        .as_ref(),
+                )
+                .unwrap_or_else(|_e| {});
 
-        let peer_public_key = signature::UnparsedPublicKey::new(
-            &signature::ED25519,
-            bs58::decode(self.invite.to_owned())
-                .into_vec()
-                .unwrap_or_else(|e| {
-                    error!(
-                        "Failed to decode public key from base58 {}, gave error {}",
-                        self.public_key, e
-                    );
+            // now invite sig
 
-                    return vec![0, 1, 0];
-                }),
-        );
+            let msg: &[u8] = self.public_key.as_bytes();
 
-        peer_public_key
-            .verify(
-                msg,
-                bs58::decode(self.invite_sig.to_owned())
+            let peer_public_key = signature::UnparsedPublicKey::new(
+                &signature::ED25519,
+                bs58::decode(self.invite.to_owned())
                     .into_vec()
                     .unwrap_or_else(|e| {
                         error!(
-                            "failed to decode signature from base58 {}, gave error {}",
-                            self.invite_sig, e
+                            "Failed to decode public key from base58 {}, gave error {}",
+                            self.public_key, e
                         );
 
                         return vec![0, 1, 0];
-                    })
-                    .as_ref(),
-            )
-            .unwrap_or_else(|_e| {});
-        // ^ wont unwrap if sig is invalid
+                    }),
+            );
 
-        true
+            peer_public_key
+                .verify(
+                    msg,
+                    bs58::decode(self.invite_sig.to_owned())
+                        .into_vec()
+                        .unwrap_or_else(|e| {
+                            error!(
+                                "failed to decode signature from base58 {}, gave error {}",
+                                self.invite_sig, e
+                            );
+
+                            return vec![0, 1, 0];
+                        })
+                        .as_ref(),
+                )
+                .unwrap_or_else(|_e| {});
+            // ^ wont unwrap if sig is invalid
+
+            return true;
+        } else {
+            return false;
+        }
     }
 
     pub fn hash(&mut self) {
