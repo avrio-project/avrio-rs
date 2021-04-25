@@ -15,6 +15,10 @@ pub struct BlockChunk {
 
 impl Verifiable for BlockChunk {
     fn valid(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // check this is not from the consensus committee
+        if self.committee == 0 {
+            return Err("block chunk from consensus committee".into());
+        }
         // first check the hash of the BlockChunk
         if self.hash_item() != self.hash {
             error!(
@@ -24,6 +28,34 @@ impl Verifiable for BlockChunk {
                 self.hash_item()
             );
             return Err("Hash mismatch".into());
+        }
+        // check its round is correct
+        if let Ok(collision) =
+            BlockChunk::get_by_round(self.round, get_top_epoch()?.epoch_number, self.committee)
+        {
+            error!(
+                "Chunk {} collides with {} at round {} (committee={}, proposer={:?}, epoch={})",
+                self.hash,
+                collision.hash,
+                self.round,
+                self.committee,
+                self.signers[0],
+                get_top_epoch()?.epoch_number
+            );
+            return Err("Chunk round collision".into());
+        }
+        // check there is no colliding round (hashwise)
+        if let Ok(collision) = BlockChunk::get(self.hash.clone()) {
+            error!(
+             "Proposed chunk has collided hash {}, proposed round={}, existing chunk round={} (committee={}, proposer={:?}, epoch={})",
+             self.hash,
+             self.round,
+             collision.round,
+             self.committee,
+             self.signers[0],
+             get_top_epoch()?.epoch_number
+         );
+            return Err("Chunk hash collision".into());
         }
         // decode the aggregated signature
         match bs58::decode(&self.aggregated_signature).into_vec() {
@@ -42,7 +74,7 @@ impl Verifiable for BlockChunk {
                             let committee = committees.remove(self.committee as usize);
                             drop(committees);
                             // now for each self.signer we get their coorosponding ECDSA publickey and check they are part of the committee
-                            for bls_signer in self.signers.clone() {
+                            for (index, bls_signer) in self.signers.clone().iter().enumerate() {
                                 let mut buffer = vec![];
                                 if let Err(e) = bls_signer.write_bytes(&mut buffer) {
                                     error!("Failed to write bls publickey bytes to buffer, gave error={}", e);
@@ -58,6 +90,11 @@ impl Verifiable for BlockChunk {
                                     } else {
                                         if !committee.members.contains(&ecdsa_publickey) {
                                             error!("Committee {} (index={}) does not contain ECDSA counterpart {} of signer {:?}", committee.hash, committee.index, ecdsa_publickey, bls_signer);
+                                        } else if index == 0 {
+                                            // now check if the block proposer (the first signature in the vec) is the current round leader
+                                            if committee.get_round_leader()? != ecdsa_publickey {
+                                                return Err("Unauthorised block proposal".into());
+                                            }
                                         }
                                     }
                                 }
