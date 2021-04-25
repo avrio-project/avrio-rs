@@ -6,10 +6,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
 use avrio_config::config;
 extern crate avrio_database;
-use crate::{block::get_block_from_raw, invite::{invite_valid, mark_spent}, transaction::Transaction, validate::Verifiable};
+use crate::{
+    block::get_block_from_raw,
+    invite::{invite_valid, mark_spent},
+    transaction::Transaction,
+    validate::Verifiable,
+};
 use avrio_database::{get_data, save_data};
 
-use avrio_crypto::{Hashable, public_key_to_address};
+use avrio_crypto::{public_key_to_address, Hashable};
 use ring::signature::{self, KeyPair};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -58,6 +63,8 @@ pub struct Certificate {
     pub valid_until: u64,
     pub invite: String,
     pub invite_sig: String,
+    pub bls_public_key: String,
+    pub bls_signature: String,
     pub signature: String,
 }
 
@@ -81,6 +88,8 @@ pub fn generate_certificate(
         invite: bs58::encode(peer_public_key_bytes).into_string(),
         invite_sig: "inv_sig".into(),
         timestamp: 0,
+        bls_public_key: String::from(""),
+        bls_signature: String::from(""),
         signature: String::from(""),
     };
 
@@ -121,8 +130,11 @@ impl Hashable for Certificate {
         bytes.extend(self.public_key.bytes());
         bytes.extend(self.txn_hash.bytes());
         bytes.extend(self.invite.bytes());
-        bytes.extend(self.timestamp.to_owned().to_string().bytes());
-        bytes.extend(self.valid_until.to_owned().to_string().bytes());
+        bytes.extend(self.timestamp.to_string().bytes());
+        bytes.extend(self.valid_until.to_string().bytes());
+        bytes.extend(self.bls_public_key.bytes());
+        bytes.extend(self.bls_signature.bytes());
+
 
         bytes
     }
@@ -195,6 +207,7 @@ impl Verifiable for Certificate {
         if !invite_valid(&cert.invite) {
             Err(Box::new(CertificateErrors::InvalidInvite))
         } else {
+            // TODO: Check BLS publickey valid and does not exist, then check the signature is valid
             Ok(())
         }
     }
@@ -227,10 +240,27 @@ impl Verifiable for Certificate {
 
     fn enact(&self) -> Result<(), Box<dyn std::error::Error>> {
         mark_spent(&self.invite)?;
-        if save_data("c", &(config().db_path + "/candidates"), self.public_key.clone()) != 1{
+        if save_data(
+            "c",
+            &(config().db_path + "/candidates"),
+            self.public_key.clone(),
+        ) != 1
+        {
             return Err("failed to save new fullnode candidate".into());
         }
-        info!("New fullnode candidate {}!", public_key_to_address(&self.public_key));
+        // now save the BLS publickey to the ECDSA key lookup table
+        if save_data(
+            &self.public_key,
+            &(config().db_path + "/blslookup"),
+            self.bls_public_key.clone(),
+        ) != 1
+        {
+            return Err("failed to save ECDSA-BLS looukup entry".into());
+        }
+        info!(
+            "New fullnode candidate {}!",
+            public_key_to_address(&self.public_key)
+        );
         Ok(())
     }
 }
