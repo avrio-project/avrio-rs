@@ -1,12 +1,22 @@
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
+use bls_signatures::{PrivateKey, Serialize};
+use rand::thread_rng;
 use std::thread;
 use std::{
     io::{self, Write},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use avrio_core::{account::to_dec, certificate::generate_certificate, epoch::Epoch, invite::{generate_invite, new_invite}, states::form_state_digest, transaction::Transaction, validate::Verifiable};
+use avrio_core::{
+    account::to_dec,
+    certificate::generate_certificate,
+    epoch::Epoch,
+    invite::{generate_invite, new_invite},
+    states::form_state_digest,
+    transaction::Transaction,
+    validate::Verifiable,
+};
 use avrio_rpc::*;
 extern crate clap;
 use clap::{App, Arg};
@@ -320,6 +330,11 @@ fn main() {
     }
     let conf = config();
     conf.create().unwrap();
+    if config().node_type == 'c' {
+        info!("Running as candidate, loading keys");
+        let keys = open_keypair(String::from("fullnode"), String::from("fullnode"));
+        info!("Loaded keyfile: {}, {}", keys[0], keys[2]);
+    }
     if !database_present() {
         create_file_structure().unwrap();
     }
@@ -589,12 +604,21 @@ fn main() {
                     if confirm.to_ascii_uppercase() == "N" {
                         error!("Aboring...");
                     } else if confirm.to_ascii_uppercase() == "Y" {
+                        info!("Forming BLS keypair");
+                        let mut rng = thread_rng();
+                        let bls_private_key = PrivateKey::generate(&mut rng);
+                        let bls_public_key = bls_private_key.public_key();
+                        info!(
+                            "Formed BLS keypair: {}",
+                            bs58::encode(bls_public_key.as_bytes()).into_string()
+                        );
                         info!("Forming fullnode certificate...");
                         if let Ok(cert) = generate_certificate(
                             &wallet.public_key,
                             &wallet.private_key,
                             &commitment,
                             invite,
+                            bs58::encode(bls_private_key.as_bytes()).into_string(),
                         ) {
                             // form a transaction using the private key given before, add it to a block and send
                             let mut txn: Transaction = Transaction {
@@ -746,11 +770,17 @@ fn main() {
                                                                                     .public_key
                                                                                     .clone(),
                                                                                 wallet.private_key,
+                                                                                cert.bls_public_key,
+                                                                                bs58::encode(
+                                                                                    bls_private_key
+                                                                                        .as_bytes(),
+                                                                                )
+                                                                                .into_string(),
                                                                             ],
                                                                             String::from(
                                                                                 "fullnode",
                                                                             ),
-                                                                            wallet.public_key,
+                                                                            String::from("fullnode"),
                                                                         ) {
                                                                             error!("Failed to save keypair to disk; error={}", e);
                                                                         }
@@ -817,15 +847,26 @@ pub fn save_keyfile(
         aead.encrypt(nonce, keypair[1].as_bytes().as_ref())
             .expect("wallet private key encryption failure!"),
     );
+
+    let blsppublic_en = hex::encode(
+        aead.encrypt(nonce, keypair[2].as_bytes().as_ref())
+            .expect("bls private key encryption failure!"),
+    );
+    let blsprivate_en = hex::encode(
+        aead.encrypt(nonce, keypair[3].as_bytes().as_ref())
+            .expect("bls private key encryption failure!"),
+    );
     let _ = save_data(&publickey_en, &path, "pubkey".to_owned());
     let _ = save_data(&privatekey_en, &path, "privkey".to_owned());
+    let _ = save_data(&blsprivate_en, &path, "blspriv".to_owned());
+    let _ = save_data(&blsppublic_en, &path, "blspub".to_owned());
     info!("Saved wallet to {}", path);
     conf.chain_key = keypair[0].clone();
     conf.create()?;
     Ok(())
 }
 
-pub fn open_keypair(keyfile: String, password: String) -> Wallet {
+pub fn open_keypair(keyfile: String, password: String) -> Vec<String> {
     // can we just hash the public key with some local data on the computer (maybe mac address)? Or is that insufficent (TODO: find out)
     let mut padded = password.as_bytes().to_vec();
     while padded.len() != 32 && padded.len() < 33 {
@@ -849,8 +890,25 @@ pub fn open_keypair(keyfile: String, password: String) -> Wallet {
     .expect("failed to parse hex");
     let privkey = String::from_utf8(
         aead.decrypt(nonce, ciphertext.as_ref())
-            .expect("decryption failure!"),
+            .expect("Failed to decode ECDSA privatekey"),
     )
     .expect("failed to parse utf8 (i1)");
-    Wallet::from_private_key(privkey)
+    let blsciphertext = hex::decode(get_data(
+        config().db_path + &"/wallets/".to_owned() + &keyfile,
+        &"blspriv".to_owned(),
+    ))
+    .expect("failed to parse hex");
+    let blsprivkey = String::from_utf8(
+        aead.decrypt(nonce, blsciphertext.as_ref())
+            .expect("Failed to decode BLS privatekey"),
+    )
+    .expect("failed to parse utf8 (i1)");
+    let wallet = Wallet::from_private_key(privkey);
+    let bls_priv = PrivateKey::from_bytes(&bs58::decode(&blsprivkey).into_vec().unwrap()).unwrap();
+    vec![
+        wallet.public_key,
+        wallet.private_key,
+        bs58::encode(bls_priv.public_key().as_bytes()).into_string(),
+        blsprivkey,
+    ]
 }

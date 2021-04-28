@@ -43,3 +43,5 @@ tokio = { version = "1", features = ["full"] }
 rpassword = "5.0"
 rocket = { version = "0.4.7", default-features = true }
 bs58 = "0.4.0"
+bls-signatures = "0.9"
+rand = "0.7"

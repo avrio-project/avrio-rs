@@ -5,7 +5,6 @@ This file handles the generation, validation and saving of the fullnodes certifi
 use std::time::{SystemTime, UNIX_EPOCH};
 extern crate avrio_config;
 use avrio_config::config;
-use rand::thread_rng;
 extern crate avrio_database;
 use crate::{
     block::get_block_from_raw,
@@ -76,6 +75,7 @@ pub fn generate_certificate(
     private_key: &str,
     txn_hash: &str,
     invite: String,
+    bls_private_key_string: String,
 ) -> Result<Certificate, CertificateErrors> {
     let key_pair =
         signature::Ed25519KeyPair::from_pkcs8(bs58::decode(&invite).into_vec().unwrap().as_ref())
@@ -94,8 +94,8 @@ pub fn generate_certificate(
         bls_signature: String::from(""),
         signature: String::from(""),
     };
-    let mut rng = thread_rng();
-    let bls_private_key = PrivateKey::generate(&mut rng);
+    let bls_private_key =
+        PrivateKey::from_bytes(&bs58::decode(bls_private_key_string).into_vec().unwrap()).unwrap();
     let bls_public_key = bls_private_key.public_key();
     cert.bls_public_key = bs58::encode(bls_public_key.as_bytes()).into_string();
 
