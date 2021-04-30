@@ -13,7 +13,7 @@ fn find_average_lambda() {
                     get_vrf(wall.private_key.clone(), "epochrandomnesshere".to_string()).unwrap();
                 let int_vrf = vrf_hash_to_integer(hash);
                 entries.push(int_vrf.clone());
-                if int_vrf < (BigDecimal::from(r_target) / BigDecimal::from(n)) {
+                if true {// (BigDecimal::from(r_target) / BigDecimal::from(n)) {
                     println!(
                         "Attempt {}, value: {} < {}",
                         attempt,

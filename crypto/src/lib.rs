@@ -25,6 +25,7 @@ use std::str::FromStr;
 
 // avrio config, for getting the address prefix
 extern crate avrio_config;
+use log::*;
 use primitive_types::U512;
 // static MAX_ADDR_DEC: &str =
 //     "115792089237316195423570985008687907853269984665640564039457584007913129639935";
@@ -243,7 +244,9 @@ pub fn vrf_hash_to_integer(hash: String) -> BigDecimal {
     for hash_bit in hash.as_bytes() {
         as_binary += &format!("{:b}", hash_bit);
     }
+    log::trace!("as_binary={}", as_binary);
     let before_normal = binary_to_u512(as_binary.clone());
+    log::trace!("before_normal={}", before_normal);
     let _two_u518: U512 = 2.into();
 
     let bn_dec = BigDecimal::from_str(&before_normal.to_string()).unwrap();
@@ -256,6 +259,7 @@ fn binary_to_u512(s: String) -> U512 {
     let two_u518: U512 = 2.into();
     for c in s.chars() {
         let mut temp_var = two_u518.pow(binary_digit.into());
+        trace!("temp_var={}, real_num={}", temp_var, real_num);
         temp_var /= 2;
         if c == '1' {
             real_num += temp_var;
