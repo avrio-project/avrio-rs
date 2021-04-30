@@ -11,6 +11,7 @@ extern crate avrio_database;
 
 use crate::{
     account::{get_account, open_or_create, Accesskey, Account},
+    callback::Callback,
     certificate::{Certificate, CertificateErrors},
     commitee::{sort_full_list, Comitee},
     epoch::{get_top_epoch, Epoch},
@@ -21,11 +22,18 @@ use crate::{
 
 use avrio_crypto::{proof_to_hash, raw_lyra, validate_vrf, vrf_hash_to_integer};
 use bigdecimal::{BigDecimal, FromPrimitive};
+use lazy_static::lazy_static;
 use std::{
     collections::HashSet,
     iter::FromIterator,
+    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+lazy_static! {
+    /// Called when the VRF lottery starts
+    pub static ref VRF_LOTTERY_CALLBACKS: Mutex<Vec<Box<dyn Fn() + Send >>> = Mutex::new(vec![]);
+}
 
 #[derive(Debug, Error)]
 pub enum TransactionValidationErrors {
@@ -871,6 +879,10 @@ impl Verifiable for Transaction {
                         // dont set the top epoch until we get a announceCommiteeListDelta txn
                         // next txn should be an announceShuffleBits txn which sets the vrf used to shuffle the fullnode list for next epoch
                         // which is followed by an announceCommiteeListDelta which tells you what fullnodes have been removed or added and once enacted starts the next epoch
+                        let callbacks = VRF_LOTTERY_CALLBACKS.lock()?;
+                        for callback in &*callbacks {
+                            (callback)();
+                        }
                     }
                 }
                 Err(e) => {
@@ -985,6 +997,9 @@ impl Verifiable for Transaction {
                     );
                 }
             }
+        } else if self.flag == 'v' {
+            info!("Recieved new VRF entry ticket. Sender={}, ticket={}", self.sender_key, self.extra);
+            // if we are the round leader of 
         } else {
             return Err("unsupported txn type".into());
         }
@@ -1011,6 +1026,7 @@ impl Transaction {
             'i' => "create invite".to_owned(),
             'x' => "Block/ restrict account".to_owned(), // means the account (linked via public key in the extra field) you block cannot send you transactions
             'p' => "Unblock account".to_owned(), // reverts the block transaction (linked by the txn hash in extra field)
+            'v' => "Publish VRF lottery ticket".to_owned(),
             // CONSENSUS ONLY
             'a' => "Announce epoch salt seed".to_owned(),
             'y' => "Announce fullnode list delta".to_owned(),
@@ -1052,7 +1068,10 @@ impl Transaction {
             'i' => {
                 TX_GAS as u64 + ((GAS_PER_EXTRA_BYTE_NORMAL / 2) as u64 * self.extra.len() as u64)
             }
-            _ => 0, // f, c
+            'v' => {
+                TX_GAS as u64 + ((GAS_PER_EXTRA_BYTE_NORMAL / 2) as u64 * self.extra.len() as u64)
+            }
+            _ => 0, // f, c,
         };
     }
 
