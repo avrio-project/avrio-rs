@@ -139,7 +139,6 @@ impl Hashable for Certificate {
         bytes.extend(self.timestamp.to_string().bytes());
         bytes.extend(self.valid_until.to_string().bytes());
         bytes.extend(self.bls_public_key.bytes());
-        bytes.extend(self.bls_signature.bytes());
 
         bytes
     }
@@ -311,7 +310,7 @@ impl Certificate {
                 .unwrap_or_default(),
         ) {
             if let Ok(signature) =
-                Signature::from_bytes(&bs58::decode(&self.signature).into_vec().unwrap_or_default())
+                Signature::from_bytes(&bs58::decode(&self.bls_signature).into_vec().unwrap_or_default())
             {
                 if !verify_messages(&signature, &[self.hash.as_bytes()], &[bls_publickey]) {
                     return false;
