@@ -10,11 +10,12 @@ use std::{
 
 use avrio_core::{
     account::to_dec,
+    callback::Callback,
     certificate::generate_certificate,
-    epoch::Epoch,
+    epoch::{get_top_epoch, Epoch},
     invite::{generate_invite, new_invite},
     states::form_state_digest,
-    transaction::Transaction,
+    transaction::{Transaction, VRF_LOTTERY_CALLBACKS},
     validate::Verifiable,
 };
 use avrio_rpc::*;
@@ -51,7 +52,7 @@ extern crate hex;
 use avrio_api::start_server;
 
 extern crate avrio_crypto;
-use avrio_crypto::Wallet;
+use avrio_crypto::{get_vrf, raw_hash, vrf_hash_to_integer, Wallet};
 use fern::colors::{Color, ColoredLevelConfig};
 
 use lazy_static::lazy_static;
@@ -59,6 +60,7 @@ use text_io::read;
 
 lazy_static! {
     static ref MEMPOOL: Mutex<Option<Mempool>> = Mutex::new(None);
+    static ref FULLNODE_KEYS: Mutex<Vec<String>> = Mutex::new(vec![]);
 }
 pub fn safe_exit() {
     // TODO: save mempool to disk + send kill to all threads.
@@ -260,6 +262,37 @@ fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> 
     }
     conn_count
 }
+struct NewEpochParameters {
+    pub salt: u64,
+    pub members: Vec<String>,
+}
+
+fn handle_new_epoch(paramters: NewEpochParameters) {}
+
+fn handle_vrf_lottery() {
+    info!(
+        "VRF lottery started, participating={}",
+        config().node_type == 'c'
+    );
+    let current_epoch = get_top_epoch().unwrap_or_default();
+    let next_epoch = Epoch::get(current_epoch.epoch_number + 1).unwrap_or_default();
+    let vrf_seed = raw_hash(&(format!("{}{}{}", current_epoch.salt, next_epoch.salt, "-vrflotto")));
+    debug!("VRF seed: {}", vrf_seed);
+    match FULLNODE_KEYS.lock() {
+        Ok(lock) => {
+            let vrf_proof = get_vrf(lock[1].clone(), vrf_seed).unwrap_or_default();
+            // Now we check if the VRF fufills the criteria for eclosion
+            // for now this is not done
+            let vrf_value = vrf_hash_to_integer(vrf_proof.1);
+            info!(
+                "Created VRF lottery entry, ticket={:.4}, requirement={}, viable={}",
+                vrf_value, 1, true
+            );
+            // now form a txn 
+        }
+        Err(lock_error) => error!("Failed to get mutex lock on FULLNODE_KEYS lazy static"),
+    }
+}
 
 fn main() {
     ctrlc::set_handler(move || {
@@ -333,7 +366,39 @@ fn main() {
     if config().node_type == 'c' {
         info!("Running as candidate, loading keys");
         let keys = open_keypair(String::from("fullnode"), String::from("fullnode"));
+        if keys.len() != 4 {
+            error!("Bad fullnode keyfile, expected 4 keys, got {}", keys.len());
+            process::exit(0);
+        }
+
         info!("Loaded keyfile: {}, {}", keys[0], keys[2]);
+        match FULLNODE_KEYS.lock() {
+            Ok(mut lock) => {
+                *lock = keys;
+                debug!("Set FULLNODE_KEYS");
+                match VRF_LOTTERY_CALLBACKS.lock() {
+                    Ok(mut lock) => {
+                        debug!("Got mutex lock on VRF_LOTTERY_CALLBACKS lazy static ");
+                        lock.push(Box::new(handle_vrf_lottery));
+                        debug!("Registered in VRF_LOTTERY_CALLBACKS");
+                    }
+                    Err(lock_error) => {
+                        error!(
+                            "Failed to gain mutex lock on VRF_LOTTERY_CALLBACKS lazy static, got error={}",
+                            lock_error
+                        );
+                        process::exit(0);
+                    }
+                }
+            }
+            Err(lock_error) => {
+                error!(
+                    "Failed to gain mutex lock on FULLNODE_KEYS lazy static, got error={}",
+                    lock_error
+                );
+                process::exit(0);
+            }
+        }
     }
     if !database_present() {
         create_file_structure().unwrap();
@@ -354,6 +419,7 @@ fn main() {
     let _ = mempool.save_to_disk(&(config().db_path + "/mempool")); // create files
     *(MEMPOOL.lock().unwrap()) = Some(mempool);
     info!("Avrio Daemon successfully launched");
+    handle_vrf_lottery();
     let mut statedigest = get_data(config().db_path + &"/chaindigest".to_owned(), "master");
     if statedigest == *"-1" {
         generate_chains().unwrap();
@@ -780,7 +846,9 @@ fn main() {
                                                                             String::from(
                                                                                 "fullnode",
                                                                             ),
-                                                                            String::from("fullnode"),
+                                                                            String::from(
+                                                                                "fullnode",
+                                                                            ),
                                                                         ) {
                                                                             error!("Failed to save keypair to disk; error={}", e);
                                                                         }
