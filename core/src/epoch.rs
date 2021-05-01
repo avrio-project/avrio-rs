@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::commitee::Comitee;
 extern crate bs58;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum EpochStage {
     Failed, // Untill we get enough fullnodes to form the commitees the network sits in this state
     Main, // main loop of epoch, form and validate blockchunks
