@@ -12,6 +12,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::commitee::Comitee;
 extern crate bs58;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum EpochStage {
+    Failed, // Untill we get enough fullnodes to form the commitees the network sits in this state
+    Main, // main loop of epoch, form and validate blockchunks
+    VrfLotto, // starts after epoch salt is announced, lasts up until fullndoe delta list is announced
+    Reorg, // period of time during which the network is handshaking with its new commitee members. Lasts untill the first block chunk is enacted, logically identical to Main 
+}
+
+impl Default for EpochStage {
+    fn default() -> Self {
+        EpochStage::Failed
+    }
+}
+
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct Epoch {
     pub hash: String,
@@ -26,6 +41,7 @@ pub struct Epoch {
     pub salt: u64,
     pub committees: Vec<Comitee>,
     pub shuffle_bits: u128,
+    pub stage: EpochStage,
 }
 impl Hashable for Epoch {
     fn bytes(&self) -> Vec<u8> {
@@ -66,6 +82,7 @@ impl Epoch {
             salt: 0,
             committees: vec![],
             shuffle_bits: 0,
+            stage: EpochStage::Main
         }
     }
 
