@@ -164,7 +164,10 @@ impl Default for ConfigSave {
                     chain_key: "".to_string(),
                     state: 0,
                     ip_host: "0.0.0.0".to_string(),
-                    seednodes: vec!["72.137.255.181:56789".to_string(), "72.137.255.178:56789".to_string()],
+                    seednodes: vec![
+                        "72.137.255.181:56789".to_string(),
+                        "72.137.255.178:56789".to_string(),
+                    ],
                     ignore_minor_updates: false,
                     p2p_port: 56789,
                     api_port: 54321,

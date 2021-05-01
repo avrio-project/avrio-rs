@@ -309,9 +309,11 @@ impl Certificate {
                 .into_vec()
                 .unwrap_or_default(),
         ) {
-            if let Ok(signature) =
-                Signature::from_bytes(&bs58::decode(&self.bls_signature).into_vec().unwrap_or_default())
-            {
+            if let Ok(signature) = Signature::from_bytes(
+                &bs58::decode(&self.bls_signature)
+                    .into_vec()
+                    .unwrap_or_default(),
+            ) {
                 if !verify_messages(&signature, &[self.hash.as_bytes()], &[bls_publickey]) {
                     return false;
                 }

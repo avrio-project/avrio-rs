@@ -1,29 +1,29 @@
-use crate::{format::P2pData,io::{peek, read, send}, peer::remove_peer};
-
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown, TcpStream},
-    time::{Duration, SystemTime},
-    sync::Mutex,
-    thread
+use crate::{
+    format::P2pData,
+    io::{peek, read, send},
+    peer::remove_peer,
 };
 
-use avrio_core::block::{get_block, get_block_from_raw, Block, from_compact};
+use std::{
+    net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpStream},
+    sync::Mutex,
+    thread,
+    time::{Duration, SystemTime},
+};
+
 use avrio_config::config;
+use avrio_core::block::{from_compact, get_block, get_block_from_raw, Block};
+use avrio_core::mempool::{add_block, Caller};
 use avrio_database::{get_data, open_database};
 use avrio_rpc::block_announce;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
-use avrio_core::mempool::{add_block, Caller};
 extern crate rand;
 extern crate x25519_dalek;
 
 pub fn block_enacted_callback(rec_from: SocketAddr, block: Block) {
     let _ = block_announce(block.clone());
-    let _ = crate::helper::prop_block_with_ignore(
-    &block, 
-    &rec_from
-    );
-                        
+    let _ = crate::helper::prop_block_with_ignore(&block, &rec_from);
 }
 
 lazy_static! {
@@ -90,7 +90,7 @@ fn deincrement_sync_count() -> Result<(), Box<dyn std::error::Error>> {
 pub fn launch_handle_client(
     rx: std::sync::mpsc::Receiver<String>,
     stream: &mut TcpStream,
-    incoming: bool
+    incoming: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = stream.try_clone()?;
     let ping_every: Duration = Duration::from_millis(1 * 60 * 1000);
@@ -106,7 +106,7 @@ pub fn launch_handle_client(
                     if msg == "pause" {
                         log::trace!("Pausing stream for peer");
                         loop {
-                            if let Ok(msg) = rx.try_recv() { 
+                            if let Ok(msg) = rx.try_recv() {
                                 // check if we have been told to resume checking and reading from the stream
                                 if msg == "run" {
                                     log::trace!("Resuming stream for peer");
@@ -123,7 +123,8 @@ pub fn launch_handle_client(
                     .duration_since(last_ping_time)
                     .unwrap_or_default()
                     .as_millis()
-                    >= ping_every.as_millis() && incoming
+                    >= ping_every.as_millis()
+                    && incoming
                 {
                     debug!(
                         "Waited 5 mins, sending ping message with nonce: {}",
@@ -146,7 +147,13 @@ pub fn launch_handle_client(
                                             {
                                                 if pong.message_type == 0x91 {
                                                     // the peer pinged our ping, pong them back
-                                                    send(pong.message, &mut stream, 0x92, true, None);
+                                                    let _ = send(
+                                                        pong.message,
+                                                        &mut stream,
+                                                        0x92,
+                                                        true,
+                                                        None,
+                                                    );
                                                     last_ping_time = SystemTime::now();
                                                     break;
                                                 }
@@ -156,10 +163,22 @@ pub fn launch_handle_client(
                                                     info!("Disonnected to peer {}, {} incorrect responses to PONG", stream.peer_addr()
                                                         .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)), MAX_TRIES
                                                     );
-                                                    let _ = send("".to_string(), &mut stream, 0xff, true, None);
+                                                    let _ = send(
+                                                        "".to_string(),
+                                                        &mut stream,
+                                                        0xff,
+                                                        true,
+                                                        None,
+                                                    );
                                                     thread::sleep(Duration::from_micros(1000));
-                                                    let _ = remove_peer(stream.peer_addr().unwrap(), true);
-                                                    let _ = remove_peer(stream.peer_addr().unwrap(), false);
+                                                    let _ = remove_peer(
+                                                        stream.peer_addr().unwrap(),
+                                                        true,
+                                                    );
+                                                    let _ = remove_peer(
+                                                        stream.peer_addr().unwrap(),
+                                                        false,
+                                                    );
                                                     let _ = stream.shutdown(Shutdown::Both);
                                                     return Err("Incorrect pong response");
                                                 } else {
@@ -179,7 +198,8 @@ pub fn launch_handle_client(
                                         Err(e) => {
                                             error!("Got error while trying to read pong message for peer, error={}", e);
                                             // close the stream
-                                            let _ = send("".to_string(), &mut stream, 0xff, true, None);
+                                            let _ =
+                                                send("".to_string(), &mut stream, 0xff, true, None);
                                             thread::sleep(Duration::from_micros(1000));
                                             let _ = remove_peer(stream.peer_addr().unwrap(), true);
                                             let _ = remove_peer(stream.peer_addr().unwrap(), false);
@@ -312,7 +332,7 @@ pub fn process_handle_msg(
         0x23 => {
             // end syncing
             debug!("Peer no longer syncing");
-            let _ = remove_peer_from_sync_list(&stream.peer_addr().unwrap_or_else(|_| 
+            let _ = remove_peer_from_sync_list(&stream.peer_addr().unwrap_or_else(|_|
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
             ));
         }
@@ -363,13 +383,12 @@ pub fn process_handle_msg(
                     true,
                     None,
                 );
-                
             } else {
                 let callback_struct = Caller {
                     callback: Box::new(block_enacted_callback),
                     rec_from: stream.peer_addr().unwrap()
                 };
-                let _ = add_block(&block, callback_struct);   
+                let _ = add_block(&block, callback_struct);
             }
         }
         0x60 => {
@@ -379,13 +398,11 @@ pub fn process_handle_msg(
             );
 
             if let Ok(db) = open_database(config().db_path + &"/chainlist".to_owned()) {
-                
                 let mut chains: Vec<String> = vec![];
 
                 for (key, _) in db.iter() {
                     chains.push(key.to_owned());
                 }
-               
 
                 log::trace!("Our chain list: {:#?}", chains);
                 let s = serde_json::to_string(&chains).unwrap_or_default();
@@ -394,7 +411,6 @@ pub fn process_handle_msg(
                     log::trace!("Failed to ser list");
                 } else if let Err(e) = send(s, stream, 0x61, true, None) {
                     log::debug!("Failed to send chain list to peer, gave error: {}", e);
-
                 }
             }
         }
@@ -586,7 +602,6 @@ pub fn process_handle_msg(
                         "Sent blank vec as peerlist to peer"
                     );
                 }
-            
             }
         },
         0x9a => {

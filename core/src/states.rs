@@ -1,5 +1,5 @@
-use avrio_database::{get_data, open_database, save_data};
 use crate::block::get_block;
+use avrio_database::{get_data, open_database, save_data};
 
 pub fn update_chain_digest(new_blk_hash: &str, cd_db: String, chain: &str) -> String {
     trace!(target: "blockchain::chain_digest","Updating chain digest for chain={}, hash={}", chain, new_blk_hash);

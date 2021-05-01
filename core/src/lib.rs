@@ -3,7 +3,9 @@ extern crate log;
 
 pub mod account;
 pub mod block;
+pub mod callback;
 pub mod certificate;
+pub mod chunk;
 pub mod commitee;
 pub mod encodings;
 pub mod epoch;
@@ -13,5 +15,3 @@ pub mod mempool;
 pub mod states;
 pub mod transaction;
 pub mod validate;
-pub mod chunk;
-pub mod callback;

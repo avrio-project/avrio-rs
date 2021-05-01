@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 pub struct Callback<P, CB, O>
 where
     CB: Fn(P) -> O,
-    O: Send
+    O: Send,
 {
     callback: Box<CB>,
     _data: PhantomData<P>,
@@ -14,7 +14,7 @@ where
 impl<P, CB, O> Callback<P, CB, O>
 where
     CB: Fn(P) -> O,
-    O: Send
+    O: Send,
 {
     pub fn call(&self, params: P) -> O {
         (self.callback)(params)

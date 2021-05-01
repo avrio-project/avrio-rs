@@ -33,6 +33,8 @@ use std::{
 lazy_static! {
     /// Called when the VRF lottery starts
     pub static ref VRF_LOTTERY_CALLBACKS: Mutex<Vec<Box<dyn Fn() + Send >>> = Mutex::new(vec![]);
+    /// Called when a VRF lottery entry is submited
+    pub static ref VRF_TICKET_SUBMITTED: Mutex<Vec<Box<dyn Fn(Transaction) + Send >>> = Mutex::new(vec![]);
 }
 
 #[derive(Debug, Error)]
@@ -998,8 +1000,29 @@ impl Verifiable for Transaction {
                 }
             }
         } else if self.flag == 'v' {
-            info!("Recieved new VRF entry ticket. Sender={}, ticket={}", self.sender_key, self.extra);
-            // if we are the round leader of 
+            trace!("Opening senders account");
+            let mut sendacc = open_or_create(&self.sender_key);
+            sendacc.balance -= self.fee();
+            trace!("Saving sender acc");
+            sendacc.save().unwrap();
+            trace!("Get epoch struct");
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.total_coins_movement += self.fee();
+            top_epoch.hash();
+            debug!(
+                "Rehashed epoch struct at height={}, new hash={}",
+                top_epoch.epoch_number, top_epoch.hash
+            );
+            top_epoch.save()?;
+            trace!("Saved epoch");
+            info!(
+                "Recieved new VRF entry ticket. Sender={}, ticket={}",
+                self.sender_key, self.extra
+            );
+            let callbacks = VRF_TICKET_SUBMITTED.lock()?;
+            for callback in &*callbacks {
+                (callback)(self.clone());
+            }
         } else {
             return Err("unsupported txn type".into());
         }

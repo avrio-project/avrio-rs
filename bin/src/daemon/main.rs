@@ -15,7 +15,7 @@ use avrio_core::{
     epoch::{get_top_epoch, Epoch},
     invite::{generate_invite, new_invite},
     states::form_state_digest,
-    transaction::{Transaction, VRF_LOTTERY_CALLBACKS},
+    transaction::{Transaction, VRF_LOTTERY_CALLBACKS, VRF_TICKET_SUBMITTED},
     validate::Verifiable,
 };
 use avrio_rpc::*;
@@ -52,7 +52,8 @@ extern crate hex;
 use avrio_api::start_server;
 
 extern crate avrio_crypto;
-use avrio_crypto::{get_vrf, raw_hash, vrf_hash_to_integer, Wallet};
+use avrio_crypto::{get_vrf, proof_to_hash, raw_hash, vrf_hash_to_integer, Wallet};
+use bigdecimal::BigDecimal;
 use fern::colors::{Color, ColoredLevelConfig};
 
 use lazy_static::lazy_static;
@@ -262,12 +263,57 @@ fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> 
     }
     conn_count
 }
-struct NewEpochParameters {
-    pub salt: u64,
-    pub members: Vec<String>,
-}
 
-fn handle_new_epoch(paramters: NewEpochParameters) {}
+fn handle_new_epoch() {
+    // TODO: Get other members of our commitee (if we are still a fullnode and not excluded)
+    // Then figure out what members we need to contact
+    // Get the IP of each of those peers, try to handshake
+    // then elect the first round leader, if it is us call be_round_leader()
+}
+fn handle_vrf_submitted(txn: Transaction) {
+    match FULLNODE_KEYS.lock() {
+        Ok(lock) => {
+            let top_epoch = get_top_epoch().unwrap();
+            // check if we are the round leader for the consensus commitee
+            let round_leader = top_epoch.committees[0]
+                .get_round_leader()
+                .unwrap_or_default();
+            let ticket_hash =
+                raw_hash(&format!("{}{}{}", txn.hash, txn.sender_key, txn.extra))[0..5].to_string();
+            if round_leader == lock[0] {
+                debug!(
+                    "Consensus commitee round leader, handling VRF lottery ticket={}",
+                    ticket_hash
+                );
+                // decode VRF's proof into value
+                let vrf_hash = proof_to_hash(&txn.extra).unwrap_or_default();
+                // turn VRF hash into bigint
+                let vrf_ticket_bigint = vrf_hash_to_integer(vrf_hash);
+                debug!(
+                    "VRF lotto ticket={} sent by={} value={}, viable={}",
+                    ticket_hash,
+                    txn.sender_key,
+                    vrf_ticket_bigint,
+                    vrf_ticket_bigint < BigDecimal::from(1)
+                );
+                // TODO: add this to a lazy static containing viable VRF lotto tickets to be included in the new delta list
+            } else if top_epoch.committees[0].members.contains(&lock[0]) {
+                // check if we are just a validator in the consensus commitee
+                debug!(
+                    "In consensus commitee, sending VRF ticket={} to round leader={} role=validator", 
+                    ticket_hash,
+                    round_leader
+                );
+            } else {
+                debug!(
+                    "Not in consensus commitee, ignoring VRF lotto ticket={}",
+                    ticket_hash
+                );
+            }
+        }
+        Err(lock_error) => error!("Failed to get mutex lock on FULLNODE_KEYS lazy static"),
+    }
+}
 
 fn handle_vrf_lottery() {
     info!(
@@ -288,9 +334,75 @@ fn handle_vrf_lottery() {
                 "Created VRF lottery entry, ticket={:.4}, requirement={}, viable={}",
                 vrf_value, 1, true
             );
-            // now form a txn 
+            // now form a txn, place in block and send to network
+            let mut txn = Transaction {
+                hash: String::from(""),
+                amount: 0,
+                extra: vrf_proof.0,
+                flag: 'v',
+                sender_key: lock[0].clone(),
+                receive_key: String::from(""),
+                access_key: String::from(""),
+                unlock_time: 0,
+                gas_price: 20,
+                max_gas: u64::MAX,
+                nonce: get_data(
+                    config().db_path
+                        + &"/chains/".to_owned()
+                        + &lock[0]
+                        + &"-chainindex".to_owned(),
+                    &"txncount".to_owned(),
+                )
+                .parse()
+                .unwrap_or(0),
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("time went backwards")
+                    .as_millis() as u64,
+            };
+            txn.hash();
+            let block = Block::new(vec![txn], lock[1].clone(), None);
+            let rec_block = block
+                .form_receive_block(Some(lock[0].clone()))
+                .unwrap_or_default();
+            let blks = vec![block, rec_block];
+            for blk in blks {
+                debug!("Handling block={}", blk.hash);
+                match blk.valid() {
+                    std::result::Result::Ok(_) => {
+                        trace!("Block valid");
+                        if let Err(block_saving_error) = blk.save() {
+                            error!(
+                                "Failed to save formed block={}, error={}",
+                                blk.hash, block_saving_error
+                            );
+                        } else if let Err(block_enact_error) = blk.enact() {
+                            error!(
+                                "Failed to enact formed block={}, error={}",
+                                blk.hash, block_enact_error
+                            );
+                        } else if let Err(block_prop_error) = prop_block(&blk) {
+                            error!(
+                                "Failed to propagate formed block={}, error={}",
+                                blk.hash, block_prop_error
+                            );
+                        } else {
+                            info!("Processed & sent formed block={} to network", blk.hash);
+                        }
+                    }
+                    std::result::Result::Err(block_validation_error) => {
+                        error!(
+                            "Formed block={} invalid, reason={}",
+                            blk.hash, block_validation_error
+                        );
+                    }
+                }
+            }
         }
-        Err(lock_error) => error!("Failed to get mutex lock on FULLNODE_KEYS lazy static"),
+        Err(lock_error) => error!(
+            "Failed to get mutex lock on FULLNODE_KEYS lazy static, error={}",
+            lock_error
+        ),
     }
 }
 

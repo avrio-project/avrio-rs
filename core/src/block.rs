@@ -17,7 +17,7 @@ extern crate bs58;
 use ring::signature;
 extern crate rand;
 
-use avrio_crypto::Hashable;
+use avrio_crypto::{Hashable, Wallet};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -858,6 +858,59 @@ impl Block {
             blk_clone.hash();
             Ok(blk_clone)
         }
+    }
+    pub fn new(txns: Vec<Transaction>, private_key: String, send_block: Option<String>) -> Block {
+        let wallet = Wallet::from_private_key(private_key);
+        let header = Header {
+            version_major: config().version_major,
+            version_breaking: config().version_breaking,
+            version_minor: config().version_minor,
+            chain_key: wallet.public_key.clone(),
+            prev_hash: get_data(
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &wallet.public_key
+                    + &"-chainindex".to_owned(),
+                "topblockhash",
+            ),
+            height: get_data(
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &wallet.public_key
+                    + &"-chainindex".to_owned(),
+                "blockcount",
+            )
+            .parse()
+            .unwrap_or_default(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time went backwards")
+                .as_millis() as u64,
+            network: config().network_id,
+        };
+        let mut blk: Block;
+        if send_block.is_some() {
+            blk = Block {
+                header,
+                block_type: BlockType::Recieve,
+                send_block,
+                txns,
+                hash: String::from(""),
+                signature: String::from(""),
+            };
+        } else {
+            blk = Block {
+                header,
+                block_type: BlockType::Send,
+                send_block: None,
+                txns,
+                hash: String::from(""),
+                signature: String::from(""),
+            };
+        }
+        blk.hash();
+        let _ = blk.sign(&wallet.private_key);
+        return blk;
     }
 }
 

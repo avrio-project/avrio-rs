@@ -161,19 +161,14 @@ pub fn close_all() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn close(peer: &std::net::SocketAddr) -> Result<(), Box<dyn std::error::Error>>{
+pub fn close(peer: &std::net::SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(mut stream) = lock(peer, 10000) {
-        log::info!(
-            "Disconnected from peer {}",
-            stream
-                .peer_addr()?,
-        );
+        log::info!("Disconnected from peer {}", stream.peer_addr()?,);
         let _ = send("".to_string(), &mut stream, 0xff, true, None);
         std::thread::sleep(Duration::from_micros(1000));
         let _ = remove_peer(stream.peer_addr()?, true);
         let _ = remove_peer(stream.peer_addr()?, false);
         let _ = stream.shutdown(Shutdown::Both);
-        
     }
     Ok(())
 }
