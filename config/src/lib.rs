@@ -301,9 +301,7 @@ impl Default for NetworkConfig {
             node_drop_off_threshold: 30,
             decimal_places: 4,
             buffer_bytes: 128,
-            network_id: vec![
-                0x61, 0x76, 0x72, 0x69, 0x6f, 0x20, 0x6e, 0x6f, 0x6f, 0x64, 0x6c, 0x65,
-            ],
+            network_id: vec![0],
             min_intrest: 0.5,
             max_intrest: 2.5,
             max_reward: 25000, // 2.5000 AIO
