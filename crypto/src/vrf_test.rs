@@ -43,3 +43,9 @@ fn test_max() {
         vrf_hash_to_integer("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ".to_string())
     );
 }
+#[test]
+fn test_len() {
+    let wall: Wallet = Wallet::gen();
+    let (proof, hash) = get_vrf(wall.private_key.clone(), "epochrandomnesshere".to_string()).unwrap();
+    println!("Proof: {}, Hash: {}; len: {}, {}", proof, hash, proof.len(), hash.len())
+}
