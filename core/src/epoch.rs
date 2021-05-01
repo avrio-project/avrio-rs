@@ -15,10 +15,11 @@ extern crate bs58;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum EpochStage {
+    Reorg, // period of time during which the network is handshaking with its new commitee members. Lasts untill the first block chunk is enacted, logically identical to Main 
     Failed, // Untill we get enough fullnodes to form the commitees the network sits in this state
     Main, // main loop of epoch, form and validate blockchunks
     VrfLotto, // starts after epoch salt is announced, lasts up until fullndoe delta list is announced
-    Reorg, // period of time during which the network is handshaking with its new commitee members. Lasts untill the first block chunk is enacted, logically identical to Main 
+    Final, // After we have moved to the next epoch
 }
 
 impl Default for EpochStage {
@@ -86,7 +87,8 @@ impl Epoch {
         }
     }
 
-    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.hash();
         let serialized = serde_json::to_string(self)?;
         if save_data(
             &serialized,

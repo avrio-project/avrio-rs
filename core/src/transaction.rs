@@ -956,9 +956,17 @@ impl Verifiable for Transaction {
                     if let Ok(epoch_salt) = salt_mod.to_string().parse::<u64>() {
                         debug!("Calculated epoch salt: {}", epoch_salt);
                         // now we create the next epoch on disk
+                        let mut top_epoch = get_top_epoch()?;
+                        top_epoch.stage = EpochStage::VrfLotto;
+                        top_epoch.hash();
                         let mut next_epoch = Epoch::new();
                         next_epoch.salt = epoch_salt;
+                        next_epoch.stage = EpochStage::Failed; // Set to failed state till we move it to reorg
+
                         if let Err(e) = next_epoch.save() {
+                            error!("Failed to save top_epoch to disk, error={}", e);
+                        }
+                        if let Err(e) = top_epoch.save() {
                             error!("Failed to save next_epoch to disk, error={}", e);
                         }
                         info!("Next epoch salt: {}", epoch_salt);
@@ -1067,8 +1075,12 @@ impl Verifiable for Transaction {
                     curr_epoch.committees = committees;
                     curr_epoch.total_fullnodes += new_fullnodes;
                     curr_epoch.total_fullnodes -= removed_fullnodes;
+                    curr_epoch.stage = EpochStage::Reorg;
                     curr_epoch.save()?;
                     curr_epoch.set_top_epoch()?;
+                    let mut top_epoch = get_top_epoch()?;
+                    top_epoch.stage = EpochStage::Final;
+                    top_epoch.save()?;
                     info!(
                         "New epoch number {} started, included fullnodes {}, excluded fullnodes {}",
                         curr_epoch.epoch_number,
