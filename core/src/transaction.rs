@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 extern crate hex;
-use avrio_crypto::Hashable;
+use avrio_crypto::{raw_hash, Hashable};
 extern crate avrio_config;
 extern crate bs58;
 use avrio_config::config;
@@ -11,10 +11,9 @@ extern crate avrio_database;
 
 use crate::{
     account::{get_account, open_or_create, Accesskey, Account},
-    callback::Callback,
     certificate::{Certificate, CertificateErrors},
     commitee::{sort_full_list, Comitee},
-    epoch::{get_top_epoch, Epoch},
+    epoch::{get_top_epoch, Epoch, EpochStage},
     gas::*,
     invite::{invite_valid, new_invite},
     validate::Verifiable,
@@ -107,6 +106,10 @@ pub enum TransactionValidationErrors {
     BadPreshuffleHash,
     #[error("Hashed post shuffle committee list does not equal expected hash")]
     BadShuffledHash,
+    #[error("Vrf lotto entry ticket sent outside of Vrf Lotto period")]
+    TicketSentOutsideVrfLotto,
+    #[error("Vrf lotto entry ticket sent by non-candidate wallet")]
+    NotCandidate,
     #[error("Other")]
     Other,
 }
@@ -620,6 +623,87 @@ impl Verifiable for Transaction {
                         self.extra, round_leader, message
                     );
                     return Err(Box::new(TransactionValidationErrors::InvalidVrf));
+                }
+            }
+            'v' => {
+                // VRF lotto ticket
+                // check we are in the right epoch period (vrf lotto)
+                let top_epoch = get_top_epoch()?;
+                if top_epoch.stage != EpochStage::VrfLotto {
+                    error!("VRF lotto ticket submited outside of VrfLotto, in transaction={}, sender={}", self.hash, self.sender_key);
+                    return Err(Box::new(
+                        TransactionValidationErrors::TicketSentOutsideVrfLotto,
+                    ));
+                }
+                // check if the sender is a fullnode candidate
+                if get_data(config().db_path + "/candidates", &self.sender_key) != "c" {
+                    error!(
+                        "Non candidate={} sent VRF lotto ticket, in transaction={}, sender_type={}",
+                        self.sender_key,
+                        self.hash,
+                        get_data(config().db_path + "/candidates", &self.sender_key)
+                    );
+                    return Err(Box::new(TransactionValidationErrors::NotCandidate));
+                }
+                // check the vrf is valid
+                let current_epoch = get_top_epoch().unwrap_or_default();
+                let next_epoch = Epoch::get(current_epoch.epoch_number + 1).unwrap_or_default();
+                let vrf_seed = raw_hash(
+                    &(format!("{}{}{}", current_epoch.salt, next_epoch.salt, "-vrflotto")),
+                );
+                debug!("VRF seed: {}", vrf_seed);
+                let ticket_hash =
+                    raw_hash(&format!("{}{}{}", self.hash, self.sender_key, self.extra))[0..5]
+                        .to_string();
+                if !validate_vrf(
+                    self.sender_key.clone(),
+                    self.extra.clone(),
+                    vrf_seed.clone(),
+                ) {
+                    error!(
+                        "Invalid VRF in VRF lotto ticket txn={}, sender={}, vrf={}, seed={}, ticket_hash={}",
+                        self.hash, self.sender_key, self.extra, vrf_seed, ticket_hash
+                    );
+                }
+                // check if the value fufills the eclosion requirments
+                // TODO: calculate this ecolosion threshold, for now all tickets work
+                let threshhold = BigDecimal::from(1);
+                let ticket = vrf_hash_to_integer(proof_to_hash(&self.extra)?);
+                if ticket > threshhold {
+                    error!("VRF lotto ticket does not fufill requirement, threshold={:.4}, ticket={:.4}, ticket hash={}, transaction={}, sender={}", threshhold, ticket, ticket_hash, self.hash, self.sender_key);
+                }
+                // this VRF lotto ticket is valid, check default stuff like fee
+                let size_of_extra = self.extra.len();
+                if size_of_extra > 110 {
+                    error!(
+                        "VRFLottoTicket type transaction {}'s extra ({}) too large, {} > 110",
+                        self.hash, self.extra, size_of_extra
+                    );
+                    return Err(Box::new(TransactionValidationErrors::ExtraTooLarge));
+                }
+                if self.amount != 0 {
+                    error!(
+                        "VRFLottoTicket transaction {} amount not 0 (amount={} != 0)",
+                        self.hash, self.amount
+                    );
+                    return Err(Box::new(TransactionValidationErrors::InsufficentAmount));
+                }
+                if sender_account.balance < (self.amount + (self.gas() * self.gas_price)) {
+                    error!("Sender {} of transaction {}'s balance too low, amount {} fee={} ({} * {}), required delta={}", sender_account.public_key, self.hash, self.amount, self.gas() * self.gas_price, self.gas() , self.gas_price, (self.amount + (self.gas() * self.gas_price)) - sender_account.balance);
+                    return Err(Box::new(TransactionValidationErrors::InsufficentBalance));
+                }
+
+                if self.max_gas < self.gas() {
+                    error!(
+                        "Transaction {} max_gas expended, max_gas={}, used_gas={}",
+                        self.hash,
+                        self.max_gas,
+                        self.gas()
+                    );
+                    return Err(Box::new(TransactionValidationErrors::MaxGasExpended));
+                }
+                if self.unlock_time != 0 {
+                    return Err(Box::new(TransactionValidationErrors::UnsupportedType));
                 }
             }
             _ => {
