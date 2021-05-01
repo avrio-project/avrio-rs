@@ -1,4 +1,4 @@
-use crate::{account::get_by_username, block::Block, epoch::get_top_epoch, validate::Verifiable};
+use crate::{block::Block, epoch::get_top_epoch, validate::Verifiable};
 use avrio_config::config;
 use avrio_crypto::Hashable;
 use avrio_database::{get_data, save_data};

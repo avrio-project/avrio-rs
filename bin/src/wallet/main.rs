@@ -1503,7 +1503,7 @@ pub fn save_wallet(
     password: String,
     name: String,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let mut conf = config();
+    let conf = config();
     let path = conf.db_path.clone() + &"/wallets/".to_owned() + &name;
     let mut padded = password.as_bytes().to_vec();
     while padded.len() != 32 && padded.len() < 33 {
@@ -1538,7 +1538,7 @@ pub fn generate_keypair(out: &mut Vec<String>) {
     let wallet: Wallet = Wallet::gen();
     out.push(wallet.public_key.clone());
     out.push(wallet.private_key);
-    let mut conf = config();
+    let _conf = config();
 }
 
 pub fn open_wallet(wallet_name: String, password: String) -> Wallet {

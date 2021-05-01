@@ -218,7 +218,7 @@ pub fn get_vrf(
     ));
 }
 pub fn proof_to_hash(proof: &String) -> Result<String, Box<dyn std::error::Error>> {
-    let as_bytes = bs58::decode(proof).into_vec().unwrap_or_default();
+    let _as_bytes = bs58::decode(proof).into_vec().unwrap_or_default();
     let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).unwrap();
     let hash = vrf.proof_to_hash(&proof.as_bytes()).unwrap();
     Ok(bs58::encode(hash).into_string())

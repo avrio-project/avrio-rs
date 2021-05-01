@@ -311,7 +311,7 @@ fn handle_vrf_submitted(txn: Transaction) {
                 );
             }
         }
-        Err(lock_error) => error!("Failed to get mutex lock on FULLNODE_KEYS lazy static"),
+        Err(_lock_error) => error!("Failed to get mutex lock on FULLNODE_KEYS lazy static"),
     }
 }
 

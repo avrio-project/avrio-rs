@@ -43,7 +43,7 @@ pub mod genesis {
     extern crate avrio_crypto;
 
     pub fn genesis_blocks() -> Vec<Block> {
-        let mut blks: Vec<Block> = vec![];
+        let blks: Vec<Block> = vec![];
         /*let priv_key= "GD8M1Qm17WXoukx8QqqfvXY5t8ft7APi9iUqUXAytM1dUsiZxCwaDyMhn7pNDBaybagw6QVgYkye5oosd2zmoeiFRak1MjoUSi5Nfen6PQHrzj6y3FrR".to_owned();
         let wall = Wallet::from_private_key(priv_key);
         let mut txn = Transaction {
