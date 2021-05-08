@@ -1,8 +1,10 @@
+pub(crate) mod fullnode;
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use bls_signatures::{PrivateKey, Serialize};
+use fullnode::*;
 use rand::thread_rng;
-use std::thread;
+use std::{fs::File, io::Read, thread};
 use std::{
     io::{self, Write},
     time::{SystemTime, UNIX_EPOCH},
@@ -15,7 +17,10 @@ use avrio_core::{
     epoch::{get_top_epoch, Epoch},
     invite::{generate_invite, new_invite},
     states::form_state_digest,
-    transaction::{Transaction, VRF_LOTTERY_CALLBACKS, VRF_TICKET_SUBMITTED},
+    timer::create_timer,
+    transaction::{
+        Transaction, EPOCH_STARTED_CALLBACKS, VRF_LOTTERY_CALLBACKS, VRF_TICKET_SUBMITTED,
+    },
     validate::Verifiable,
 };
 use avrio_rpc::*;
@@ -264,148 +269,6 @@ fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> 
     conn_count
 }
 
-fn handle_new_epoch() {
-    // TODO: Get other members of our commitee (if we are still a fullnode and not excluded)
-    // Then figure out what members we need to contact
-    // Get the IP of each of those peers, try to handshake
-    // then elect the first round leader, if it is us call be_round_leader()
-}
-fn handle_vrf_submitted(txn: Transaction) {
-    match FULLNODE_KEYS.lock() {
-        Ok(lock) => {
-            let top_epoch = get_top_epoch().unwrap();
-            // check if we are the round leader for the consensus commitee
-            let round_leader = top_epoch.committees[0]
-                .get_round_leader()
-                .unwrap_or_default();
-            let ticket_hash =
-                raw_hash(&format!("{}{}{}", txn.hash, txn.sender_key, txn.extra))[0..5].to_string();
-            if round_leader == lock[0] {
-                debug!(
-                    "Consensus commitee round leader, handling VRF lottery ticket={}",
-                    ticket_hash
-                );
-                // decode VRF's proof into value
-                let vrf_hash = proof_to_hash(&txn.extra).unwrap_or_default();
-                // turn VRF hash into bigint
-                let vrf_ticket_bigint = vrf_hash_to_integer(vrf_hash);
-                debug!(
-                    "VRF lotto ticket={} sent by={} value={}, viable={}",
-                    ticket_hash,
-                    txn.sender_key,
-                    vrf_ticket_bigint,
-                    vrf_ticket_bigint < BigDecimal::from(1)
-                );
-                // TODO: add this to a lazy static containing viable VRF lotto tickets to be included in the new delta list
-            } else if top_epoch.committees[0].members.contains(&lock[0]) {
-                // check if we are just a validator in the consensus commitee
-                debug!(
-                    "In consensus commitee, sending VRF ticket={} to round leader={} role=validator", 
-                    ticket_hash,
-                    round_leader
-                );
-            } else {
-                debug!(
-                    "Not in consensus commitee, ignoring VRF lotto ticket={}",
-                    ticket_hash
-                );
-            }
-        }
-        Err(_lock_error) => error!("Failed to get mutex lock on FULLNODE_KEYS lazy static"),
-    }
-}
-
-fn handle_vrf_lottery() {
-    info!(
-        "VRF lottery started, participating={}",
-        config().node_type == 'c'
-    );
-    let current_epoch = get_top_epoch().unwrap_or_default();
-    let next_epoch = Epoch::get(current_epoch.epoch_number + 1).unwrap_or_default();
-    let vrf_seed = raw_hash(&(format!("{}{}{}", current_epoch.salt, next_epoch.salt, "-vrflotto")));
-    debug!("VRF seed: {}", vrf_seed);
-    match FULLNODE_KEYS.lock() {
-        Ok(lock) => {
-            let vrf_proof = get_vrf(lock[1].clone(), vrf_seed).unwrap_or_default();
-            // Now we check if the VRF fufills the criteria for eclosion
-            // for now this is not done
-            let vrf_value = vrf_hash_to_integer(vrf_proof.1);
-            info!(
-                "Created VRF lottery entry, ticket={:.4}, requirement={}, viable={}",
-                vrf_value, 1, true
-            );
-            // now form a txn, place in block and send to network
-            let mut txn = Transaction {
-                hash: String::from(""),
-                amount: 0,
-                extra: vrf_proof.0,
-                flag: 'v',
-                sender_key: lock[0].clone(),
-                receive_key: String::from(""),
-                access_key: String::from(""),
-                unlock_time: 0,
-                gas_price: 20,
-                max_gas: u64::MAX,
-                nonce: get_data(
-                    config().db_path
-                        + &"/chains/".to_owned()
-                        + &lock[0]
-                        + &"-chainindex".to_owned(),
-                    &"txncount".to_owned(),
-                )
-                .parse()
-                .unwrap_or(0),
-                timestamp: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("time went backwards")
-                    .as_millis() as u64,
-            };
-            txn.hash();
-            let block = Block::new(vec![txn], lock[1].clone(), None);
-            let rec_block = block
-                .form_receive_block(Some(lock[0].clone()))
-                .unwrap_or_default();
-            let blks = vec![block, rec_block];
-            for blk in blks {
-                debug!("Handling block={}", blk.hash);
-                match blk.valid() {
-                    std::result::Result::Ok(_) => {
-                        trace!("Block valid");
-                        if let Err(block_saving_error) = blk.save() {
-                            error!(
-                                "Failed to save formed block={}, error={}",
-                                blk.hash, block_saving_error
-                            );
-                        } else if let Err(block_enact_error) = blk.enact() {
-                            error!(
-                                "Failed to enact formed block={}, error={}",
-                                blk.hash, block_enact_error
-                            );
-                        } else if let Err(block_prop_error) = prop_block(&blk) {
-                            error!(
-                                "Failed to propagate formed block={}, error={}",
-                                blk.hash, block_prop_error
-                            );
-                        } else {
-                            info!("Processed & sent formed block={} to network", blk.hash);
-                        }
-                    }
-                    std::result::Result::Err(block_validation_error) => {
-                        error!(
-                            "Formed block={} invalid, reason={}",
-                            blk.hash, block_validation_error
-                        );
-                    }
-                }
-            }
-        }
-        Err(lock_error) => error!(
-            "Failed to get mutex lock on FULLNODE_KEYS lazy static, error={}",
-            lock_error
-        ),
-    }
-}
-
 fn main() {
     ctrlc::set_handler(move || {
         safe_exit();
@@ -477,7 +340,7 @@ fn main() {
     conf.create().unwrap();
     if config().node_type == 'c' {
         info!("Running as candidate, loading keys");
-        let keys = open_keypair(String::from("fullnode"), String::from("fullnode"));
+        let keys = open_keypair();
         if keys.len() != 4 {
             error!("Bad fullnode keyfile, expected 4 keys, got {}", keys.len());
             process::exit(0);
@@ -497,6 +360,20 @@ fn main() {
                     Err(lock_error) => {
                         error!(
                             "Failed to gain mutex lock on VRF_LOTTERY_CALLBACKS lazy static, got error={}",
+                            lock_error
+                        );
+                        process::exit(0);
+                    }
+                }
+                match EPOCH_STARTED_CALLBACKS.lock() {
+                    Ok(mut lock) => {
+                        debug!("Got mutex lock on EPOCH_STARTED_CALLBACKS lazy static ");
+                        lock.push(Box::new(handle_new_epoch));
+                        debug!("Registered in EPOCH_STARTED_CALLBACKS");
+                    }
+                    Err(lock_error) => {
+                        error!(
+                            "Failed to gain mutex lock on EPOCH_STARTED_CALLBACKS lazy static, got error={}",
                             lock_error
                         );
                         process::exit(0);
@@ -942,26 +819,16 @@ fn main() {
                                                                             error!("Failed to save new config to disk, gave error={}",e );
                                                                         }
                                                                         // Save the keyfile to disk
-                                                                        if let Err(e) = save_keyfile(
-                                                                            &[
-                                                                                wallet
-                                                                                    .public_key
-                                                                                    .clone(),
+                                                                        if let Err(e) =
+                                                                            save_keyfile(&[
                                                                                 wallet.private_key,
-                                                                                cert.bls_public_key,
                                                                                 bs58::encode(
                                                                                     bls_private_key
                                                                                         .as_bytes(),
                                                                                 )
                                                                                 .into_string(),
-                                                                            ],
-                                                                            String::from(
-                                                                                "fullnode",
-                                                                            ),
-                                                                            String::from(
-                                                                                "fullnode",
-                                                                            ),
-                                                                        ) {
+                                                                            ])
+                                                                        {
                                                                             error!("Failed to save keypair to disk; error={}", e);
                                                                         }
                                                                     }
@@ -997,98 +864,38 @@ fn main() {
     }
 }
 
-pub fn save_keyfile(
-    keypair: &[String],
-    password: String,
-    keyfile: String,
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let mut conf = config();
-    let path = conf.db_path.clone() + &"/wallets/".to_owned() + &keyfile;
-    let mut padded = password.as_bytes().to_vec();
-    while padded.len() != 32 && padded.len() < 33 {
-        padded.push(b"n"[0]);
-    }
-    let padded_string = String::from_utf8(padded).unwrap();
-    trace!("key: {}", padded_string);
-    let key = GenericArray::clone_from_slice(padded_string.as_bytes());
-    let aead = Aes256Gcm::new(key);
-    let mut padded = b"nonce".to_vec();
-    while padded.len() != 12 {
-        padded.push(b"n"[0]);
-    }
-    let padded_string = String::from_utf8(padded).unwrap();
-    let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
-    trace!("nonce: {}", padded_string);
-    let publickey_en = hex::encode(
-        aead.encrypt(nonce, keypair[0].as_bytes().as_ref())
-            .expect("wallet public key encryption failure!"),
-    );
-    let privatekey_en = hex::encode(
-        aead.encrypt(nonce, keypair[1].as_bytes().as_ref())
-            .expect("wallet private key encryption failure!"),
-    );
-
-    let blsppublic_en = hex::encode(
-        aead.encrypt(nonce, keypair[2].as_bytes().as_ref())
-            .expect("bls private key encryption failure!"),
-    );
-    let blsprivate_en = hex::encode(
-        aead.encrypt(nonce, keypair[3].as_bytes().as_ref())
-            .expect("bls private key encryption failure!"),
-    );
-    let _ = save_data(&publickey_en, &path, "pubkey".to_owned());
-    let _ = save_data(&privatekey_en, &path, "privkey".to_owned());
-    let _ = save_data(&blsprivate_en, &path, "blspriv".to_owned());
-    let _ = save_data(&blsppublic_en, &path, "blspub".to_owned());
-    info!("Saved wallet to {}", path);
-    conf.chain_key = keypair[0].clone();
-    conf.create()?;
+pub fn save_keyfile(keypair: &[String]) -> io::Result<()> {
+    let conf = config();
+    let path = conf.db_path.clone() + &"/keystore/nodekey".to_owned();
+    let mut file = File::create(path)?;
+    file.write_all(serde_json::to_string(keypair).unwrap().as_bytes())?;
     Ok(())
 }
 
-pub fn open_keypair(keyfile: String, password: String) -> Vec<String> {
-    // can we just hash the public key with some local data on the computer (maybe mac address)? Or is that insufficent (TODO: find out)
-    let mut padded = password.as_bytes().to_vec();
-    while padded.len() != 32 && padded.len() < 33 {
-        padded.push(b"n"[0]);
+pub fn open_keypair() -> Vec<String> {
+    log::trace!("Reading keypair from disk");
+    let conf = config();
+    let path = conf.db_path.clone() + &"/keystore/nodekey".to_owned();
+    if let Ok(mut file) = File::open(path) {
+        let mut data: String = String::from("");
+
+        if file.read_to_string(&mut data).is_err() {
+            error!("Failed to read keypair from disk");
+            return vec![];
+        } else {
+            let privkeys: Vec<String> = serde_json::from_str(&data).unwrap_or_default();
+            let wallet = Wallet::from_private_key(privkeys[0].clone());
+            let bls_priv =
+                PrivateKey::from_bytes(&bs58::decode(&privkeys[1]).into_vec().unwrap()).unwrap();
+            return vec![
+                wallet.public_key,
+                wallet.private_key,
+                bs58::encode(bls_priv.public_key().as_bytes()).into_string(),
+                privkeys[1].clone(),
+            ];
+        }
+    } else {
+        error!("Failed to read keypair from disk");
+        return vec![];
     }
-    let padded_string = String::from_utf8(padded).unwrap();
-    trace!("key: {}", padded_string);
-    let key = GenericArray::clone_from_slice(padded_string.as_bytes());
-    let aead = Aes256Gcm::new(key);
-    let mut padded = b"nonce".to_vec();
-    while padded.len() != 12 {
-        padded.push(b"n"[0]);
-    }
-    let padded_string = String::from_utf8(padded).unwrap();
-    let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
-    trace!("nonce: {}", padded_string);
-    let ciphertext = hex::decode(get_data(
-        config().db_path + &"/wallets/".to_owned() + &keyfile,
-        &"privkey".to_owned(),
-    ))
-    .expect("failed to parse hex");
-    let privkey = String::from_utf8(
-        aead.decrypt(nonce, ciphertext.as_ref())
-            .expect("Failed to decode ECDSA privatekey"),
-    )
-    .expect("failed to parse utf8 (i1)");
-    let blsciphertext = hex::decode(get_data(
-        config().db_path + &"/wallets/".to_owned() + &keyfile,
-        &"blspriv".to_owned(),
-    ))
-    .expect("failed to parse hex");
-    let blsprivkey = String::from_utf8(
-        aead.decrypt(nonce, blsciphertext.as_ref())
-            .expect("Failed to decode BLS privatekey"),
-    )
-    .expect("failed to parse utf8 (i1)");
-    let wallet = Wallet::from_private_key(privkey);
-    let bls_priv = PrivateKey::from_bytes(&bs58::decode(&blsprivkey).into_vec().unwrap()).unwrap();
-    vec![
-        wallet.public_key,
-        wallet.private_key,
-        bs58::encode(bls_priv.public_key().as_bytes()).into_string(),
-        blsprivkey,
-    ]
 }
