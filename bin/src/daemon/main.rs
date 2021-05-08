@@ -4,7 +4,7 @@ use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use bls_signatures::{PrivateKey, Serialize};
 use fullnode::*;
 use rand::thread_rng;
-use std::{fs::File, io::Read, thread};
+use std::{fs::File, io::Read, thread, time::Duration};
 use std::{
     io::{self, Write},
     time::{SystemTime, UNIX_EPOCH},
@@ -12,8 +12,7 @@ use std::{
 
 use avrio_core::{
     account::to_dec,
-    callback::Callback,
-    certificate::generate_certificate,
+    certificate::{generate_certificate, get_fullnode_count},
     epoch::{get_top_epoch, Epoch},
     invite::{generate_invite, new_invite},
     states::form_state_digest,
@@ -279,6 +278,7 @@ fn main() {
         .about("This is the offical daemon for the avrio network.")
         .author("Leo Cornelius")
         .subcommand(App::new("seednode").about("Runs the node as a seednode"))
+        .subcommand(App::new("generate_keypair").about("Generates a fullnode keypair and exits"))
         .arg(
             Arg::with_name("conf")
                 .short("c")
@@ -316,7 +316,7 @@ fn main() {
             std::process::exit(1);
         }
     }
-    let seednode: bool = matches.is_present("seednode");
+
     let art = " 
      ▄▄▄▄▄▄▄▄▄▄▄  ▄               ▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄ 
     ▐░░░░░░░░░░░▌▐░▌             ▐░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
@@ -333,8 +333,19 @@ fn main() {
     println!("{}", art);
     info!("Avrio Daemon Testnet v0.1.0 (alpha)");
     warn!("Warning, this software is not stable");
-    if seednode {
-        warn!("Running in seednode mode, if you don't know what you are doing this is a mistake");
+    if matches.is_present("generate_bls_keypair") {
+        info!("Generating keypair...");
+        let mut rng = thread_rng();
+        let bls_private_key = PrivateKey::generate(&mut rng);
+        let bls_public_key = bls_private_key.public_key();
+        info!(
+            "BLS publickey: {}",
+            bs58::encode(bls_public_key.as_bytes()).into_string()
+        );
+        info!(
+            "BLS privatekey: {}",
+            bs58::encode(bls_public_key.as_bytes()).into_string()
+        );
     }
     let conf = config();
     conf.create().unwrap();
@@ -377,6 +388,29 @@ fn main() {
                             lock_error
                         );
                         process::exit(0);
+                    }
+                }
+                if get_fullnode_count() == 0 {
+                    let time_till_genesis_epoch: i128 = (SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("time went backwards")
+                        .as_millis()
+                        - config().first_epoch_time as u128)
+                        as i128;
+                    info!(
+                        "Running as god account, genesis epoch in {} ms",
+                        time_till_genesis_epoch
+                    );
+                    if time_till_genesis_epoch.is_negative() {
+                        warn!("Missed targeted genesis epoch time of {} by {} ms", config().first_epoch_time, time_till_genesis_epoch.abs())
+                    } else {
+                        create_timer(
+                            Duration::from_millis(time_till_genesis_epoch as u64),
+                            Box::new(|()| {
+                                let _ = start_genesis_epoch();
+                            }),
+                            (),
+                        );
                     }
                 }
             }
@@ -541,7 +575,7 @@ fn main() {
             info!("address_details: Gets details about the account assosiated with an address");
 
             info!("get_account : Gets an account via their publickey");
-
+            info!("register_fullnode : Register as a fullnode");
             info!("get_block : Gets a block for given hash");
             info!("get_transaction : Gets a transaction for a given hash");
             info!("exit : Safely shutsdown thr program. PLEASE use instead of ctrl + c");
@@ -657,194 +691,13 @@ fn main() {
                     );
                     let confirm: String = read!();
                     if confirm.to_ascii_uppercase() == "N" {
-                        error!("Aboring...");
+                        error!("Aborting...");
                     } else if confirm.to_ascii_uppercase() == "Y" {
-                        info!("Forming BLS keypair");
-                        let mut rng = thread_rng();
-                        let bls_private_key = PrivateKey::generate(&mut rng);
-                        let bls_public_key = bls_private_key.public_key();
-                        info!(
-                            "Formed BLS keypair: {}",
-                            bs58::encode(bls_public_key.as_bytes()).into_string()
-                        );
-                        info!("Forming fullnode certificate...");
-                        if let Ok(cert) = generate_certificate(
-                            &wallet.public_key,
-                            &wallet.private_key,
-                            &commitment,
-                            invite,
-                            bs58::encode(bls_private_key.as_bytes()).into_string(),
-                        ) {
-                            // form a transaction using the private key given before, add it to a block and send
-                            let mut txn: Transaction = Transaction {
-                                hash: String::from(""),
-                                amount: 1,
-                                extra: bs58::encode(
-                                    serde_json::to_string(&cert).unwrap().as_bytes(),
-                                )
-                                .into_string(),
-                                flag: 'f',
-                                sender_key: wallet.public_key.clone(),
-                                receive_key: wallet.public_key.clone(),
-                                access_key: String::from(""),
-                                unlock_time: 0,
-                                gas_price: 20,
-                                max_gas: u64::MAX,
-                                nonce: get_data(
-                                    config().db_path
-                                        + &"/chains/".to_owned()
-                                        + &wallet.public_key
-                                        + &"-chainindex".to_owned(),
-                                    &"txncount".to_owned(),
-                                )
-                                .parse()
-                                .unwrap_or(0),
-                                timestamp: SystemTime::now()
-                                    .duration_since(UNIX_EPOCH)
-                                    .expect("time went backwards ONO")
-                                    .as_millis() as u64,
-                            };
-                            txn.hash();
-                            let prev_block = get_block_from_raw(get_data(
-                                config().db_path
-                                    + &"/chains/".to_owned()
-                                    + &wallet.public_key
-                                    + &"-chainindex".to_owned(),
-                                "topblockhash",
-                            ));
-                            let mut send_block = Block {
-                                header: Header {
-                                    version_major: 0,
-                                    version_breaking: 1,
-                                    version_minor: 0,
-                                    chain_key: wallet.public_key.clone(),
-                                    prev_hash: prev_block.hash.clone(),
-                                    height: prev_block.header.height + 1,
-                                    timestamp: SystemTime::now()
-                                        .duration_since(UNIX_EPOCH)
-                                        .expect("time went backwards ONO")
-                                        .as_millis()
-                                        as u64,
-                                    network: config().network_id,
-                                },
-                                block_type: BlockType::Send,
-                                send_block: None,
-                                txns: vec![txn],
-                                hash: String::from(""),
-                                signature: String::from(""),
-                            };
-                            send_block.hash();
-                            if let Err(e) = send_block.sign(&wallet.private_key) {
-                                error!(
-                                    "Failed to sign send block {}, gave error={}",
-                                    send_block.hash, e
-                                );
-                            } else {
-                                match send_block.form_receive_block(Some(wallet.public_key.clone()))
-                                {
-                                    Ok(rec_block) => {
-                                        info!("Created blocks {} and {} containing fullnode registration; broadcasting", send_block.hash, rec_block.hash);
-                                        if let Err(e) = send_block.valid() {
-                                            error!(
-                                                "Created send block {} invalid, reason={}",
-                                                send_block.hash, e
-                                            );
-                                        } else {
-                                            if let Err(e) = send_block.save() {
-                                                error!(
-                                                    "Failed to save send block {}, error={}",
-                                                    send_block.hash, e
-                                                );
-                                            } else {
-                                                debug!("Saved blocks, enacting");
-                                                if let Err(e) = send_block.enact() {
-                                                    error!(
-                                                        "Failed to enact send block {}, error={}",
-                                                        send_block.hash, e
-                                                    );
-                                                } else {
-                                                    if let Err(e) = rec_block.valid() {
-                                                        error!(
-                                                                        "Created rec block {} invalid, reason={}",
-                                                                        rec_block.hash, e
-                                                                    );
-                                                    } else {
-                                                        if let Err(e) = rec_block.save() {
-                                                            error!(
-                                                                        "Failed to save rec block {}, error={}",
-                                                                        rec_block.hash, e
-                                                                    );
-                                                        } else {
-                                                            if let Err(e) = rec_block.enact() {
-                                                                error!(
-                                                                            "Failed to enact rec block {}, error={}",
-                                                                            rec_block.hash, e
-                                                                        );
-                                                            } else {
-                                                                debug!("Enacted blocks, sending to rpc and peers");
-                                                                let _ = block_announce(
-                                                                    send_block.clone(),
-                                                                );
-                                                                let _ = block_announce(
-                                                                    rec_block.clone(),
-                                                                );
-                                                                if let Err(e) =
-                                                                    prop_block(&send_block)
-                                                                {
-                                                                    error!(
-                                                                        "Failed to enact send block {}, error={}",
-                                                                        send_block.hash, e
-                                                                    );
-                                                                } else {
-                                                                    if let Err(e) =
-                                                                        prop_block(&rec_block)
-                                                                    {
-                                                                        error!(
-                                                                            "Failed to enact rec block {}, error={}",
-                                                                            rec_block.hash, e
-                                                                        );
-                                                                    } else {
-                                                                        info!("Done! Registered as new fullnode candidate");
-                                                                        let mut current_config =
-                                                                            config();
-                                                                        current_config.node_type =
-                                                                            'c'; // set node type to candidate
-                                                                        current_config.chain_key =
-                                                                            wallet
-                                                                                .public_key
-                                                                                .clone();
-                                                                        if let Err(e) =
-                                                                            current_config.create()
-                                                                        {
-                                                                            error!("Failed to save new config to disk, gave error={}",e );
-                                                                        }
-                                                                        // Save the keyfile to disk
-                                                                        if let Err(e) =
-                                                                            save_keyfile(&[
-                                                                                wallet.private_key,
-                                                                                bs58::encode(
-                                                                                    bls_private_key
-                                                                                        .as_bytes(),
-                                                                                )
-                                                                                .into_string(),
-                                                                            ])
-                                                                        {
-                                                                            error!("Failed to save keypair to disk; error={}", e);
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to form rec block, aborting (error={})", e)
-                                    }
-                                };
-                            }
+                        if let Ok(_) = register_fullnode(wallet, invite, commitment) {
+                            info!("Please restart your node for changes to take place");
+                            safe_exit();
+                        } else {
+                            error!("Fullnode registration failed")
                         }
                     } else {
                         error!("Unknown response: {}", confirm);
@@ -852,7 +705,10 @@ fn main() {
                 }
             }
         } else if read == "generate_invite" {
-            // TODO: Only let fullnodes generate invites, also broadcast new invite to other nodes so they can validate it
+            // TODO: broadcast new invite to other nodes so they can validate it
+            if config().node_type != 'f' {
+                error!("Not a fullnode")
+            }
             let invite = generate_invite();
             match new_invite(&invite.0) {
                 Ok(_) => info!("Invite: {}", invite.1),
@@ -862,6 +718,179 @@ fn main() {
             info!("Unknown command: {}", read);
         }
     }
+}
+
+pub fn register_fullnode(
+    wallet: Wallet,
+    invite: String,
+    commitment: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    info!("Forming BLS keypair");
+    let mut rng = thread_rng();
+    let bls_private_key = PrivateKey::generate(&mut rng);
+    let bls_public_key = bls_private_key.public_key();
+    info!(
+        "Formed BLS keypair: {}",
+        bs58::encode(bls_public_key.as_bytes()).into_string()
+    );
+    info!("Forming fullnode certificate...");
+    if let Ok(cert) = generate_certificate(
+        &wallet.public_key,
+        &wallet.private_key,
+        &commitment,
+        invite,
+        bs58::encode(bls_private_key.as_bytes()).into_string(),
+    ) {
+        // form a transaction using the private key given before, add it to a block and send
+        let mut txn: Transaction = Transaction {
+            hash: String::from(""),
+            amount: 1,
+            extra: bs58::encode(serde_json::to_string(&cert).unwrap().as_bytes()).into_string(),
+            flag: 'f',
+            sender_key: wallet.public_key.clone(),
+            receive_key: wallet.public_key.clone(),
+            access_key: String::from(""),
+            unlock_time: 0,
+            gas_price: 20,
+            max_gas: u64::MAX,
+            nonce: get_data(
+                config().db_path
+                    + &"/chains/".to_owned()
+                    + &wallet.public_key
+                    + &"-chainindex".to_owned(),
+                &"txncount".to_owned(),
+            )
+            .parse()
+            .unwrap_or(0),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time went backwards ONO")
+                .as_millis() as u64,
+        };
+        txn.hash();
+        let prev_block = get_block_from_raw(get_data(
+            config().db_path
+                + &"/chains/".to_owned()
+                + &wallet.public_key
+                + &"-chainindex".to_owned(),
+            "topblockhash",
+        ));
+        let mut send_block = Block {
+            header: Header {
+                version_major: 0,
+                version_breaking: 1,
+                version_minor: 0,
+                chain_key: wallet.public_key.clone(),
+                prev_hash: prev_block.hash.clone(),
+                height: prev_block.header.height + 1,
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("time went backwards ONO")
+                    .as_millis() as u64,
+                network: config().network_id,
+            },
+            block_type: BlockType::Send,
+            send_block: None,
+            txns: vec![txn],
+            hash: String::from(""),
+            signature: String::from(""),
+        };
+        send_block.hash();
+        if let Err(e) = send_block.sign(&wallet.private_key) {
+            error!(
+                "Failed to sign send block {}, gave error={}",
+                send_block.hash, e
+            );
+        } else {
+            match send_block.form_receive_block(Some(wallet.public_key.clone())) {
+                Ok(rec_block) => {
+                    info!(
+                        "Created blocks {} and {} containing fullnode registration; broadcasting",
+                        send_block.hash, rec_block.hash
+                    );
+                    if let Err(e) = send_block.valid() {
+                        error!(
+                            "Created send block {} invalid, reason={}",
+                            send_block.hash, e
+                        );
+                    } else {
+                        if let Err(e) = send_block.save() {
+                            error!("Failed to save send block {}, error={}", send_block.hash, e);
+                        } else {
+                            debug!("Saved blocks, enacting");
+                            if let Err(e) = send_block.enact() {
+                                error!(
+                                    "Failed to enact send block {}, error={}",
+                                    send_block.hash, e
+                                );
+                            } else {
+                                if let Err(e) = rec_block.valid() {
+                                    error!(
+                                        "Created rec block {} invalid, reason={}",
+                                        rec_block.hash, e
+                                    );
+                                } else {
+                                    if let Err(e) = rec_block.save() {
+                                        error!(
+                                            "Failed to save rec block {}, error={}",
+                                            rec_block.hash, e
+                                        );
+                                    } else {
+                                        if let Err(e) = rec_block.enact() {
+                                            error!(
+                                                "Failed to enact rec block {}, error={}",
+                                                rec_block.hash, e
+                                            );
+                                        } else {
+                                            debug!("Enacted blocks, sending to rpc and peers");
+                                            let _ = block_announce(send_block.clone());
+                                            let _ = block_announce(rec_block.clone());
+                                            if let Err(e) = prop_block(&send_block) {
+                                                error!(
+                                                    "Failed to enact send block {}, error={}",
+                                                    send_block.hash, e
+                                                );
+                                            } else {
+                                                if let Err(e) = prop_block(&rec_block) {
+                                                    error!(
+                                                        "Failed to enact rec block {}, error={}",
+                                                        rec_block.hash, e
+                                                    );
+                                                } else {
+                                                    info!("Done! Registered as new fullnode candidate");
+                                                    let mut current_config = config();
+                                                    current_config.node_type = 'c'; // set node type to candidate
+                                                    current_config.chain_key =
+                                                        wallet.public_key.clone();
+                                                    if let Err(e) = current_config.create() {
+                                                        error!("Failed to save new config to disk, gave error={}",e );
+                                                    }
+                                                    // Save the keyfile to disk
+                                                    if let Err(e) = save_keyfile(&[
+                                                        wallet.private_key,
+                                                        bs58::encode(bls_private_key.as_bytes())
+                                                            .into_string(),
+                                                    ]) {
+                                                        error!("Failed to save keypair to disk; error={}", e);
+                                                    } else {
+                                                        return Ok(());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to form rec block, aborting (error={})", e)
+                }
+            };
+        }
+    }
+    Err("Failed".into())
 }
 
 pub fn save_keyfile(keypair: &[String]) -> io::Result<()> {
