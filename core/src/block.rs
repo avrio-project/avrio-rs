@@ -860,8 +860,15 @@ impl Block {
         }
     }
     pub fn new(txns: Vec<Transaction>, private_key: String, send_block: Option<String>) -> Block {
+        let mut consensus = false;
+        for txn in &txns {
+            if txn.consensus_type() {
+                consensus = true;
+                break
+            }
+        }
         let wallet = Wallet::from_private_key(private_key);
-        let header = Header {
+        let mut  header = Header {
             version_major: config().version_major,
             version_breaking: config().version_breaking,
             version_minor: config().version_minor,
@@ -888,6 +895,9 @@ impl Block {
                 .as_millis() as u64,
             network: config().network_id,
         };
+        if consensus {
+            header.chain_key = String::from("0")
+        }
         let mut blk: Block;
         if send_block.is_some() {
             blk = Block {
