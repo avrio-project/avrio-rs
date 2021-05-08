@@ -11,7 +11,7 @@ extern crate avrio_database;
 
 use crate::{
     account::{get_account, open_or_create, Accesskey, Account},
-    certificate::{Certificate, CertificateErrors},
+    certificate::Certificate,
     commitee::{sort_full_list, Comitee},
     epoch::{get_top_epoch, Epoch, EpochStage},
     gas::*,
@@ -34,6 +34,8 @@ lazy_static! {
     pub static ref VRF_LOTTERY_CALLBACKS: Mutex<Vec<Box<dyn Fn() + Send >>> = Mutex::new(vec![]);
     /// Called when a VRF lottery entry is submited
     pub static ref VRF_TICKET_SUBMITTED: Mutex<Vec<Box<dyn Fn(Transaction) + Send >>> = Mutex::new(vec![]);
+    /// Called when a new epoch is started (when the announceFulllnodeDEltaList txn is enacted)
+    pub static ref EPOCH_STARTED_CALLBACKS: Mutex<Vec<Box<dyn Fn() -> Result<bool, Box<dyn std::error::Error>> + Send  >>> = Mutex::new(vec![]);
 }
 
 #[derive(Debug, Error)]
@@ -1087,6 +1089,9 @@ impl Verifiable for Transaction {
                         curr_epoch.total_fullnodes,
                         excluded_nodes.len()
                     );
+                    for callback in &*(EPOCH_STARTED_CALLBACKS.lock()?) {
+                        (callback)()?;
+                    }
                 }
                 Err(e) => {
                     error!(
