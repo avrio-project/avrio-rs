@@ -4,7 +4,7 @@ use bigdecimal::BigDecimal;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Comitee {
     pub index: u64,
     pub members: Vec<String>,
