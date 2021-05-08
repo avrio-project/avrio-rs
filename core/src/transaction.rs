@@ -469,7 +469,11 @@ impl Verifiable for Transaction {
                 match serde_json::from_str::<Vec<(String, String)>>(&self.extra) {
                     Ok(salt_seeds) => {
                         debug!("Decoded salt_seeds={:#?}", salt_seeds);
-                        let message = String::from("");
+
+                        let mut message = String::from("genesis"); // TODO fix the fact epoch 0 & 1 use this seed
+                        if top_epoch.epoch_number != 0 {
+                            message = raw_lyra(&(top_epoch.epoch_number.to_string() + "epoch"))
+                        }
                         for (publickey, seed) in salt_seeds {
                             trace!("Validating seed {}", seed);
                             if !validate_vrf(publickey.clone(), seed.clone(), message.clone()) {
@@ -572,7 +576,7 @@ impl Verifiable for Transaction {
                         sort_full_list(&mut fullnodes, (shuffle_seed * (u64::MAX as f64)) as u64);
                         // now form the committees from this shuffled list
                         let mut excluded_nodes: Vec<String> = vec![]; // will contain the publickey of any nodes not included in tis epoch
-                        let number_of_committes = 2; // TODO: calculate number of committees, for now its hardcoded as 2
+                        let number_of_committes = 1;
                         let committees: Vec<Comitee> = Comitee::form_comitees(
                             &mut fullnodes,
                             &mut excluded_nodes,
@@ -621,7 +625,7 @@ impl Verifiable for Transaction {
                     + &round_leader);
                 if !validate_vrf(round_leader.clone(), self.extra.clone(), raw_lyra(message)) {
                     error!(
-                        "Invalid VRF as shufflebits , proof={}, creator={}, message={}",
+                        "Invalid VRF as shufflebits, proof={}, creator={}, message={}",
                         self.extra, round_leader, message
                     );
                     return Err(Box::new(TransactionValidationErrors::InvalidVrf));
