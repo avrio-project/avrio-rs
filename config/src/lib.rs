@@ -12,7 +12,7 @@ extern crate lazy_static;
 extern crate hex;
 use std::sync::RwLock;
 lazy_static! {
-    static ref CONFIG_STACK: RwLock<Config> = RwLock::new(config_read());
+    static ref CONFIG_STACK: RwLock<Config> = RwLock::new(config_read("node.conf"));
 }
 
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
@@ -40,11 +40,9 @@ pub struct NetworkConfig {
     pub fullnode_lock_time: u64,
     pub username_burn_amount: u64,
     pub first_block_hash: String,
-    pub commitee_size: u8,
-    pub assessor_node_count: u8,
-    pub consensus_commitee_size: u8,
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
+    pub target_committee_count: u64, // the ideal number of committes to have,if there is not enough fullnodes this will not be reached
 }
 
 /// This is what is saved in a file, the stuff the user can change and edit to fit their needs
@@ -66,9 +64,9 @@ pub struct ConfigSave {
     pub key_file_path: String,
     pub log_level: u8,
     pub wallet_password: String,
-    pub time_beetween_sync: u64,
-    pub discord_token: String,
     pub max_syncing_peers: u64,
+    pub first_epoch_time: u64,
+    pub god_account: String, // publickey of the 'god account', the first fullnode who starts the first epoch
 }
 
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
@@ -105,26 +103,22 @@ pub struct Config {
     pub certificate_difficulty: u128,
     pub fullnode_lock_amount: u64,
     pub transaction_timestamp_max_offset: u32,
-    pub max_time_to_live: u64,
     pub target_epoch_length: u64,
     pub username_burn_amount: u64,
     pub fullnode_lock_time: u64,
     pub first_block_hash: String,
     pub wallet_password: String,
-    pub commitee_size: u8,
-    pub assessor_node_count: u8,
-    pub consensus_commitee_size: u8,
-    pub time_beetween_sync: u64,
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
-    pub discord_token: String,
     pub max_syncing_peers: u64,
+    first_epoch_time: u64,
+    god_account: String,
 }
 
-pub fn config_read() -> Config {
+pub fn config_read(path: &str) -> Config {
     log::trace!("Reading config from disk");
 
-    if let Ok(mut file) = File::open("node.conf") {
+    if let Ok(mut file) = File::open(path) {
         let mut data: String = String::from("");
 
         if file.read_to_string(&mut data).is_err() {
@@ -155,77 +149,31 @@ fn hash_id(id: u64) -> String {
 
 impl Default for ConfigSave {
     fn default() -> ConfigSave {
-        if let Some(dir) = home_dir() {
-            if let Some(dir_str) = dir.to_str() {
-                ConfigSave {
-                    db_path: dir_str.to_string() + &"/.avrio-datadir".to_string(),
-                    max_connections: 50,
-                    max_threads: 4,
-                    chain_key: "".to_string(),
-                    state: 0,
-                    ip_host: "0.0.0.0".to_string(),
-                    seednodes: vec![
-                        "72.137.255.181:56789".to_string(),
-                        "72.137.255.178:56789".to_string(),
-                    ],
-                    ignore_minor_updates: false,
-                    p2p_port: 56789,
-                    api_port: 54321,
-                    allow_cors: 'n',
-                    node_type: 'n',
-                    identitiy: hash_id(rand::random::<u64>()),
-                    key_file_path: "wallet.keys".to_string(),
-                    log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
-                    wallet_password: "wallet_password_123".to_string(),
-                    time_beetween_sync: 5 * 60000,
-                    discord_token: "DISCORD_TOKEN".to_string(),
-                    max_syncing_peers: 8,
-                }
-            } else {
-                ConfigSave {
-                    db_path: ".avrio-datadir".to_string(),
-                    max_connections: 50,
-                    max_threads: 4,
-                    chain_key: "".to_string(),
-                    state: 0,
-                    ip_host: "0.0.0.0".to_string(),
-                    seednodes: vec!["5.189.172.54:56789".to_string()],
-                    ignore_minor_updates: false,
-                    p2p_port: 56789,
-                    api_port: 54321,
-                    allow_cors: 'n',
-                    node_type: 'n',
-                    identitiy: hash_id(rand::random::<u64>()),
-                    key_file_path: "wallet.keys".to_string(),
-                    log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
-                    wallet_password: "wallet_password_123".to_string(),
-                    time_beetween_sync: 5 * 60000,
-                    discord_token: "DISCORD_TOKEN".to_string(),
-                    max_syncing_peers: 8,
-                }
-            }
-        } else {
-            ConfigSave {
-                db_path: ".avrio-datadir".to_string(),
-                max_connections: 50,
-                max_threads: 4,
-                chain_key: "".to_string(),
-                state: 0,
-                ip_host: "0.0.0.0".to_string(),
-                seednodes: vec!["5.189.172.54:56789".to_string()],
-                ignore_minor_updates: false,
-                p2p_port: 56789,
-                api_port: 54321,
-                allow_cors: 'n',
-                node_type: 'n',
-                identitiy: hash_id(rand::random::<u64>()),
-                key_file_path: "wallet.keys".to_string(),
-                log_level: 2, // 0,1,2,3,4,5 trace, debug, info, warn, error, fatal respectivly
-                wallet_password: "wallet_password_123".to_string(),
-                time_beetween_sync: 5 * 60000,
-                discord_token: "DISCORD_TOKEN".to_string(),
-                max_syncing_peers: 8,
-            }
+        let dir = home_dir().unwrap();
+        let dir_str = dir.to_str().unwrap();
+        ConfigSave {
+            db_path: dir_str.to_string() + &"/.avrio-datadir".to_string(),
+            max_connections: 50,
+            max_threads: 4,
+            chain_key: "".to_string(),
+            state: 0,
+            ip_host: "0.0.0.0".to_string(),
+            seednodes: vec![
+                "72.137.255.181:56789".to_string(),
+                "72.137.255.178:56789".to_string(),
+            ],
+            ignore_minor_updates: false,
+            p2p_port: 56789,
+            api_port: 54321,
+            allow_cors: 'n',
+            node_type: 'n',
+            identitiy: hash_id(rand::random::<u64>()),
+            key_file_path: "wallet.keys".to_string(),
+            log_level: 2, // 0,1,2,3,4 trace, debug, info, warn, error respectivly
+            wallet_password: "wallet_password_123".to_string(),
+            max_syncing_peers: 8,
+            first_epoch_time: 0,
+            god_account: String::from(""),
         }
     }
 }
@@ -266,20 +214,16 @@ impl ConfigSave {
             probatory_epoch_count: nconf.probatory_epoch_count,
             fullnode_lock_amount: nconf.fullnode_lock_amount,
             transaction_timestamp_max_offset: nconf.transaction_timestamp_max_offset,
-            max_time_to_live: nconf.max_time_to_live,
             target_epoch_length: nconf.target_epoch_length,
             username_burn_amount: nconf.username_burn_amount,
             fullnode_lock_time: nconf.fullnode_lock_time,
             first_block_hash: nconf.first_block_hash,
             wallet_password: self.wallet_password.to_owned(),
-            time_beetween_sync: self.time_beetween_sync,
-            commitee_size: nconf.commitee_size,
-            consensus_commitee_size: nconf.consensus_commitee_size,
-            assessor_node_count: nconf.assessor_node_count,
             min_suported_version: nconf.min_suported_version,
             max_supported_version: nconf.max_supported_version,
-            discord_token: self.discord_token.to_owned(),
             max_syncing_peers: self.max_syncing_peers,
+            first_epoch_time: self.first_epoch_time,
+            god_account: self.god_account.to_owned(),
         }
     }
 }
@@ -311,15 +255,13 @@ impl Default for NetworkConfig {
             fullnode_lock_amount: 50000,
             transaction_timestamp_max_offset: 600000, // 10 mins
             max_time_to_live: 600000,                 // millisecconds
-            target_epoch_length: 18000000,            // 5 Hours
-            fullnode_lock_time: 30 * 5,               // epoches (30 days)
-            username_burn_amount: 5000,               // 0.5000 AIO
+            target_epoch_length: 1800000, // 30 mins (technically not target epoch length, but main stage length)
+            fullnode_lock_time: 30 * 5,   // epoches (30 days)
+            username_burn_amount: 5000,   // 0.5000 AIO
             first_block_hash: "0x...".to_string(),
-            commitee_size: 15,
-            consensus_commitee_size: 21,
-            assessor_node_count: 6,
             min_suported_version: vec![0, 1, 0],
             max_supported_version: vec![0, 1, 0],
+            target_committee_count: 2, // consensus & normal
         }
     }
 }
@@ -343,9 +285,9 @@ impl Config {
             key_file_path: self.key_file_path,
             log_level: self.log_level,
             wallet_password: self.wallet_password,
-            time_beetween_sync: self.time_beetween_sync,
-            discord_token: self.discord_token,
             max_syncing_peers: self.max_syncing_peers,
+            first_epoch_time: self.first_epoch_time,
+            god_account: self.god_account,
         }
     }
 
