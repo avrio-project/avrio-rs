@@ -111,8 +111,8 @@ pub struct Config {
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
     pub max_syncing_peers: u64,
-    first_epoch_time: u64,
-    god_account: String,
+    pub first_epoch_time: u64,
+    pub god_account: String,
 }
 
 pub fn config_read(path: &str) -> Config {
