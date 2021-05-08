@@ -70,6 +70,12 @@ pub struct Certificate {
     pub signature: String,
 }
 
+pub fn get_fullnode_count() -> u64 {
+    return get_data(config().db_path + "/candidates", "count")
+        .parse::<u64>()
+        .unwrap_or(0);
+}
+
 pub fn generate_certificate(
     pk: &str,
     private_key: &str,
@@ -244,14 +250,6 @@ impl Verifiable for Certificate {
 
     fn enact(&self) -> Result<(), Box<dyn std::error::Error>> {
         mark_spent(&self.invite)?;
-        if save_data(
-            "c",
-            &(config().db_path + "/candidates"),
-            self.public_key.clone(),
-        ) != 1
-        {
-            return Err("failed to save new fullnode candidate".into());
-        }
         // now save the BLS publickey to the ECDSA key lookup table
         if save_data(
             &self.public_key,
@@ -261,10 +259,46 @@ impl Verifiable for Certificate {
         {
             return Err("failed to save ECDSA-BLS looukup entry".into());
         }
-        info!(
-            "New fullnode candidate {}!",
-            public_key_to_address(&self.public_key)
-        );
+        let candidate_count = get_fullnode_count();
+        if candidate_count == 0 {
+            // there are no candidates registered, this must be the god address (TODO: check this was sent by config().god_account)
+            // ecolse this candidate fully
+            if save_data(
+                "f",
+                &(config().db_path + "/candidates"),
+                self.public_key.clone(),
+            ) != 1
+            {
+                return Err("failed to save new fullnode candidate".into());
+            }
+            
+            info!(
+                "God account eclosed {}!",
+                public_key_to_address(&self.public_key)
+            );
+        } else {
+            if save_data(
+                "c",
+                &(config().db_path + "/candidates"),
+                self.public_key.clone(),
+            ) != 1
+            {
+                return Err("failed to save new fullnode candidate".into());
+            }
+            
+            info!(
+                "New fullnode candidate {}!",
+                public_key_to_address(&self.public_key)
+            );
+        }
+        if save_data(
+            "count",
+            &(config().db_path + "/candidates"),
+            (candidate_count + 1).to_string(),
+        ) != 1
+        {
+            return Err("failed to save candidate count".into());
+        }
         Ok(())
     }
 }
