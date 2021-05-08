@@ -11,3 +11,4 @@ pub mod message_types;
 pub mod peer;
 pub mod server;
 mod utils;
+pub mod guid;
