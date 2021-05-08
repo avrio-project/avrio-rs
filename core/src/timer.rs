@@ -1,5 +1,4 @@
 use std::{
-    sync::Mutex,
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
