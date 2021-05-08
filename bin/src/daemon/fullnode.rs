@@ -1,7 +1,7 @@
-use std::time::Duration;
-
 use avrio_core::commitee::Comitee;
+use avrio_crypto::raw_lyra;
 use avrio_p2p::guid::form_table;
+use std::time::Duration;
 // contains functions called by the fullnode
 use crate::*;
 
@@ -13,6 +13,123 @@ lazy_static! {
 pub fn claim_reward() -> Result<u64, Box<dyn std::error::Error>> {
     // TODO: write reward code
     Ok(0)
+}
+
+pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Starting genesis epoch");
+    // TODO: write genesis epoch start code
+    // create the salt from just our VRF
+    match FULLNODE_KEYS.lock() {
+        Ok(lock) => {
+            let (proof, _) = get_vrf(lock[1].clone(), String::from("genesis"))?;
+            let seeds = vec![(lock[0].clone(), proof)];
+            // form txn
+            let mut transaction = Transaction {
+                hash: String::from(""),
+                amount: 0,
+                extra: serde_json::to_string(&seeds)?,
+                flag: 'a',
+                sender_key: lock[0].clone(),
+                receive_key: String::from(""),
+                access_key: String::from(""),
+                unlock_time: 0,
+                gas_price: 1,
+                max_gas: u64::MAX,
+                nonce: 0,
+                timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
+            };
+            transaction.hash();
+            let seed_block = Block::new(vec![transaction], lock[1].clone(), None);
+            let seed_block_rec = seed_block.form_receive_block(Some(lock[0].clone()))?;
+            seed_block
+                .valid()
+                .and_then(|()| seed_block.enact())
+                .and_then(|()| seed_block_rec.valid())
+                .and_then(|()| seed_block_rec.enact())?;
+            let mut blocks: Vec<Block> = vec![seed_block, seed_block_rec];
+
+            // create the shuffle bits
+            let top_epoch = get_top_epoch()?;
+            let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
+            let (shuffle_proof, _) = get_vrf(
+                lock[1].clone(),
+                new_epoch.salt.to_string() + &new_epoch.epoch_number.to_string() + &lock[0],
+            )?;
+
+            let mut transaction = Transaction {
+                hash: String::from(""),
+                amount: 0,
+                extra: shuffle_proof,
+                flag: 'z',
+                sender_key: lock[0].clone(),
+                receive_key: String::from(""),
+                access_key: String::from(""),
+                unlock_time: 0,
+                gas_price: 1,
+                max_gas: u64::MAX,
+                nonce: 0,
+                timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
+            };
+            transaction.hash();
+            let shuffle_bits_block = Block::new(vec![transaction], lock[1].clone(), None);
+            let shuffle_bits_block_rec =
+                shuffle_bits_block.form_receive_block(Some(lock[0].clone()))?;
+            shuffle_bits_block
+                .valid()
+                .and_then(|()| shuffle_bits_block.enact())
+                .and_then(|()| shuffle_bits_block_rec.valid())
+                .and_then(|()| shuffle_bits_block_rec.enact())?;
+            blocks.push(shuffle_bits_block);
+            blocks.push(shuffle_bits_block_rec);
+
+            // create an empty fullnode delta list txn
+            let delta_list: ((String, String), Vec<(String, u8, String)>) = (
+                (
+                    raw_lyra(&(String::from("") + &lock[0])),
+                    raw_lyra(&(String::from("") + &lock[0])),
+                ),
+                vec![],
+            );
+
+            let mut transaction = Transaction {
+                hash: String::from(""),
+                amount: 0,
+                extra: serde_json::to_string(&delta_list)?,
+                flag: 'y',
+                sender_key: lock[0].clone(),
+                receive_key: String::from(""),
+                access_key: String::from(""),
+                unlock_time: 0,
+                gas_price: 1,
+                max_gas: u64::MAX,
+                nonce: 0,
+                timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
+            };
+            transaction.hash();
+            let delta_list_block = Block::new(vec![transaction], lock[1].clone(), None);
+            let delta_list_block_rec =
+                delta_list_block.form_receive_block(Some(lock[0].clone()))?;
+            delta_list_block
+                .valid()
+                .and_then(|()| delta_list_block.enact())
+                .and_then(|()| delta_list_block_rec.valid())
+                .and_then(|()| delta_list_block_rec.enact())?;
+            blocks.push(delta_list_block);
+            blocks.push(delta_list_block_rec);
+            // send blocks to network
+            for block in &blocks {
+                let _ = prop_block(block)?;
+            }
+            return Ok(());
+        }
+        Err(lock_error) => {
+            error!(
+                "Failed to get mutex lock on FULLNODE_KEYS lazy static, error={}",
+                lock_error
+            );
+            return Err("Could not lock FULLNODE_KEYS".into());
+        }
+    };
 }
 
 pub fn handle_vrf_submitted(txn: Transaction) {
@@ -78,7 +195,7 @@ pub fn handle_vrf_submitted(txn: Transaction) {
         ),
     }
 }
-/// Starts the net epoch 
+/// Starts the net epoch
 // Returns a result, if we are in a committee this epoch and we sucsessfully started this epoch Ok(true), if we are excluded this epoch Ok(false)
 /// Otherwise if there was an error return it
 pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
@@ -141,7 +258,9 @@ pub fn start_vrf_lotto(_null: ()) {
                 info!("Consensus committee round leader, coordinating epoch salt formation");
                 // TODO: Send a generateEpochSalt p2p message to every peer in our GUID, collect the responses, then form a announceSaltSeeds txn and process
             } else {
-                debug!("Not consensus committee round leader, not coordinating epoch salt formation")
+                debug!(
+                    "Not consensus committee round leader, not coordinating epoch salt formation"
+                )
             }
         }
         Err(lock_error) => error!(
