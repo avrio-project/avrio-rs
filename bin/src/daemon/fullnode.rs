@@ -43,9 +43,9 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             let seed_block_rec = seed_block.form_receive_block(Some(lock[0].clone()))?;
             seed_block
                 .valid()
-                .and_then(|()| seed_block.enact())
-                .and_then(|()| seed_block_rec.valid())
-                .and_then(|()| seed_block_rec.enact())?;
+                .and_then(|_| seed_block.enact())
+                .and_then(|_| seed_block_rec.valid())
+                .and_then(|_| seed_block_rec.enact())?;
             let mut blocks: Vec<Block> = vec![seed_block, seed_block_rec];
 
             // create the shuffle bits
@@ -76,17 +76,17 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
                 shuffle_bits_block.form_receive_block(Some(lock[0].clone()))?;
             shuffle_bits_block
                 .valid()
-                .and_then(|()| shuffle_bits_block.enact())
-                .and_then(|()| shuffle_bits_block_rec.valid())
-                .and_then(|()| shuffle_bits_block_rec.enact())?;
+                .and_then(|_| shuffle_bits_block.enact())
+                .and_then(|_| shuffle_bits_block_rec.valid())
+                .and_then(|_| shuffle_bits_block_rec.enact())?;
             blocks.push(shuffle_bits_block);
             blocks.push(shuffle_bits_block_rec);
 
             // create an empty fullnode delta list txn
             let delta_list: ((String, String), Vec<(String, u8, String)>) = (
                 (
-                    raw_lyra(&(String::from("") + &lock[0])),
-                    raw_lyra(&(String::from("") + &lock[0])),
+                    raw_lyra(&lock[0]),
+                    raw_lyra(&lock[0]),
                 ),
                 vec![],
             );
@@ -111,9 +111,9 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
                 delta_list_block.form_receive_block(Some(lock[0].clone()))?;
             delta_list_block
                 .valid()
-                .and_then(|()| delta_list_block.enact())
-                .and_then(|()| delta_list_block_rec.valid())
-                .and_then(|()| delta_list_block_rec.enact())?;
+                .and_then(|_| delta_list_block.enact())
+                .and_then(|_| delta_list_block_rec.valid())
+                .and_then(|_| delta_list_block_rec.enact())?;
             blocks.push(delta_list_block);
             blocks.push(delta_list_block_rec);
             // send blocks to network
@@ -195,7 +195,7 @@ pub fn handle_vrf_submitted(txn: Transaction) {
         ),
     }
 }
-/// Starts the net epoch
+/// Starts the next epoch
 // Returns a result, if we are in a committee this epoch and we sucsessfully started this epoch Ok(true), if we are excluded this epoch Ok(false)
 /// Otherwise if there was an error return it
 pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
