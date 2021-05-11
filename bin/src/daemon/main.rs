@@ -1,6 +1,4 @@
 pub(crate) mod fullnode;
-use aead::{generic_array::GenericArray, Aead, NewAead};
-use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use bls_signatures::{PrivateKey, Serialize};
 use fullnode::*;
 use rand::thread_rng;
@@ -47,7 +45,7 @@ use avrio_core::{
 };
 
 extern crate avrio_database;
-use avrio_database::{get_data, get_peerlist, save_data};
+use avrio_database::{get_data, get_peerlist};
 #[macro_use]
 extern crate log;
 
@@ -56,7 +54,7 @@ extern crate hex;
 use avrio_api::start_server;
 
 extern crate avrio_crypto;
-use avrio_crypto::{get_vrf, proof_to_hash, raw_hash, vrf_hash_to_integer, Wallet};
+use avrio_crypto::{get_vrf, proof_to_hash, raw_hash, vrf_hash_to_integer, Wallet, generate_secp256k1_keypair, private_to_public_secp256k1};
 use bigdecimal::BigDecimal;
 use fern::colors::{Color, ColoredLevelConfig};
 
@@ -215,7 +213,7 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
             block.enact()?;
         }
     }
-    // Create the seed invite
+    // Create the seed invites
     // TODO: change this to a block on the 0 chain
     new_invite("FZ2YbpGw1ZjRW2dkwMRfy7N98iZCkcfezy5BxCGWRPgZ")?;
     // invite priv key:
@@ -242,6 +240,7 @@ fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>
     create_dir_all(config().db_path + &"/blocks".to_string())?;
     create_dir_all(config().db_path + &"/chains".to_string())?;
     create_dir_all(config().db_path + &"/wallets".to_string())?;
+    create_dir_all(config().db_path + &"/keystore".to_string())?;
     create_dir_all(config().db_path + &"/accounts".to_string())?;
     create_dir_all(config().db_path + &"/usernames".to_string())?;
     info!("Created datadir folder structure");
@@ -352,9 +351,9 @@ fn main() {
     if config().node_type == 'c' {
         info!("Running as candidate, loading keys");
         let keys = open_keypair();
-        if keys.len() != 4 {
-            error!("Bad fullnode keyfile, expected 4 keys, got {}", keys.len());
-            process::exit(0);
+        if keys.len() != 6 {
+            error!("Bad fullnode keyfile, expected 6 keys, got {}", keys.len());
+            safe_exit();
         }
 
         info!("Loaded keyfile: {}, {}", keys[0], keys[2]);
@@ -391,21 +390,37 @@ fn main() {
                     }
                 }
                 if get_fullnode_count() == 0 {
-                    let time_till_genesis_epoch: i128 = (SystemTime::now()
+                    let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .expect("time went backwards")
-                        .as_millis()
-                        - config().first_epoch_time as u128)
-                        as i128;
-                    info!(
-                        "Running as god account, genesis epoch in {} ms",
-                        time_till_genesis_epoch
-                    );
-                    if time_till_genesis_epoch.is_negative() {
-                        warn!("Missed targeted genesis epoch time of {} by {} ms", config().first_epoch_time, time_till_genesis_epoch.abs())
-                    } else {
+                        .as_millis();
+                    if now > config().first_epoch_time as u128 {
+                        warn!(
+                            "Missed targeted genesis epoch time of {} by {} ms",
+                            config().first_epoch_time,
+                            now - config().first_epoch_time as u128
+                        );
                         create_timer(
-                            Duration::from_millis(time_till_genesis_epoch as u64),
+                            Duration::from_millis(5000),
+                            Box::new(|()| {
+                                let _ = start_genesis_epoch();
+                            }),
+                            (),
+                        );
+                    } else {
+                        let time_till_genesis_epoch = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .expect("time went backwards")
+                            .as_millis()
+                            as u64
+                            - config().first_epoch_time;
+                        info!(
+                            "Running as god account, genesis epoch in {} ms",
+                            time_till_genesis_epoch
+                        );
+
+                        create_timer(
+                            Duration::from_millis(time_till_genesis_epoch),
                             Box::new(|()| {
                                 let _ = start_genesis_epoch();
                             }),
@@ -442,7 +457,6 @@ fn main() {
     let _ = mempool.save_to_disk(&(config().db_path + "/mempool")); // create files
     *(MEMPOOL.lock().unwrap()) = Some(mempool);
     info!("Avrio Daemon successfully launched");
-    handle_vrf_lottery();
     let mut statedigest = get_data(config().db_path + &"/chaindigest".to_owned(), "master");
     if statedigest == *"-1" {
         generate_chains().unwrap();
@@ -733,6 +747,13 @@ pub fn register_fullnode(
         "Formed BLS keypair: {}",
         bs58::encode(bls_public_key.as_bytes()).into_string()
     );
+    info!("Forming secp256k1 keypair");
+    let secp_keypair = generate_secp256k1_keypair();
+    if secp_keypair.len() != 2 {
+        error!("Failed to generate secp256k1 keypair");
+        return Err("Failed to generate secp256k1 keypair".into());
+    }
+    info!("Formed secp256k1 keypair: {}", secp_keypair[1]);
     info!("Forming fullnode certificate...");
     if let Ok(cert) = generate_certificate(
         &wallet.public_key,
@@ -740,7 +761,9 @@ pub fn register_fullnode(
         &commitment,
         invite,
         bs58::encode(bls_private_key.as_bytes()).into_string(),
+        secp_keypair[0].clone()
     ) {
+        trace!("Formed certificate={:#?}", cert);
         // form a transaction using the private key given before, add it to a block and send
         let mut txn: Transaction = Transaction {
             hash: String::from(""),
@@ -870,6 +893,7 @@ pub fn register_fullnode(
                                                         wallet.private_key,
                                                         bs58::encode(bls_private_key.as_bytes())
                                                             .into_string(),
+                                                            secp_keypair[0].clone()
                                                     ]) {
                                                         error!("Failed to save keypair to disk; error={}", e);
                                                     } else {
@@ -913,14 +937,21 @@ pub fn open_keypair() -> Vec<String> {
             return vec![];
         } else {
             let privkeys: Vec<String> = serde_json::from_str(&data).unwrap_or_default();
+            if privkeys.len() != 3 {
+                error!("Bad fullnode keyfile, expected 3 private keys, got {}", privkeys.len());
+                safe_exit();
+            }
             let wallet = Wallet::from_private_key(privkeys[0].clone());
             let bls_priv =
                 PrivateKey::from_bytes(&bs58::decode(&privkeys[1]).into_vec().unwrap()).unwrap();
+            let secp_pub = private_to_public_secp256k1(&privkeys[2]).unwrap_or_default();
             return vec![
                 wallet.public_key,
                 wallet.private_key,
                 bs58::encode(bls_priv.public_key().as_bytes()).into_string(),
                 privkeys[1].clone(),
+                secp_pub,
+                privkeys[2].clone(),
             ];
         }
     } else {
