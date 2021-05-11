@@ -8,14 +8,16 @@ use avrio_config::config;
 extern crate avrio_database;
 use crate::{
     block::get_block_from_raw,
+    commitee::Comitee,
+    epoch::get_top_epoch,
     invite::{invite_valid, mark_spent},
     transaction::Transaction,
     validate::Verifiable,
 };
+use avrio_crypto::{public_key_to_address, sign_secp256k1, valid_signature_secp256k1, Hashable};
 use avrio_database::{get_data, save_data};
-
-use avrio_crypto::{public_key_to_address, Hashable};
 use ring::signature::{self, KeyPair};
+use secp256k1::{PublicKey as SecpPublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 extern crate bs58;
@@ -52,6 +54,8 @@ pub enum CertificateErrors {
     InvalidInvite,
     #[error("Certificate hash mismatch")]
     HashMissmatch,
+    #[error("Bad Secp256k1 Privatekey")]
+    BadSecp256k1PrivateKey,
     #[error("Unknown/Other error")]
     Unknown,
 }
@@ -59,14 +63,16 @@ pub enum CertificateErrors {
 #[derive(Deserialize, Serialize, Default, Debug)]
 pub struct Certificate {
     pub hash: String,
-    pub public_key: String,
+    pub public_key: String, // base58 encoded, must be a valid account
     pub txn_hash: String,
     pub timestamp: u64,
     pub valid_until: u64,
-    pub invite: String,
-    pub invite_sig: String,
-    pub bls_public_key: String,
+    pub invite: String,     // base58, should be the publickey of a valid invite
+    pub invite_sig: String, // base58, signature using the privatekey of above invite publickey
+    pub bls_public_key: String, // base58 encoded, used for aggregate signatures on block chunks
     pub bls_signature: String,
+    pub secp256k1_publickey: String, // base58 encoded, used for VRF's
+    pub secp256k1_signature: String, // base58 encoded, used to prove ownership of publickey
     pub signature: String,
 }
 
@@ -82,56 +88,72 @@ pub fn generate_certificate(
     txn_hash: &str,
     invite: String,
     bls_private_key_string: String,
+    secp256k1_privatekey: String,
 ) -> Result<Certificate, CertificateErrors> {
     let key_pair =
         signature::Ed25519KeyPair::from_pkcs8(bs58::decode(&invite).into_vec().unwrap().as_ref())
             .unwrap();
 
     let peer_public_key_bytes = key_pair.public_key().as_ref();
-    let mut cert: Certificate = Certificate {
-        hash: String::from(""),
-        public_key: String::from(""),
-        txn_hash: String::from(""),
-        valid_until: 0,
-        invite: bs58::encode(peer_public_key_bytes).into_string(),
-        invite_sig: "inv_sig".into(),
-        timestamp: 0,
-        bls_public_key: String::from(""),
-        bls_signature: String::from(""),
-        signature: String::from(""),
-    };
-    let bls_private_key =
-        PrivateKey::from_bytes(&bs58::decode(bls_private_key_string).into_vec().unwrap()).unwrap();
-    let bls_public_key = bls_private_key.public_key();
-    cert.bls_public_key = bs58::encode(bls_public_key.as_bytes()).into_string();
+    if let Ok(secp256k1_secretkey) = SecretKey::from_slice(
+        &bs58::decode(secp256k1_privatekey)
+            .into_vec()
+            .unwrap_or(vec![]),
+    ) {
+        let secp = Secp256k1::new();
+        let secp256k1_publickey = SecpPublicKey::from_secret_key(&secp, &secp256k1_secretkey);
 
-    cert.public_key = pk.to_owned();
-    cert.txn_hash = txn_hash.to_owned();
-    cert.timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_millis() as u64;
-    let block_hash = get_data(config().db_path + "/transactions", &cert.txn_hash);
-    let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
-    let mut txn: Transaction = Default::default();
+        let mut cert: Certificate = Certificate {
+            hash: String::from(""),
+            public_key: String::from(""),
+            txn_hash: String::from(""),
+            valid_until: 0,
+            invite: bs58::encode(peer_public_key_bytes).into_string(),
+            invite_sig: "inv_sig".into(),
+            timestamp: 0,
+            bls_public_key: String::from(""),
+            bls_signature: String::from(""),
+            secp256k1_publickey: bs58::encode(secp256k1_publickey.serialize())
+                .into_string(),
+            secp256k1_signature: String::from(""),
+            signature: String::from(""),
+        };
+        let bls_private_key =
+            PrivateKey::from_bytes(&bs58::decode(bls_private_key_string).into_vec().unwrap())
+                .unwrap();
+        let bls_public_key = bls_private_key.public_key();
+        cert.bls_public_key = bs58::encode(bls_public_key.as_bytes()).into_string();
 
-    for transaction in blk.txns {
-        if transaction.hash == cert.txn_hash {
-            txn = transaction;
+        cert.public_key = pk.to_owned();
+        cert.txn_hash = txn_hash.to_owned();
+        cert.timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64;
+        let block_hash = get_data(config().db_path + "/transactions", &cert.txn_hash);
+        let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
+        let mut txn: Transaction = Default::default();
+
+        for transaction in blk.txns {
+            if transaction.hash == cert.txn_hash {
+                txn = transaction;
+            }
         }
-    }
-    if txn == Transaction::default() {
-        return Err(CertificateErrors::OtherTransactionIssue);
-    }
+        if txn == Transaction::default() {
+            return Err(CertificateErrors::OtherTransactionIssue);
+        }
 
-    cert.valid_until = txn.unlock_time;
+        cert.valid_until = txn.unlock_time;
 
-    cert.hash();
+        cert.hash();
 
-    if let Err(_e) = cert.sign(&private_key, invite, &bls_private_key) {
-        Err(CertificateErrors::SignatureError)
+        if let Err(_e) = cert.sign(&private_key, invite, &bls_private_key, secp256k1_secretkey) {
+            Err(CertificateErrors::SignatureError)
+        } else {
+            Ok(cert)
+        }
     } else {
-        Ok(cert)
+        return Err(CertificateErrors::BadSecp256k1PrivateKey);
     }
 }
 
@@ -217,7 +239,7 @@ impl Verifiable for Certificate {
         if !invite_valid(&cert.invite) {
             Err(Box::new(CertificateErrors::InvalidInvite))
         } else {
-            // TODO: Check BLS publickey valid and does not exist, then check the signature is valid
+            // TODO: Check BLS & secp256k1 publickey valid and does not exist
             Ok(())
         }
     }
@@ -271,7 +293,12 @@ impl Verifiable for Certificate {
             {
                 return Err("failed to save new fullnode candidate".into());
             }
-            
+            let mut top_epoch = get_top_epoch()?;
+            top_epoch.committees.push(
+                Comitee::form_comitees(&mut vec![self.public_key.clone()], &mut vec![], 1)[0]
+                    .clone(),
+            );
+            top_epoch.save()?;
             info!(
                 "God account eclosed {}!",
                 public_key_to_address(&self.public_key)
@@ -285,7 +312,7 @@ impl Verifiable for Certificate {
             {
                 return Err("failed to save new fullnode candidate".into());
             }
-            
+
             info!(
                 "New fullnode candidate {}!",
                 public_key_to_address(&self.public_key)
@@ -309,30 +336,42 @@ impl Certificate {
         private_key: &str,
         invite: String,
         bls_private_key: &PrivateKey,
-    ) -> Result<(), ring::error::KeyRejected> {
+        secp256k1_privatekey: SecretKey,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // sign with wallet key
         let key_pair = signature::Ed25519KeyPair::from_pkcs8(
             bs58::decode(private_key)
                 .into_vec()
                 .unwrap_or_else(|_| vec![0])
                 .as_ref(),
-        )?;
-
+        );
+        if let Err(e) = key_pair {
+            return Err(e.description_().into());
+        }
         let msg: &[u8] = self.hash.as_bytes();
+        self.signature = bs58::encode(key_pair.unwrap().sign(msg)).into_string();
+
+        // sign with bls key
         self.bls_signature = bs58::encode(bls_private_key.sign(msg).as_bytes()).into_string();
-        self.signature = bs58::encode(key_pair.sign(msg)).into_string();
 
         // now sign with the invite
-        let key_pair = signature::Ed25519KeyPair::from_pkcs8(
+        let invite_key_pair = signature::Ed25519KeyPair::from_pkcs8(
             bs58::decode(invite)
                 .into_vec()
                 .unwrap_or_else(|_| vec![0])
                 .as_ref(),
-        )?;
-
+        );
+        if let Err(e) = invite_key_pair {
+            return Err(e.description_().into());
+        }
         let msg: &[u8] = self.public_key.as_bytes();
+        self.invite_sig = bs58::encode(invite_key_pair.unwrap().sign(msg)).into_string();
 
-        self.invite_sig = bs58::encode(key_pair.sign(msg)).into_string();
-
+        // sign with secp256k1 key
+        self.secp256k1_signature = sign_secp256k1(
+            &bs58::encode(secp256k1_privatekey.as_ref()).into_string(),
+            &self.hash,
+        )?;
         Ok(())
     }
 
@@ -399,29 +438,34 @@ impl Certificate {
                             self.public_key, e
                         );
 
-                        return vec![0, 1, 0];
+                        return vec![0];
                     }),
             );
 
-            peer_public_key
-                .verify(
-                    msg,
-                    bs58::decode(self.invite_sig.to_owned())
-                        .into_vec()
-                        .unwrap_or_else(|e| {
-                            error!(
-                                "failed to decode signature from base58 {}, gave error {}",
-                                self.invite_sig, e
-                            );
+            if let Err(_) = peer_public_key.verify(
+                msg,
+                bs58::decode(self.invite_sig.to_owned())
+                    .into_vec()
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "failed to decode signature from base58 {}, gave error {}",
+                            self.invite_sig, e
+                        );
 
-                            return vec![0, 1, 0];
-                        })
-                        .as_ref(),
-                )
-                .unwrap_or_else(|_e| {});
-            // ^ wont unwrap if sig is invalid
-
-            return true;
+                        return vec![];
+                    })
+                    .as_ref(),
+            ) {
+                debug!("Invalid invite sig");
+                return false;
+            }
+            // now check the secp256k1 signature
+            if let Ok(res) = valid_signature_secp256k1(&self.secp256k1_publickey, &self.hash, &self.secp256k1_signature) {
+                return res;
+            } else {
+                debug!("Invalid secp256k1 sig, error={:#?}", valid_signature_secp256k1(&self.secp256k1_publickey, &self.hash, &self.secp256k1_signature).err());
+                return false;
+            }
         } else {
             return false;
         }
