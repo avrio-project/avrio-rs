@@ -1,3 +1,5 @@
+use secp256k1::bitcoin_hashes::hex::ToHex;
+
 use crate::*;
 #[test]
 fn find_average_lambda() {
@@ -46,6 +48,39 @@ fn test_max() {
 #[test]
 fn test_len() {
     let wall: Wallet = Wallet::gen();
-    let (proof, hash) = get_vrf(wall.private_key.clone(), "epochrandomnesshere".to_string()).unwrap();
-    println!("Proof: {}, Hash: {}; len: {}, {}", proof, hash, proof.len(), hash.len())
+    let (proof, hash) =
+        get_vrf(wall.private_key.clone(), "epochrandomnesshere".to_string()).unwrap();
+    println!(
+        "Proof: {}, Hash: {}; len: {}, {}",
+        proof,
+        hash,
+        proof.len(),
+        hash.len()
+    )
+}
+
+#[test]
+fn test_valid() {
+    let keys = generate_secp256k1_keypair();
+    let (proof, hash) = get_vrf(keys[0].clone(), "epochrandomnesshere".to_string()).unwrap();
+    let valid = validate_vrf(
+        keys[1].clone(),
+        proof.clone(),
+        "epochrandomnesshere".to_string(),
+    );
+    println!("Proof: {}, Hash: {}; valid: {}", proof, hash, valid);
+    assert!(valid);
+}
+#[test]
+fn test_vrf_keys() {
+    let keys = generate_secp256k1_keypair();
+    let seckey = SecretKey::from_slice(&bs58::decode(&keys[0]).into_vec().unwrap()).unwrap();
+    let _pubkey = PublicKey::from_slice(&bs58::decode(&keys[1]).into_vec().unwrap()).unwrap();
+
+    let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).unwrap();
+    let derived_public_key = vrf.derive_public_key(seckey.as_ref()).unwrap();
+    assert_eq!(
+        _pubkey.to_hex(),
+        PublicKey::from_slice(&derived_public_key).unwrap().to_hex()
+    );
 }
