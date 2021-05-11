@@ -1,4 +1,4 @@
-use avrio_core::commitee::Comitee;
+use avrio_core::{account::get_nonce, certificate::Certificate, commitee::Comitee};
 use avrio_crypto::raw_lyra;
 use avrio_p2p::guid::form_table;
 use std::time::Duration;
@@ -20,60 +20,71 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: write genesis epoch start code
     // create the salt from just our VRF
     match FULLNODE_KEYS.lock() {
+        /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
         Ok(lock) => {
-            let (proof, _) = get_vrf(lock[1].clone(), String::from("genesis"))?;
+            let (proof, _) = get_vrf(lock[5].clone(), String::from("genesis"))?;
+            if !avrio_crypto::validate_vrf(lock[4].clone(), proof.clone(), String::from("genesis"))
+            {
+                error!("Created salt seed invalid");
+                return Err("epoch salt seed invalid".into());
+            }
+            trace!("Created seed={}", proof);
             let seeds = vec![(lock[0].clone(), proof)];
             // form txn
             let mut transaction = Transaction {
                 hash: String::from(""),
                 amount: 0,
-                extra: serde_json::to_string(&seeds)?,
+                extra: bs58::encode(serde_json::to_string(&seeds)?).into_string(),
                 flag: 'a',
                 sender_key: lock[0].clone(),
-                receive_key: String::from(""),
+                receive_key: String::from("0"),
                 access_key: String::from(""),
                 unlock_time: 0,
                 gas_price: 1,
                 max_gas: u64::MAX,
-                nonce: 0,
+                nonce: get_nonce(lock[0].clone()),
                 timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
             };
             transaction.hash();
             let seed_block = Block::new(vec![transaction], lock[1].clone(), None);
-            let seed_block_rec = seed_block.form_receive_block(Some(lock[0].clone()))?;
+            trace!("Created block={}", seed_block.hash);
+            let seed_block_rec = seed_block.form_receive_block(Some(String::from("0")))?;
+            trace!("Created block={}", seed_block_rec.hash);
+
             seed_block
                 .valid()
                 .and_then(|_| seed_block.enact())
                 .and_then(|_| seed_block_rec.valid())
                 .and_then(|_| seed_block_rec.enact())?;
+            trace!("Enacted blocks");
             let mut blocks: Vec<Block> = vec![seed_block, seed_block_rec];
 
             // create the shuffle bits
             let top_epoch = get_top_epoch()?;
             let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
             let (shuffle_proof, _) = get_vrf(
-                lock[1].clone(),
+                lock[5].clone(),
                 new_epoch.salt.to_string() + &new_epoch.epoch_number.to_string() + &lock[0],
             )?;
 
             let mut transaction = Transaction {
                 hash: String::from(""),
                 amount: 0,
-                extra: shuffle_proof,
+                extra: bs58::encode(shuffle_proof).into_string(),
                 flag: 'z',
                 sender_key: lock[0].clone(),
-                receive_key: String::from(""),
+                receive_key: String::from("0"),
                 access_key: String::from(""),
                 unlock_time: 0,
                 gas_price: 1,
                 max_gas: u64::MAX,
-                nonce: 0,
+                nonce: get_nonce(lock[0].clone()),
                 timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
             };
             transaction.hash();
             let shuffle_bits_block = Block::new(vec![transaction], lock[1].clone(), None);
             let shuffle_bits_block_rec =
-                shuffle_bits_block.form_receive_block(Some(lock[0].clone()))?;
+                shuffle_bits_block.form_receive_block(Some(String::from("0")))?;
             shuffle_bits_block
                 .valid()
                 .and_then(|_| shuffle_bits_block.enact())
@@ -83,32 +94,27 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             blocks.push(shuffle_bits_block_rec);
 
             // create an empty fullnode delta list txn
-            let delta_list: ((String, String), Vec<(String, u8, String)>) = (
-                (
-                    raw_lyra(&lock[0]),
-                    raw_lyra(&lock[0]),
-                ),
-                vec![],
-            );
+            let delta_list: ((String, String), Vec<(String, u8, String)>) =
+                ((raw_lyra(&lock[0]), raw_lyra(&lock[0])), vec![]);
 
             let mut transaction = Transaction {
                 hash: String::from(""),
                 amount: 0,
-                extra: serde_json::to_string(&delta_list)?,
+                extra: bs58::encode(serde_json::to_string(&delta_list)?).into_string(),
                 flag: 'y',
                 sender_key: lock[0].clone(),
-                receive_key: String::from(""),
+                receive_key: String::from("0"),
                 access_key: String::from(""),
                 unlock_time: 0,
                 gas_price: 1,
                 max_gas: u64::MAX,
-                nonce: 0,
+                nonce: get_nonce(lock[0].clone()),
                 timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
             };
             transaction.hash();
             let delta_list_block = Block::new(vec![transaction], lock[1].clone(), None);
             let delta_list_block_rec =
-                delta_list_block.form_receive_block(Some(lock[0].clone()))?;
+                delta_list_block.form_receive_block(Some(String::from("0")))?;
             delta_list_block
                 .valid()
                 .and_then(|_| delta_list_block.enact())
@@ -275,6 +281,9 @@ pub fn handle_vrf_lottery() {
         "VRF lottery started, participating={}",
         config().node_type == 'c'
     );
+    if config().node_type != 'c' {
+        return;
+    }
     let current_epoch = get_top_epoch().unwrap_or_default();
     let next_epoch = Epoch::get(current_epoch.epoch_number + 1).unwrap_or_default();
     let vrf_seed = raw_hash(&(format!("{}{}{}", current_epoch.salt, next_epoch.salt, "-vrflotto")));
@@ -293,23 +302,15 @@ pub fn handle_vrf_lottery() {
             let mut txn = Transaction {
                 hash: String::from(""),
                 amount: 0,
-                extra: vrf_proof.0,
+                extra: bs58::encode(vrf_proof.0).into_string(),
                 flag: 'v',
                 sender_key: lock[0].clone(),
-                receive_key: String::from(""),
+                receive_key: String::from("0"),
                 access_key: String::from(""),
                 unlock_time: 0,
                 gas_price: 20,
                 max_gas: u64::MAX,
-                nonce: get_data(
-                    config().db_path
-                        + &"/chains/".to_owned()
-                        + &lock[0]
-                        + &"-chainindex".to_owned(),
-                    &"txncount".to_owned(),
-                )
-                .parse()
-                .unwrap_or(0),
+                nonce: get_nonce(lock[0].clone()),
                 timestamp: SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .expect("time went backwards")
