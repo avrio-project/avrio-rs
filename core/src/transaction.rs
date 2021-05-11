@@ -466,7 +466,9 @@ impl Verifiable for Transaction {
                         TransactionValidationErrors::WrongAmountRecieverConsensusMessage,
                     ));
                 }
-                match serde_json::from_str::<Vec<(String, String)>>(&self.extra) {
+                match serde_json::from_str::<Vec<(String, String)>>(&String::from_utf8(
+                    bs58::decode(&self.extra).into_vec()?,
+                )?) {
                     Ok(salt_seeds) => {
                         debug!("Decoded salt_seeds={:#?}", salt_seeds);
 
@@ -509,7 +511,7 @@ impl Verifiable for Transaction {
                     ));
                 }
                 match serde_json::from_str::<((String, String), Vec<(String, u8, String)>)>(
-                    &self.extra,
+                    &String::from_utf8(bs58::decode(&self.extra).into_vec()?)?,
                 ) {
                     Ok((hashes, delta_list)) => {
                         debug!("Decoded fullnode delta list, len={}, expected preshuffle_hash={}, expected postshuffle_hash={}", delta_list.len(), hashes.0, hashes.1);
@@ -623,7 +625,11 @@ impl Verifiable for Transaction {
                 let message = &(new_epoch.salt.to_string()
                     + &new_epoch.epoch_number.to_string()
                     + &round_leader);
-                if !validate_vrf(round_leader.clone(), self.extra.clone(), raw_lyra(message)) {
+                if !validate_vrf(
+                    round_leader.clone(),
+                    String::from_utf8(bs58::decode(&self.extra).into_vec()?)?,
+                    raw_lyra(message),
+                ) {
                     error!(
                         "Invalid VRF as shufflebits, proof={}, creator={}, message={}",
                         self.extra, round_leader, message
