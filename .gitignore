@@ -18,3 +18,4 @@ Cargo.lock
 start.sh
 *ppm
 *.mp4
+settings.json
