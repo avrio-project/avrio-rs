@@ -816,11 +816,13 @@ impl Block {
         if let Some(key) = chain_key {
             chain_key_value = key;
         }
-        let mut txn_iter = 0;
-        for txn in blk_clone.clone().txns {
-            txn_iter += 1;
-            if txn.receive_key != chain_key_value {
-                blk_clone.txns.remove(txn_iter);
+        if self.header.chain_key != "0" {
+            let mut txn_iter = 0;
+            for txn in blk_clone.clone().txns {
+                if txn.receive_key != chain_key_value {
+                    blk_clone.txns.remove(txn_iter);
+                }
+                txn_iter += 1;
             }
         }
         if chain_key_value == self.header.chain_key {
@@ -864,11 +866,11 @@ impl Block {
         for txn in &txns {
             if txn.consensus_type() {
                 consensus = true;
-                break
+                break;
             }
         }
         let wallet = Wallet::from_private_key(private_key);
-        let mut  header = Header {
+        let mut header = Header {
             version_major: config().version_major,
             version_breaking: config().version_breaking,
             version_minor: config().version_minor,
