@@ -1,7 +1,9 @@
 // Lyra2
 extern crate lyra2;
 use lyra2::lyra2rev3::sum;
-
+use secp256k1::bitcoin_hashes::sha256;
+use secp256k1::{rand::rngs::OsRng, Signature};
+use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 // sha256
 use sha2::{Digest, Sha256};
 
@@ -188,15 +190,66 @@ impl Hashable for Publickey {
     }
 }
 
+pub fn generate_secp256k1_keypair() -> Vec<String> {
+    if let Ok(mut rng) = OsRng::new() {
+        let secp = Secp256k1::new();
+        let seckey = SecretKey::new(&mut rng);
+        let _pubkey = PublicKey::from_secret_key(&secp, &seckey);
+        return vec![
+            bs58::encode(seckey.as_ref()).into_string(),
+            bs58::encode(_pubkey.serialize()).into_string(),
+        ];
+    } else {
+        return vec![];
+    }
+}
+
+pub fn private_to_public_secp256k1(
+    privatekey: &String,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let secretekey =
+        SecretKey::from_slice(&bs58::decode(privatekey).into_vec()?)?;
+    let secp = Secp256k1::new();
+    let publickey = PublicKey::from_secret_key(&secp, &secretekey);
+    Ok(bs58::encode(publickey.serialize()).into_string())
+}
+
+pub fn sign_secp256k1(
+    privatekey: &String,
+    message: &String,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let privatekey_bytes = bs58::decode(privatekey).into_vec()?;
+    let secretkey: SecretKey = SecretKey::from_slice(&privatekey_bytes)?;
+    let message = Message::from_hashed_data::<sha256::Hash>(message.as_bytes());
+    let secp = Secp256k1::new();
+    Ok(bs58::encode(&secp.sign(&message, &secretkey).to_string().bytes()).into_string())
+}
+
+pub fn valid_signature_secp256k1(
+    publickey: &String,
+    message_string: &String,
+    signature: &String,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let publickey_bytes = bs58::decode(publickey).into_vec()?;
+    let message = Message::from_hashed_data::<sha256::Hash>(message_string.as_bytes());
+    let signature_bytes = bs58::decode(signature).into_vec()?;
+    let publickey = PublicKey::from_slice(&publickey_bytes)?;
+    let signature = Signature::from_str(&String::from_utf8(signature_bytes)?)?;
+    let secp = Secp256k1::new();
+    if secp.verify(&message, &signature, &publickey).is_ok() {
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 pub fn commitee_from_address(address: &str) -> u64 {
-    let decoded: Vec<u8> = bs58::decode(address)
-        .into_vec()
-        .unwrap_or_else(|_| vec![0, 6, 9, 0]);
-    if decoded == vec![0, 6, 9, 0] {
+    let decoded: Vec<u8> = bs58::decode(address).into_vec().unwrap_or_else(|_| vec![]);
+    if decoded.len() == 0 {
         return 0;
     }
-
-    0
+    // TODO
+    1
 }
 
 pub fn get_vrf(
@@ -210,10 +263,10 @@ pub fn get_vrf(
     let message: &[u8] = message.as_bytes();
 
     // VRF proof and hash output
-    let pi = vrf.prove(&secret_key, &message).unwrap();
-    let hash = vrf.proof_to_hash(&pi).unwrap();
+    let proof = vrf.prove(&secret_key, &message).unwrap();
+    let hash = vrf.proof_to_hash(&proof).unwrap();
     return Ok((
-        bs58::encode(pi).into_string(),
+        bs58::encode(proof).into_string(),
         bs58::encode(hash).into_string(),
     ));
 }
@@ -227,14 +280,25 @@ pub fn proof_to_hash(proof: &String) -> Result<String, Box<dyn std::error::Error
 pub fn validate_vrf(public_key: String, proof: String, message: String) -> bool {
     if let Ok(mut vrf) = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI) {
         if let Ok(pi) = bs58::decode(proof).into_vec() {
-            if let Ok(msg_vec) = bs58::decode(message).into_vec() {
-                if let Ok(pubkey) = bs58::decode(public_key).into_vec() {
-                    if let Ok(_) = vrf.verify(&pubkey, &pi, &msg_vec) {
+            let msg_vec = message.as_bytes().to_vec();
+            if let Ok(publickey_bytes) = bs58::decode(public_key).into_vec() {
+                if let Ok(publickey) = PublicKey::from_slice(&publickey_bytes) {
+                    if let Ok(_) = vrf.verify(&publickey.serialize_uncompressed(), &pi, &msg_vec) {
                         return true;
+                    } else {
+                        trace!("vrf invalid");
                     }
+                } else {
+                    trace!("publickey bytes invalid");
                 }
+            } else {
+                trace!("Failed to base decode publickey");
             }
+        } else {
+            trace!("Failed to base decode proof");
         }
+    } else {
+        trace!("Failed to create VRF context");
     }
     false
 }
