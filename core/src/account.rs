@@ -39,6 +39,16 @@ pub fn to_dec(amount: u64) -> f64 {
     }
 }
 
+pub fn get_nonce(publickey: String) -> u64 {
+    avrio_database::get_data(
+        config().db_path
+            + &"/chains/".to_owned()
+            + &publickey
+            + &"-chainindex".to_owned(),
+        &"txncount".to_owned(),
+    ).parse().unwrap_or(0)
+}
+
 impl Account {
     /// Used to get the blance of an account in decimal form not atomic (eg 0.3452 AIO or 345.2)
     pub fn balance_ui(&self) -> Result<f64, Box<dyn std::error::Error>> {
