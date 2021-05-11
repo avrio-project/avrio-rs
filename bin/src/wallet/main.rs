@@ -354,7 +354,7 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
                 .as_millis() as u64,
-            network: vec![97, 118, 114, 105, 111, 32, 110, 111, 111, 100, 108, 101],
+            network: config().network_id,
         },
         block_type: BlockType::Send,
         send_block: None,
