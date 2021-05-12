@@ -25,6 +25,7 @@ use lazy_static::lazy_static;
 use std::{
     collections::HashSet,
     iter::FromIterator,
+    str::FromStr,
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -472,14 +473,20 @@ impl Verifiable for Transaction {
                     Ok(salt_seeds) => {
                         debug!("Decoded salt_seeds={:#?}", salt_seeds);
 
-                        let mut message = String::from("genesis"); // TODO fix the fact epoch 0 & 1 use this seed
+                        let mut message = String::from("genesis");
                         if top_epoch.epoch_number != 0 {
                             message = raw_lyra(&(top_epoch.epoch_number.to_string() + "epoch"))
                         }
                         for (publickey, seed) in salt_seeds {
                             trace!("Validating seed {}", seed);
-                            if !validate_vrf(publickey.clone(), seed.clone(), message.clone()) {
-                                error!("Invalid VRF as epoch salt seed, proof={}, creator={}, message={}", seed, publickey, message);
+                            // get the secp256k1 publickey for this salter
+                            let cert = Certificate::get(publickey)?;
+                            if !validate_vrf(
+                                cert.secp256k1_publickey.clone(),
+                                seed.clone(),
+                                message.clone(),
+                            ) {
+                                error!("Invalid VRF as epoch salt seed, proof={}, creator={}, message={}", seed, cert.secp256k1_publickey, message);
                                 return Err(Box::new(TransactionValidationErrors::InvalidVrf));
                             }
                         }
@@ -625,14 +632,16 @@ impl Verifiable for Transaction {
                 let message = &(new_epoch.salt.to_string()
                     + &new_epoch.epoch_number.to_string()
                     + &round_leader);
+                // now get the round leaders secp256k1 publickey from their fullnode certificate
+                let cert = Certificate::get(round_leader)?;
                 if !validate_vrf(
-                    round_leader.clone(),
+                    cert.secp256k1_publickey.clone(),
                     String::from_utf8(bs58::decode(&self.extra).into_vec()?)?,
                     raw_lyra(message),
                 ) {
                     error!(
                         "Invalid VRF as shufflebits, proof={}, creator={}, message={}",
-                        self.extra, round_leader, message
+                        self.extra, self.sender_key, message
                     );
                     return Err(Box::new(TransactionValidationErrors::InvalidVrf));
                 }
@@ -667,8 +676,9 @@ impl Verifiable for Transaction {
                 let ticket_hash =
                     raw_hash(&format!("{}{}{}", self.hash, self.sender_key, self.extra))[0..5]
                         .to_string();
+                let cert = Certificate::get(self.sender_key.clone())?;
                 if !validate_vrf(
-                    self.sender_key.clone(),
+                    cert.secp256k1_publickey.clone(),
                     self.extra.clone(),
                     vrf_seed.clone(),
                 ) {
@@ -946,7 +956,9 @@ impl Verifiable for Transaction {
             top_epoch.save()?;
             trace!("Saved epoch");
         } else if txn_type == 'a' {
-            match serde_json::from_str::<Vec<(String, String)>>(&self.extra) {
+            match serde_json::from_str::<Vec<(String, String)>>(&String::from_utf8(
+                bs58::decode(&self.extra).into_vec()?,
+            )?) {
                 Ok(salt_seeds) => {
                     debug!("Decoded salt_seeds={:#?}", salt_seeds);
                     let mut salt_string = String::from("");
@@ -958,14 +970,16 @@ impl Verifiable for Transaction {
                     }
                     debug!("Final salt_string={}", salt_string);
                     // now parse the string into a big number
-                    let salt_big = vrf_hash_to_integer(salt_string);
-                    let salt_mod = salt_big.clone() % BigDecimal::from(u64::MAX); // now SHOULD be safe to cast to u64
+                    let salt_big = BigDecimal::from_str(&salt_string)?;
+                    let salt_mod = salt_big.clone() * BigDecimal::from(u64::MAX); // now SHOULD be safe to cast to u64
                     trace!(
                         "Moduloed big salt: salt_big={}, salt_mod={}",
                         salt_big,
                         salt_mod
                     );
-                    if let Ok(epoch_salt) = salt_mod.to_string().parse::<u64>() {
+                    if let Ok(epoch_salt) =
+                        salt_mod.to_string().split('.').collect::<Vec<&str>>()[0].parse::<u64>()
+                    {
                         debug!("Calculated epoch salt: {}", epoch_salt);
                         // now we create the next epoch on disk
                         let mut top_epoch = get_top_epoch()?;
@@ -989,6 +1003,9 @@ impl Verifiable for Transaction {
                         for callback in &*callbacks {
                             (callback)();
                         }
+                    } else {
+                        error!("Failed to parse epoch salt as u64");
+                        return Err("Failed to parse epoch salt as u64".into());
                     }
                 }
                 Err(e) => {
@@ -998,9 +1015,11 @@ impl Verifiable for Transaction {
             }
         } else if self.flag == 'z' {
             // announceShuffleBitsTxn
-            let shuffle_bits_big = vrf_hash_to_integer(proof_to_hash(&self.extra)?);
+            let shuffle_bits_big = vrf_hash_to_integer(proof_to_hash(&String::from_utf8(
+                bs58::decode(&self.extra).into_vec()?,
+            )?)?);
             let shuffle_bits_mod =
-                shuffle_bits_big.clone() % BigDecimal::from_u128(u128::MAX).unwrap_or_default(); // now SHOULD be safe to cast to u64
+                shuffle_bits_big.clone() * BigDecimal::from_u128(u128::MAX).unwrap_or_default(); // now SHOULD be safe to cast to u64
             trace!(
                 "Moduloed big salt: shuffle_bits_big={}, shuffle_bits_mod={}",
                 shuffle_bits_big,
@@ -1017,8 +1036,9 @@ impl Verifiable for Transaction {
         } else if self.flag == 'y' {
             // fullnode list delta
             // format: ((String, String), Vec<(String, u8, String)) 0.0: Preshuffle hash, 0.1: postshuffle hash, 1.0: publickey, 1.1: reason/type (0 = join via vrf eevrythign else = leave), 1.2: proof (the hash of the block it happened in)
-            match serde_json::from_str::<((String, String), Vec<(String, u8, String)>)>(&self.extra)
-            {
+            match serde_json::from_str::<((String, String), Vec<(String, u8, String)>)>(
+                &String::from_utf8(bs58::decode(&self.extra).into_vec()?)?,
+            ) {
                 Ok((hashes, delta_list)) => {
                     debug!("Decoded fullnode delta list, len={}, expected preshuffle_hash={}, expected postshuffle_hash={}", delta_list.len(), hashes.0, hashes.1);
                     trace!(
@@ -1077,7 +1097,7 @@ impl Verifiable for Transaction {
                     sort_full_list(&mut fullnodes, (shuffle_seed * (u64::MAX as f64)) as u64);
                     // now form the committees from this shuffled list
                     let mut excluded_nodes: Vec<String> = vec![]; // will contain the publickey of any nodes not included in tis epoch
-                    let number_of_committes = 2; // TODO: calculate number of committees, for now its hardcoded as 2
+                    let number_of_committes = 1; // TODO: calculate number of committees, for now its hardcoded as 2
                     let committees: Vec<Comitee> = Comitee::form_comitees(
                         &mut fullnodes,
                         &mut excluded_nodes,
