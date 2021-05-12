@@ -368,6 +368,11 @@ impl Verifiable for Block {
                 // check the refrenced send block is a valid consensus send block
                 if let Some(send_block) = block.send_block.clone() {
                     let send_block_struct = get_block_from_raw(send_block.clone());
+                    trace!(
+                        "Got send block {} for consensus recieve block {}",
+                        send_block_struct.hash,
+                        block.hash
+                    );
                     if send_block_struct.header.chain_key != "0" {
                         error!("Consensus block {} references non-consensus or non-existing send block {}", block.hash, send_block);
                         return Err(Box::new(BlockValidationErrors::NonConsensusSendBlock));
@@ -378,8 +383,10 @@ impl Verifiable for Block {
                     for txn in &block.txns {
                         if !send_block_struct.txns.contains(txn) {
                             error!("Consensus block {} contains txn {} which is not in consensus send block {}", block.hash, txn.hash, send_block);
+                            return Err(Box::new(
+                                BlockValidationErrors::TransactionsNotInSendBlock,
+                            ));
                         }
-                        return Err(Box::new(BlockValidationErrors::TransactionsNotInSendBlock));
                     }
                 } else {
                     error!(
@@ -413,37 +420,40 @@ impl Verifiable for Block {
                     );
                     return Err(Box::new(BlockValidationErrors::UnauthorisedConsensusBlock));
                 }
-                if let Err(e) = txn.valid() {
-                    error!(
-                        "Consensus block {} contains invalid txn {}, reason={}",
-                        block.hash, txn.hash, e
-                    );
-                    return Err(Box::new(BlockValidationErrors::InvalidTransaction(e)));
+                if self.block_type == BlockType::Send {
+                    if let Err(e) = txn.valid() {
+                        error!(
+                            "Consensus block {} contains invalid txn {}, reason={}",
+                            block.hash, txn.hash, e
+                        );
+                        return Err(Box::new(BlockValidationErrors::InvalidTransaction(e)));
+                    }
                 }
             }
-            // get previous block
-            let got_block = get_block("0", block.header.height - 1);
-            if got_block == Block::default() {
-                error!("Cannot find block at height={} for consensus chain with hash={} (while validating consensus block with hash={})", block.header.height, block.header.prev_hash, block.hash);
-                return Err(Box::new(BlockValidationErrors::PreviousBlockDoesNotExist));
-            } else if got_block.hash != block.header.prev_hash {
-                error!(
-                    "Previous block hash mismatch, expected={}, got={}",
-                    block.header.prev_hash, got_block.hash
-                );
-                return Err(Box::new(BlockValidationErrors::InvalidPreviousBlockhash));
-            }
-            // else: the previous block exists and has the correct hash
-            // check timestamp of block
-            if block.header.timestamp < got_block.header.timestamp {
-                error!("Block with hash={} older than parent block with hash={}, block_timestamp={}, parent_timestamp={}", block.hash, got_block.hash, block.header.timestamp, got_block.header.timestamp);
-            } else if block.header.timestamp - (config.transaction_timestamp_max_offset as u64)
-                > (SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Time went backwards")
-                    .as_millis() as u64)
-            {
-                error!(
+            if block.header.height != 0 {
+                // get previous block
+                let got_block = *Block::get(self.header.prev_hash.clone()).unwrap_or_default();
+                if got_block == Block::default() {
+                    error!("Cannot find block at height={} for consensus chain with hash={} (while validating consensus block with hash={})", block.header.height - 1, block.header.prev_hash, block.hash);
+                    return Err(Box::new(BlockValidationErrors::PreviousBlockDoesNotExist));
+                } else if got_block.hash != block.header.prev_hash {
+                    error!(
+                        "Previous block hash mismatch, expected={}, got={}",
+                        block.header.prev_hash, got_block.hash
+                    );
+                    return Err(Box::new(BlockValidationErrors::InvalidPreviousBlockhash));
+                }
+                // else: the previous block exists and has the correct hash
+                // check timestamp of block
+                if block.header.timestamp < got_block.header.timestamp {
+                    error!("Block with hash={} older than parent block with hash={}, block_timestamp={}, parent_timestamp={}", block.hash, got_block.hash, block.header.timestamp, got_block.header.timestamp);
+                } else if block.header.timestamp - (config.transaction_timestamp_max_offset as u64)
+                    > (SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards")
+                        .as_millis() as u64)
+                {
+                    error!(
             "Block with hash={} is too far in the future, transaction_timestamp_max_offset={}, block_timestamp={}, delta_timestamp={}, our_time={}", 
             block.hash,
             config.transaction_timestamp_max_offset,
@@ -453,7 +463,8 @@ impl Verifiable for Block {
                 .expect("Time went backwards")
                 .as_millis()
         );
-                return Err(Box::new(BlockValidationErrors::BlockTooFarInTheFuture));
+                    return Err(Box::new(BlockValidationErrors::BlockTooFarInTheFuture));
+                }
             }
             //check the block has at most 3 transactions in it
             if block.txns.len() > 3 {
@@ -869,60 +880,108 @@ impl Block {
                 break;
             }
         }
-        let wallet = Wallet::from_private_key(private_key);
-        let mut header = Header {
-            version_major: config().version_major,
-            version_breaking: config().version_breaking,
-            version_minor: config().version_minor,
-            chain_key: wallet.public_key.clone(),
-            prev_hash: get_data(
-                config().db_path
-                    + &"/chains/".to_owned()
-                    + &wallet.public_key
-                    + &"-chainindex".to_owned(),
-                "topblockhash",
-            ),
-            height: get_data(
-                config().db_path
-                    + &"/chains/".to_owned()
-                    + &wallet.public_key
-                    + &"-chainindex".to_owned(),
-                "blockcount",
-            )
-            .parse()
-            .unwrap_or_default(),
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("time went backwards")
-                .as_millis() as u64,
-            network: config().network_id,
-        };
+        let mut wallet = Wallet::from_private_key(private_key);
         if consensus {
-            header.chain_key = String::from("0")
-        }
-        let mut blk: Block;
-        if send_block.is_some() {
-            blk = Block {
-                header,
-                block_type: BlockType::Recieve,
-                send_block,
-                txns,
-                hash: String::from(""),
-                signature: String::from(""),
+            let mut header = Header {
+                version_major: config().version_major,
+                version_breaking: config().version_breaking,
+                version_minor: config().version_minor,
+                chain_key: "0".to_string(),
+                prev_hash: get_data(
+                    config().db_path + &"/chains/0-chainindex".to_owned(),
+                    "topblockhash",
+                ),
+                height: get_data(
+                    config().db_path + &"/chains/0-chainindex".to_owned(),
+                    "blockcount",
+                )
+                .parse()
+                .unwrap_or_default(),
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("time went backwards")
+                    .as_millis() as u64,
+                network: config().network_id,
             };
+            if header.prev_hash == "-1" {
+                trace!("No top block hash for genesis block");
+                header.prev_hash = String::from("00000000000")
+            }
+            let mut blk: Block;
+            if send_block.is_some() {
+                blk = Block {
+                    header,
+                    block_type: BlockType::Recieve,
+                    send_block,
+                    txns,
+                    hash: String::from(""),
+                    signature: String::from(""),
+                };
+            } else {
+                blk = Block {
+                    header,
+                    block_type: BlockType::Send,
+                    send_block: None,
+                    txns,
+                    hash: String::from(""),
+                    signature: String::from(""),
+                };
+            }
+            blk.hash();
+            let _ = blk.sign(&wallet.private_key);
+            return blk;
         } else {
-            blk = Block {
-                header,
-                block_type: BlockType::Send,
-                send_block: None,
-                txns,
-                hash: String::from(""),
-                signature: String::from(""),
+            let header = Header {
+                version_major: config().version_major,
+                version_breaking: config().version_breaking,
+                version_minor: config().version_minor,
+                chain_key: wallet.public_key.clone(),
+                prev_hash: get_data(
+                    config().db_path
+                        + &"/chains/".to_owned()
+                        + &wallet.public_key
+                        + &"-chainindex".to_owned(),
+                    "topblockhash",
+                ),
+                height: get_data(
+                    config().db_path
+                        + &"/chains/".to_owned()
+                        + &wallet.public_key
+                        + &"-chainindex".to_owned(),
+                    "blockcount",
+                )
+                .parse()
+                .unwrap_or_default(),
+                timestamp: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("time went backwards")
+                    .as_millis() as u64,
+                network: config().network_id,
             };
+            let mut blk: Block;
+            if send_block.is_some() {
+                blk = Block {
+                    header,
+                    block_type: BlockType::Recieve,
+                    send_block,
+                    txns,
+                    hash: String::from(""),
+                    signature: String::from(""),
+                };
+            } else {
+                blk = Block {
+                    header,
+                    block_type: BlockType::Send,
+                    send_block: None,
+                    txns,
+                    hash: String::from(""),
+                    signature: String::from(""),
+                };
+            }
+            blk.hash();
+            let _ = blk.sign(&wallet.private_key);
+            return blk;
         }
-        blk.hash();
-        let _ = blk.sign(&wallet.private_key);
-        return blk;
     }
 }
 
