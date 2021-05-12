@@ -207,8 +207,7 @@ pub fn generate_secp256k1_keypair() -> Vec<String> {
 pub fn private_to_public_secp256k1(
     privatekey: &String,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let secretekey =
-        SecretKey::from_slice(&bs58::decode(privatekey).into_vec()?)?;
+    let secretekey = SecretKey::from_slice(&bs58::decode(privatekey).into_vec()?)?;
     let secp = Secp256k1::new();
     let publickey = PublicKey::from_secret_key(&secp, &secretekey);
     Ok(bs58::encode(publickey.serialize()).into_string())
@@ -271,10 +270,20 @@ pub fn get_vrf(
     ));
 }
 pub fn proof_to_hash(proof: &String) -> Result<String, Box<dyn std::error::Error>> {
+    trace!("Turning VRF proof: {} into hash", proof);
     let _as_bytes = bs58::decode(proof).into_vec().unwrap_or_default();
     let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).unwrap();
-    let hash = vrf.proof_to_hash(&proof.as_bytes()).unwrap();
-    Ok(bs58::encode(hash).into_string())
+    let proof_to_hash_result = vrf.proof_to_hash(&bs58::decode(&proof).into_vec()?);
+    if let Ok(hash) = proof_to_hash_result {
+        Ok(bs58::encode(hash).into_string())
+    } else {
+        error!(
+            "Failed to turn proof={} into hash, gave error={}",
+            proof,
+            proof_to_hash_result.unwrap_err()
+        );
+        return Err("failed to turn vrf proof into hash".into());
+    }
 }
 
 pub fn validate_vrf(public_key: String, proof: String, message: String) -> bool {
@@ -311,10 +320,10 @@ pub fn vrf_hash_to_integer(hash: String) -> BigDecimal {
     log::trace!("as_binary={}", as_binary);
     let before_normal = binary_to_u512(as_binary.clone());
     log::trace!("before_normal={}", before_normal);
-    let _two_u518: U512 = 2.into();
-
     let bn_dec = BigDecimal::from_str(&before_normal.to_string()).unwrap();
-    BigDecimal::from_str(&format!("0.{}", bn_dec.normalized())).unwrap()
+    let after_normal = BigDecimal::from_str(&format!("0.{}", bn_dec.normalized())).unwrap();
+    trace!("After normal={}", after_normal);
+    after_normal
 }
 
 fn binary_to_u512(s: String) -> U512 {
@@ -331,25 +340,6 @@ fn binary_to_u512(s: String) -> U512 {
         binary_digit -= 1;
     }
     return real_num;
-}
-
-fn divide_two_vec(a: Vec<u8>, b: Vec<u8>) -> Vec<f64> {
-    if a.len() != b.len() {
-        return vec![];
-    }
-    let mut out: Vec<f64> = vec![];
-    for i in 0..a.len() {
-        out.push(a[i] as f64 / b[i] as f64);
-    }
-    out
-}
-
-fn max_vec(len: u64) -> Vec<u8> {
-    let mut out: Vec<u8> = vec![];
-    for _ in 0..len {
-        out.push(255);
-    }
-    out
 }
 
 pub fn valid_address(address: &str) -> bool {
