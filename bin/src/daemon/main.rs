@@ -7,7 +7,7 @@ use std::{
     io::{self, Write},
     time::{SystemTime, UNIX_EPOCH},
 };
-
+use std::panic;
 use avrio_core::{
     account::to_dec,
     certificate::{generate_certificate, get_fullnode_count},
@@ -54,7 +54,10 @@ extern crate hex;
 use avrio_api::start_server;
 
 extern crate avrio_crypto;
-use avrio_crypto::{get_vrf, proof_to_hash, raw_hash, vrf_hash_to_integer, Wallet, generate_secp256k1_keypair, private_to_public_secp256k1};
+use avrio_crypto::{
+    generate_secp256k1_keypair, get_vrf, private_to_public_secp256k1, proof_to_hash, raw_hash,
+    vrf_hash_to_integer, Wallet,
+};
 use bigdecimal::BigDecimal;
 use fern::colors::{Color, ColoredLevelConfig};
 
@@ -199,7 +202,9 @@ fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
         .chain(file_config)
         .chain(stdout_config)
         .apply()?;
-
+    panic::set_hook(Box::new(|pan| {
+        error!("FATAL: {}", pan);
+    }));
     Ok(())
 }
 fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
@@ -394,6 +399,10 @@ fn main() {
                         .duration_since(UNIX_EPOCH)
                         .expect("time went backwards")
                         .as_millis();
+                    let mut conf = config();
+                    conf.node_type = 'f';
+                    let _ = conf.create().unwrap();
+
                     if now > config().first_epoch_time as u128 {
                         warn!(
                             "Missed targeted genesis epoch time of {} by {} ms",
@@ -564,6 +573,21 @@ fn main() {
         if read == "exit" {
             safe_exit();
             process::exit(0);
+        } else if read.split(' ').collect::<Vec<&str>>()[0] == "get_data" {
+            let mut params = read.split(' ').collect::<Vec<&str>>();
+            if params.len() != 3 {
+                error!("Needs 2 params (tip:  use 'none' if you want a value to be empty)")
+            } else {
+                for param in params.iter_mut() {
+                    if *param == "none" {
+                        *param = "";
+                    }
+                }
+                info!(
+                    "Got data: {}",
+                    get_data(config().db_path + "/" + params[1], params[2])
+                );
+            }
         } else if read == "address_details" {
             info!("Enter the address of the account.");
             let addr: String = read!("{}\n");
@@ -761,7 +785,7 @@ pub fn register_fullnode(
         &commitment,
         invite,
         bs58::encode(bls_private_key.as_bytes()).into_string(),
-        secp_keypair[0].clone()
+        secp_keypair[0].clone(),
     ) {
         trace!("Formed certificate={:#?}", cert);
         // form a transaction using the private key given before, add it to a block and send
@@ -893,7 +917,7 @@ pub fn register_fullnode(
                                                         wallet.private_key,
                                                         bs58::encode(bls_private_key.as_bytes())
                                                             .into_string(),
-                                                            secp_keypair[0].clone()
+                                                        secp_keypair[0].clone(),
                                                     ]) {
                                                         error!("Failed to save keypair to disk; error={}", e);
                                                     } else {
@@ -938,7 +962,10 @@ pub fn open_keypair() -> Vec<String> {
         } else {
             let privkeys: Vec<String> = serde_json::from_str(&data).unwrap_or_default();
             if privkeys.len() != 3 {
-                error!("Bad fullnode keyfile, expected 3 private keys, got {}", privkeys.len());
+                error!(
+                    "Bad fullnode keyfile, expected 3 private keys, got {}",
+                    privkeys.len()
+                );
                 safe_exit();
             }
             let wallet = Wallet::from_private_key(privkeys[0].clone());
