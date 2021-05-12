@@ -17,7 +17,6 @@ pub fn claim_reward() -> Result<u64, Box<dyn std::error::Error>> {
 
 pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting genesis epoch");
-    // TODO: write genesis epoch start code
     // create the salt from just our VRF
     match FULLNODE_KEYS.lock() {
         /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
@@ -48,14 +47,28 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             transaction.hash();
             let seed_block = Block::new(vec![transaction], lock[1].clone(), None);
             trace!("Created block={}", seed_block.hash);
-            let seed_block_rec = seed_block.form_receive_block(Some(String::from("0")))?;
+            let mut seed_block_rec = seed_block.form_receive_block(Some(String::from("0")))?;
+            let _ = seed_block_rec.sign(&lock[1]).unwrap();
             trace!("Created block={}", seed_block_rec.hash);
 
-            seed_block
+            if let Err(seed_error) = seed_block
                 .valid()
+                .and_then(|_| seed_block.save())
                 .and_then(|_| seed_block.enact())
                 .and_then(|_| seed_block_rec.valid())
-                .and_then(|_| seed_block_rec.enact())?;
+                .and_then(|_| seed_block_rec.save())
+                .and_then(|_| seed_block_rec.enact())
+            {
+                error!(
+                    "Failed to broadcast epoch seed in block, got error={}",
+                    seed_error
+                );
+                return Err(format!(
+                    "Failed to broadcast epoch seed in block, got error={}",
+                    seed_error
+                )
+                .into());
+            }
             trace!("Enacted blocks");
             let mut blocks: Vec<Block> = vec![seed_block, seed_block_rec];
 
@@ -64,7 +77,7 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
             let (shuffle_proof, _) = get_vrf(
                 lock[5].clone(),
-                new_epoch.salt.to_string() + &new_epoch.epoch_number.to_string() + &lock[0],
+                raw_lyra(&(new_epoch.salt.to_string() + &new_epoch.epoch_number.to_string() + &lock[0])),
             )?;
 
             let mut transaction = Transaction {
@@ -83,19 +96,34 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             };
             transaction.hash();
             let shuffle_bits_block = Block::new(vec![transaction], lock[1].clone(), None);
-            let shuffle_bits_block_rec =
+            let mut shuffle_bits_block_rec =
                 shuffle_bits_block.form_receive_block(Some(String::from("0")))?;
-            shuffle_bits_block
+            let _ = shuffle_bits_block_rec.sign(&lock[1]).unwrap();
+
+            if let Err(shuffle_bits_error) = shuffle_bits_block
                 .valid()
+                .and_then(|_| shuffle_bits_block.save())
                 .and_then(|_| shuffle_bits_block.enact())
                 .and_then(|_| shuffle_bits_block_rec.valid())
-                .and_then(|_| shuffle_bits_block_rec.enact())?;
+                .and_then(|_| shuffle_bits_block_rec.save())
+                .and_then(|_| shuffle_bits_block_rec.enact())
+            {
+                error!(
+                    "Failed to broadcast shuffle bits in block, got error={}",
+                    shuffle_bits_error
+                );
+                return Err(format!(
+                    "Failed to broadcast shuffle bits in block, got error={}",
+                    shuffle_bits_error
+                )
+                .into());
+            }
             blocks.push(shuffle_bits_block);
             blocks.push(shuffle_bits_block_rec);
 
             // create an empty fullnode delta list txn
             let delta_list: ((String, String), Vec<(String, u8, String)>) =
-                ((raw_lyra(&lock[0]), raw_lyra(&lock[0])), vec![]);
+                ((raw_lyra(&lock[0]), raw_lyra(&top_epoch.committees[0].hash)), vec![]);
 
             let mut transaction = Transaction {
                 hash: String::from(""),
@@ -113,13 +141,28 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             };
             transaction.hash();
             let delta_list_block = Block::new(vec![transaction], lock[1].clone(), None);
-            let delta_list_block_rec =
+            let mut delta_list_block_rec =
                 delta_list_block.form_receive_block(Some(String::from("0")))?;
-            delta_list_block
+            let _ = delta_list_block_rec.sign(&lock[1]).unwrap();
+
+            if let Err(delta_list_error) = delta_list_block
                 .valid()
+                .and_then(|_| delta_list_block.save())
                 .and_then(|_| delta_list_block.enact())
                 .and_then(|_| delta_list_block_rec.valid())
-                .and_then(|_| delta_list_block_rec.enact())?;
+                .and_then(|_| delta_list_block_rec.save())
+                .and_then(|_| delta_list_block_rec.enact())
+            {
+                error!(
+                    "Failed to broadcast delta_list in block, got error={}",
+                    delta_list_error
+                );
+                return Err(format!(
+                    "Failed to broadcast delta_list in block, got error={}",
+                    delta_list_error
+                )
+                .into());
+            }
             blocks.push(delta_list_block);
             blocks.push(delta_list_block_rec);
             // send blocks to network
