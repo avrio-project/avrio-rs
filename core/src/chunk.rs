@@ -1,9 +1,15 @@
-use crate::{block::Block, epoch::get_top_epoch, validate::Verifiable};
+use crate::{
+    account::{get_account, to_atomc, Account},
+    block::Block,
+    epoch::get_top_epoch,
+    validate::Verifiable,
+};
 use avrio_config::config;
 use avrio_crypto::Hashable;
 use avrio_database::{get_data, save_data};
 use bls_signatures::{aggregate, verify_messages, PrivateKey, PublicKey, Serialize, Signature};
 use std::convert::TryInto;
+#[derive(Debug)]
 pub struct BlockChunk {
     pub hash: String,
     pub round: u64,
@@ -73,7 +79,7 @@ impl Verifiable for BlockChunk {
                         } else {
                             let committee = committees.remove(self.committee as usize);
                             drop(committees);
-                            // now for each self.signer we get their coorosponding ECDSA publickey and check they are part of the committee
+                            // now for each signer we get their coorosponding ECDSA publickey and check they are part of the committee
                             for (index, bls_signer) in self.signers.clone().iter().enumerate() {
                                 let mut buffer = vec![];
                                 if let Err(e) = bls_signer.write_bytes(&mut buffer) {
@@ -167,6 +173,73 @@ impl Verifiable for BlockChunk {
                     + &self.committee.to_string(),
             ) == 1
             {
+                // Now we calculate the reward for the validators and the proposer:
+                // Proposer reward: txn_fees + (base_reward *  (signers_count / commitee size))
+                // Validator reward: 5 / signers_count
+                let base_reward: u64 = to_atomc(1.0);
+                let mut txn_fees: u64 = 0;
+                for block_hash in &self.blocks {
+                    // get the block
+                    let block = Block::get(block_hash.clone())?;
+                    for txn in block.txns {
+                        txn_fees += txn.fee();
+                    }
+                }
+                // now calculate the percentage of validators who signed the chunk
+                let committee = get_top_epoch()?.committees.remove(self.committee as usize);
+                let signer_percent = committee.members.len() / self.signers.len();
+                let proposer_reward = txn_fees + (base_reward * signer_percent as u64);
+                debug!(
+                    "Proposer reward for block chunk {}: {}",
+                    self.hash, proposer_reward
+                );
+
+                // now the validator reward
+                let validator_reward = 5 / (self.signers.len() as u64);
+                debug!(
+                    "Validator reward for block chunk {}: {}",
+                    self.hash, validator_reward
+                );
+                debug!(
+                    "Total mint for block chunk {} = {}",
+                    self.hash,
+                    (base_reward * signer_percent as u64) + 5
+                );
+                // now apply these rewards
+                for (index, bls_signer) in self.signers.clone().iter().enumerate() {
+                    let mut buffer = vec![];
+                    if let Err(e) = bls_signer.write_bytes(&mut buffer) {
+                        error!("Failed to write bls publickey bytes to buffer, gave error={}", e);
+                        return Err("Failed to write publickey bytes to buffer".into());
+                    } else {
+                        let ecdsa_publickey = get_data(
+                            config().db_path + "/blslookup",
+                            &bs58::encode(&buffer).into_string(),
+                        );
+                        if ecdsa_publickey == "-1" {
+                            error!("Cannot find corrosponding ECDSA publickey for BLS signer {}", &bs58::encode(buffer).into_string());
+                            return Err("Could not find ECDSA counterpart for signers BLS publickey".into());
+                        } else {
+                            if index == 0 {
+                                if let Ok(mut proposer) = get_account(&ecdsa_publickey) {
+                                    proposer.balance += proposer_reward;
+                                } else {
+                                    error!("Failed to get proposer {} of block chunk {}'s account", ecdsa_publickey, self.hash);
+                                    return Err("Failed to get proposer account".into());
+                                }
+                            } else {
+                                if let Ok(mut validator) = get_account(&ecdsa_publickey) {
+                                    validator.balance += validator_reward;
+                                } else {
+                                    error!("Failed to get validator {} of block chunk {}'s account", ecdsa_publickey, self.hash);
+                                    return Err("Failed to get validator account".into());
+                                }
+                            }
+                        }
+                    }
+                }
+                debug!("Applied all rewards for chunk {}", self.hash);
+
                 return Ok(());
             } else {
                 return Err("Failed to save data".into());
@@ -191,6 +264,21 @@ impl Hashable for BlockChunk {
 }
 
 impl BlockChunk {
+    // forms a empty block chunk
+    pub fn empty(committee: u64) -> Result<Box<BlockChunk>, Box<dyn std::error::Error>> {
+        let top_epoch = get_top_epoch()?;
+        let top_round_index: u64 = get_data(
+            config().db_path + "/blockchunks",
+            &(committee.to_string() + "-round-" + &top_epoch.epoch_number.to_string()),
+        )
+        .parse()?;
+        let mut top = BlockChunk::get_by_round(top_round_index, top_epoch.epoch_number, committee)?;
+        top.blocks = vec![];
+        top.aggregated_signature = String::from("");
+        top.signers = vec![];
+        top.hash = top.hash_item();
+        Ok(top)
+    }
     pub fn form(
         blocks: &Vec<Block>,
         committee: u64,
