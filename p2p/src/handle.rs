@@ -12,8 +12,12 @@ use std::{
 };
 
 use avrio_config::config;
-use avrio_core::block::{from_compact, get_block, get_block_from_raw, Block};
-use avrio_core::mempool::{add_block, Caller};
+use avrio_core::{mempool::{add_block, Caller, get_block as get_block_mempool}, validate::Verifiable};
+use avrio_core::{
+    block::{from_compact, get_block, get_block_from_raw, Block},
+    epoch::get_top_epoch,
+    chunk::BlockChunk
+};
 use avrio_database::{get_data, open_database};
 use avrio_rpc::block_announce;
 use lazy_static::lazy_static;
@@ -287,7 +291,85 @@ pub fn process_handle_msg(
                 "Received a p2p message with type 0. Likeley corrupted"
             );
         }
+        // generate Epoch Salt seed
+        0x06 => {
+            debug!("Asked to create epoch salt");
+            // check if we are in the consensus commtiee and in a valid position (not round leader) to produce a epoch salt seed VRF
+            let top_epoch = get_top_epoch().unwrap();
+            if top_epoch.committees[0].get_round_leader().unwrap_or_default() == config().chain_key || !top_epoch.committees[0].members.contains(&config().chain_key) {
+                error!("Asked to create epoch salt by {} but not in valid position", stream.peer_addr()
+                .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)));
+            } else {
+                debug!("Creating epoch salt seed VRF");
+            }
+        }
         // ping 
+        0x49 => {
+            // params: commitee, epoch, start_round, end_round (checksum = sum(params))
+            let (committee, epoch, start, end, checksum): (u64, u64, u64, u64, u64) = serde_json::from_str(&read_msg.message).unwrap_or_default();
+            if committee + epoch + start + end != checksum {
+                error!("Failed to parse get block chunks params");
+            } else {
+                let mut chunks: Vec<String> = vec![];
+                for round in start..=end {
+                    trace!("Getting chunk for round {}", round);
+                    if let Ok(chunk) = BlockChunk::get_by_round(round, epoch, committee) {
+                        chunks.push((*chunk).encode().unwrap_or_default());
+                    }
+                }
+                trace!("Found {} chunks from {} to {} (epoch={}, committee={})", chunks.len(), start, end, epoch, committee);
+                if let Ok(encoded_payload) = serde_json::to_string(&chunks) {   
+                    trace!("Encoded block chunks payload: {}", encoded_payload);             
+                    if let Err(send_error) = send(encoded_payload, stream, 0x50, true, None) {
+                        error!("Failed to respond to get block chunks (range) request, got error={} while sending response", send_error);
+                    } else {
+                        debug!("Responded to peer={:?}'s get block chunks request", stream.peer_addr()
+                        .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)));
+                    }
+                } else {
+                    error!("Failed to encode block chunks vector");
+                }
+            }
+        }
+        0x50 => {
+            // we just got a block chunk, validate it and ask for any blocks we dont have yet, then enact it and all blocks
+            if let Ok(chunk) = BlockChunk::decode(read_msg.message.clone()) {
+                trace!("Decoded block chunk {} from peer", chunk.hash);
+                if let Err(block_chunk_error) = chunk.valid() {
+                    debug!("Recieved block chunk {}, invalid. reason={}", chunk.hash, block_chunk_error)
+                } else {
+                    debug!("Recieved block chunk {}, valid", chunk.hash);
+                    // check we have all blocks
+                    let mut to_get: Vec<&String> = vec![];
+                    for block_hash in &chunk.blocks {
+                        trace!("Checking if we have {} in mempool", block_hash);
+                        if get_block_mempool(block_hash).is_err() {
+                            trace!("{} not found in mempool, getting", block_hash);
+                            to_get.push(block_hash);
+                        }
+                    }
+                    debug!("Have to get {} blocks for chunk {}", to_get.len(), chunk.hash);
+                    // TODO: get blocks
+                    let got_blocks: Vec<Block> = vec![];
+                    debug!("Got {} blocks (expected={}) for chunk {}", got_blocks.len(), to_get.len(), chunk.hash);
+                    // now we enact the chunk (not blocks yet)
+                    if let Err(chunk_enacting_error) = chunk.enact() {
+                        error!("Failed to enact valid block chunk {} (recieved over p2p), error={}", chunk.hash, chunk_enacting_error);
+                        error!("Chunk: {:?}", chunk);
+                    } else {
+                        debug!("Enacted chunk {}", chunk.hash);
+                        // now we go through and enact the blocks validated by the chunk
+                        for block in &got_blocks {
+                            if let Err(block_enacting_error) = block.enact() {
+                                error!("Failed to enact valid block {} contained in chunk {} (recieved over p2p), error={}", block.hash, chunk.hash, block_enacting_error);
+                                error!("Block: {:?}", block);
+                            }
+                        }
+                        debug!("Enacted all {} blocks for chunk {}; done", got_blocks.len(), chunk.hash);
+                    }
+                }
+            }
+        }
         0x91 => {
             debug!("Got ping message from peer");
             *last_ping_time = SystemTime::now();
@@ -616,6 +698,7 @@ pub fn process_handle_msg(
         _ => {
             log::debug!("Got unsupported message type: \"0x{:x}\", please check for updates", read_msg.message_type);
         }
+
     }
     None
 }
