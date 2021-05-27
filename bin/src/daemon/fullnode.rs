@@ -1,16 +1,16 @@
-use avrio_core::{account::get_nonce, certificate::Certificate, commitee::Comitee};
+use avrio_core::{account::get_nonce, commitee::Comitee, certificate::get_fullnode_count};
 use avrio_crypto::raw_lyra;
 use avrio_p2p::guid::form_table;
-use std::time::Duration;
+use std::{thread::sleep, time::Duration};
 // contains functions called by the fullnode
 use crate::*;
-
+use avrio_rpc::LOCAL_CALLBACKS;
 lazy_static! {
     static ref VRF_LOTTO_ENTRIES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]);
 }
 // calculates the reward amount for this epoch, collects the proofs and forms a reward txn before broadcasting
 // Returns any errors encountered, or the atomic amount
-pub fn claim_reward() -> Result<u64, Box<dyn std::error::Error>> {
+pub fn _claim_reward() -> Result<u64, Box<dyn std::error::Error>> {
     // TODO: write reward code
     Ok(0)
 }
@@ -70,14 +70,45 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
                 .into());
             }
             trace!("Enacted blocks");
-            let mut blocks: Vec<Block> = vec![seed_block, seed_block_rec];
+            // propagate these blocks early as we need the VRF responses
+            for block in &[seed_block, seed_block_rec] {
+                trace!("Sending {} to peers", block.hash);
+                if let Err(prop_err) = prop_block(block) {
+                    error!(
+                        "Failed to send block {} to peers, encounted error={}",
+                        block.hash, prop_err
+                    );
+                    return Err(format!("Failed to prop epoch seed block {}", block.hash).into());
+                }
+            }
+            // Now we wait for VRF tickets to come in
+            // register with the announcement system, to collect all VRF lotto tickets
+            let mut block_callbacks = LOCAL_CALLBACKS.lock()?;
+            block_callbacks.push(Caller {
+                callback: Box::new(|ann| {
+                    if ann.m_type == "block" {
+                        let block: Block = serde_json::from_str(&ann.content).unwrap();
+                        for txn in block.txns {
+                            if txn.flag == 'v' {
+                                handle_vrf_submitted(txn);
+                            }
+                        }
+                    }
+                })
+            });
+            drop(block_callbacks);
+            sleep(Duration::from_millis(60000)); // wait a single minute
+            // now we can proceed
+            let mut blocks: Vec<Block> = vec![];
 
             // create the shuffle bits
             let top_epoch = get_top_epoch()?;
             let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
             let (shuffle_proof, _) = get_vrf(
                 lock[5].clone(),
-                raw_lyra(&(new_epoch.salt.to_string() + &new_epoch.epoch_number.to_string() + &lock[0])),
+                raw_lyra(
+                    &(new_epoch.salt.to_string() + &new_epoch.epoch_number.to_string() + &lock[0]),
+                ),
             )?;
 
             let mut transaction = Transaction {
@@ -122,8 +153,10 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             blocks.push(shuffle_bits_block_rec);
 
             // create an empty fullnode delta list txn
-            let delta_list: ((String, String), Vec<(String, u8, String)>) =
-                ((raw_lyra(&lock[0]), raw_lyra(&top_epoch.committees[0].hash)), vec![]);
+            let delta_list: ((String, String), Vec<(String, u8, String)>) = (
+                (raw_lyra(&lock[0]), raw_lyra(&top_epoch.committees[0].hash)),
+                vec![],
+            );
 
             let mut transaction = Transaction {
                 hash: String::from(""),
@@ -210,11 +243,6 @@ pub fn handle_vrf_submitted(txn: Transaction) {
                 match VRF_LOTTO_ENTRIES.lock() {
                     Ok(mut lock) => {
                         lock.push((txn.sender_key.clone(), txn.hash));
-                        let candidate_count = 0; // TODO: get candidate count
-                        if lock.len() == candidate_count {
-                            info!("All candidates eclosed, finishing VrfLotto stage early");
-                            // TODO: Proceed to next stage
-                        }
                     }
                     Err(lock_error) => {
                         error!(
@@ -230,7 +258,7 @@ pub fn handle_vrf_submitted(txn: Transaction) {
                     ticket_hash,
                     round_leader
                 );
-                // get the round leader's publickey, calculate GUID from that
+                // TODO: Send the ticket to the round leader
             } else {
                 debug!(
                     "Not in consensus commitee, ignoring VRF lotto ticket={}",
