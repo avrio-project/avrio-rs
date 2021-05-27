@@ -9,6 +9,7 @@ use std::sync::Mutex;
 
 lazy_static! {
     static ref CONNECTIONS: Mutex<Vec<(TcpStream, Vec<String>)>> = Mutex::new(vec![]);
+    pub static ref LOCAL_CALLBACKS: Mutex<Vec<Caller<'static>>> = Mutex::new(vec![]);
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
@@ -60,6 +61,13 @@ pub fn block_announce(blk: Block) -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
         }
+    }
+    let mut local_callbacks = LOCAL_CALLBACKS.lock().unwrap();
+    for callback in local_callbacks.iter_mut() {
+        callback.call(Announcement {
+            m_type: "block".to_string(),
+            content: serde_json::to_string(&blk).unwrap_or_default(),
+        });
     }
     Ok(())
 }
