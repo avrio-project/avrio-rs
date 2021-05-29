@@ -12,6 +12,7 @@ extern crate avrio_database;
 use crate::{
     account::{get_account, open_or_create, Accesskey, Account},
     certificate::Certificate,
+    chunk::BlockChunk,
     commitee::{sort_full_list, Comitee},
     epoch::{get_top_epoch, Epoch, EpochStage},
     gas::*,
@@ -113,6 +114,10 @@ pub enum TransactionValidationErrors {
     TicketSentOutsideVrfLotto,
     #[error("Vrf lotto entry ticket sent by non-candidate wallet")]
     NotCandidate,
+    #[error("Reported fullnode not in commitee")]
+    NotInCommitee,
+    #[error("Report role type unknown")]
+    UnknownRoleType,
     #[error("Other")]
     Other,
 }
@@ -429,6 +434,126 @@ impl Verifiable for Transaction {
                         self.extra, self.sender_key
                     );
                     return Err(Box::new(TransactionValidationErrors::InviteInvalid));
+                }
+            }
+            'o' => {
+                let size_of_extra = self.extra.len();
+                if size_of_extra != 0 {
+                    error!(
+                        "Toggle participation type transaction {}'s extra ({}) wrong size, {} > 0",
+                        self.hash, self.extra, size_of_extra
+                    );
+                    return Err(Box::new(TransactionValidationErrors::ExtraTooLarge));
+                }
+                // check if the sender is a fullnode
+                if get_data(config().db_path + "/candidates", &self.sender_key) != "f" {
+                    error!(
+                        "Non fullnode {} tried to toggle participation",
+                        self.sender_key
+                    );
+                    return Err(Box::new(TransactionValidationErrors::NotFullNode));
+                }
+            }
+            'o' => {
+                let size_of_extra = self.extra.len();
+                if size_of_extra >= 200 {
+                    error!(
+                        "Propose penalty type transaction {}'s extra ({}) wrong size, {} >= 200",
+                        self.hash, self.extra, size_of_extra
+                    );
+                    return Err(Box::new(TransactionValidationErrors::ExtraTooLarge));
+                }
+                // check if the sender is a fullnode
+                if get_data(config().db_path + "/candidates", &self.sender_key) != "f" {
+                    error!(
+                        "Non fullnode {} tried to report {}",
+                        self.sender_key, self.receive_key
+                    );
+                    return Err(Box::new(TransactionValidationErrors::NotFullNode));
+                }
+                // check if the reciever (node being reported) is a fullnode
+                if get_data(config().db_path + "/candidates", &self.receive_key) != "f" {
+                    error!(
+                        "Non fullnode {} reported by {}",
+                        self.receive_key, self.sender_key
+                    );
+                    return Err(Box::new(TransactionValidationErrors::NotFullNode));
+                }
+                if let Some(commitee) = Comitee::find_for(&self.receive_key) {
+                    // get each reported round and see if the fullnode did miss it
+                    let rounds: Vec<(u64, u8)> = serde_json::from_str(&String::from_utf8(
+                        bs58::decode(&self.extra).into_vec()?,
+                    )?)?;
+                    let mut proposal_misses = 0;
+                    let mut validation_misses = 0;
+
+                    const MAX_PROPOSAL_MISSES: u64 = 10; // each round you have a 1 in c chance of being the proposer, this means 10 missed proposals  = approx c * 100 secconds // TODO: move to config
+                    const MAX_VALIDATION_MISSES: u64 = 20; // Higher because a group malice proposer could purposfully gang up on one signer and exculde them // TODO: move to config
+
+                    for (round, role) in rounds {
+                        trace!(
+                            "Testing {}'s participation for round {}",
+                            self.receive_key,
+                            round
+                        );
+                        let chunk = BlockChunk::get_by_round(
+                            round,
+                            get_top_epoch()?.epoch_number,
+                            commitee,
+                        )?;
+                        // role = 0: Validatior,role = 1: Proposer
+                        if role == 1 {
+                            // check if the node was participating at this round by getting a list of participating switches from DB
+
+                            // check if the proposer was infact this node
+                            // TODO: Check the node really was meant to propose this block
+                            if chunk.proposer()? != self.receive_key {
+                                trace!(
+                                    "{} did miss proposal of round {} chunk ({} proposal misses out of max {})",
+                                    self.receive_key,
+                                    round,
+                                    proposal_misses,
+                                    MAX_PROPOSAL_MISSES
+                                );
+                                proposal_misses += 1;
+                            } else {
+                                trace!(
+                                    "{} did not miss proposal of round {} chunk, produced {} (claimed by {})",
+                                    self.receive_key,
+                                    round,
+                                    chunk.hash,
+                                    self.sender_key
+                                )
+                            }
+                        } else if role == 0 {
+                            // check if the node signed this round
+                            // TODO: Check the node really was able to sign this block
+                            if chunk.proposer()? != self.receive_key {
+                                trace!(
+                                    "{} did miss signing during round {} ({} validation misses out of max {})",
+                                    self.receive_key,
+                                    round,
+                                    validation_misses,
+                                    MAX_VALIDATION_MISSES
+                                );
+                                validation_misses += 1;
+                            } else {
+                                trace!(
+                                    "{} did not miss signing during round {}, signed {} (claimed by {})",
+                                    self.receive_key,
+                                    round,
+                                    chunk.hash,
+                                    self.sender_key
+                                )
+                            }
+                        } else {
+                            error!("Unknown role type {}", role);
+                            return Err(Box::new(TransactionValidationErrors::UnknownRoleType));
+                        }
+                    }
+                } else {
+                    error!("Reported fullnode {}, not in commitee", self.receive_key);
+                    return Err(Box::new(TransactionValidationErrors::NotInCommitee));
                 }
             }
             'f' => {
@@ -1181,6 +1306,8 @@ impl Transaction {
             'x' => "Block/ restrict account".to_owned(), // means the account (linked via public key in the extra field) you block cannot send you transactions
             'p' => "Unblock account".to_owned(), // reverts the block transaction (linked by the txn hash in extra field)
             'v' => "Publish VRF lottery ticket".to_owned(),
+            'g' => "Propose penalty".to_owned(), // Proposes, with attached proof of absence thata  fullnode should recieve a penalty
+            'o' => "Toggle participation".to_owned(), // Toggles the fullnodes participation status (eg if they are taking part in validation)
             // CONSENSUS ONLY
             'a' => "Announce epoch salt seed".to_owned(),
             'y' => "Announce fullnode list delta".to_owned(),
@@ -1225,7 +1352,7 @@ impl Transaction {
             'v' => {
                 TX_GAS as u64 + ((GAS_PER_EXTRA_BYTE_NORMAL / 2) as u64 * self.extra.len() as u64)
             }
-            _ => 0, // f, c,
+            _ => 0, // f, c, o, g
         };
     }
 
