@@ -209,7 +209,10 @@ impl Verifiable for BlockChunk {
                 for (index, bls_signer) in self.signers.clone().iter().enumerate() {
                     let mut buffer = vec![];
                     if let Err(e) = bls_signer.write_bytes(&mut buffer) {
-                        error!("Failed to write bls publickey bytes to buffer, gave error={}", e);
+                        error!(
+                            "Failed to write bls publickey bytes to buffer, gave error={}",
+                            e
+                        );
                         return Err("Failed to write publickey bytes to buffer".into());
                     } else {
                         let ecdsa_publickey = get_data(
@@ -217,21 +220,32 @@ impl Verifiable for BlockChunk {
                             &bs58::encode(&buffer).into_string(),
                         );
                         if ecdsa_publickey == "-1" {
-                            error!("Cannot find corrosponding ECDSA publickey for BLS signer {}", &bs58::encode(buffer).into_string());
-                            return Err("Could not find ECDSA counterpart for signers BLS publickey".into());
+                            error!(
+                                "Cannot find corrosponding ECDSA publickey for BLS signer {}",
+                                &bs58::encode(buffer).into_string()
+                            );
+                            return Err(
+                                "Could not find ECDSA counterpart for signers BLS publickey".into(),
+                            );
                         } else {
                             if index == 0 {
                                 if let Ok(mut proposer) = get_account(&ecdsa_publickey) {
                                     proposer.balance += proposer_reward;
                                 } else {
-                                    error!("Failed to get proposer {} of block chunk {}'s account", ecdsa_publickey, self.hash);
+                                    error!(
+                                        "Failed to get proposer {} of block chunk {}'s account",
+                                        ecdsa_publickey, self.hash
+                                    );
                                     return Err("Failed to get proposer account".into());
                                 }
                             } else {
                                 if let Ok(mut validator) = get_account(&ecdsa_publickey) {
                                     validator.balance += validator_reward;
                                 } else {
-                                    error!("Failed to get validator {} of block chunk {}'s account", ecdsa_publickey, self.hash);
+                                    error!(
+                                        "Failed to get validator {} of block chunk {}'s account",
+                                        ecdsa_publickey, self.hash
+                                    );
                                     return Err("Failed to get validator account".into());
                                 }
                             }
@@ -278,6 +292,64 @@ impl BlockChunk {
         top.signers = vec![];
         top.hash = top.hash_item();
         Ok(top)
+    }
+    // returns the ECDSA publickey of the proposer of this chunk, or an error
+    pub fn proposer(&self) -> Result<String, Box<dyn std::error::Error>> {
+        let bls_signer = self.signers[0];
+        let mut buffer = vec![];
+        if let Err(e) = bls_signer.write_bytes(&mut buffer) {
+            error!(
+                "Failed to write bls publickey bytes to buffer, gave error={}",
+                e
+            );
+            return Err("Failed to write publickey bytes to buffer".into());
+        } else {
+            let ecdsa_publickey = get_data(
+                config().db_path + "/blslookup",
+                &bs58::encode(&buffer).into_string(),
+            );
+            if ecdsa_publickey == "-1" {
+                error!(
+                    "Cannot find corrosponding ECDSA publickey for BLS signer {}",
+                    &bs58::encode(buffer).into_string()
+                );
+                return Err("Could not find ECDSA counterpart for signers BLS publickey".into());
+            } else {
+                return Ok(ecdsa_publickey);
+            }
+        }
+    }
+
+    // returns the ECDSA publickeys of the validators who signed this chunk, or an error
+    pub fn signers(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let mut to_return = vec![];
+        for (index, bls_signer) in self.signers.clone().iter().enumerate() {
+            let mut buffer = vec![];
+            if let Err(e) = bls_signer.write_bytes(&mut buffer) {
+                error!(
+                    "Failed to write bls publickey bytes to buffer, gave error={}",
+                    e
+                );
+                return Err("Failed to write publickey bytes to buffer".into());
+            } else {
+                let ecdsa_publickey = get_data(
+                    config().db_path + "/blslookup",
+                    &bs58::encode(&buffer).into_string(),
+                );
+                if ecdsa_publickey == "-1" {
+                    error!(
+                        "Cannot find corrosponding ECDSA publickey for BLS signer {}",
+                        &bs58::encode(buffer).into_string()
+                    );
+                    return Err("Could not find ECDSA counterpart for signers BLS publickey".into());
+                } else {
+                    if index != 0 {
+                        to_return.push(ecdsa_publickey)
+                    }
+                }
+            }
+        }
+        return Ok(to_return);
     }
     pub fn form(
         blocks: &Vec<Block>,
