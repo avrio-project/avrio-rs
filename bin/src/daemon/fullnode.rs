@@ -8,12 +8,6 @@ use avrio_rpc::LOCAL_CALLBACKS;
 lazy_static! {
     static ref VRF_LOTTO_ENTRIES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]);
 }
-// calculates the reward amount for this epoch, collects the proofs and forms a reward txn before broadcasting
-// Returns any errors encountered, or the atomic amount
-pub fn _claim_reward() -> Result<u64, Box<dyn std::error::Error>> {
-    // TODO: write reward code
-    Ok(0)
-}
 
 pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting genesis epoch");
