@@ -4,6 +4,8 @@ use bigdecimal::BigDecimal;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
+
+use crate::epoch::get_top_epoch;
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Comitee {
     pub index: u64,
@@ -100,6 +102,16 @@ impl Comitee {
 
     pub fn get_round_leader(&self) -> Result<String, Box<dyn std::error::Error>> {
         Ok(self.members[0].clone()) // TODO Implment round leader selection algo
+    }
+    /// Find the commitee publickey belongs to and returns its index, or None if it is not in one
+    pub fn find_for(publickey: &String) -> Option<u64>{
+        // finds the commitee publickey belongs to using a linear search
+        for committee in get_top_epoch().unwrap_or_default().committees {
+            if committee.members.contains(publickey) {
+                return Some(committee.index);
+            }
+        }
+        None
     }
 }
 
