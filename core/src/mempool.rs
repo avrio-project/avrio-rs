@@ -1,4 +1,4 @@
-use crate::block::{save_block, Block, BlockType};
+use crate::{block::{save_block, Block, BlockType}, certificate};
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -72,13 +72,31 @@ pub fn add_block(blk: &Block, callback: Caller) -> Result<(), Box<dyn std::error
     if map.contains_key(&blk.hash) {
         Err("block already in mempool".into())
     } else {
-        if !map.contains_key(&blk.hash) {
-            map.insert(
-                blk.hash.clone(),
-                (blk.clone(), SystemTime::now(), Some(callback)),
-            );
-        }
+        map.insert(
+            blk.hash.clone(),
+            (blk.clone(), SystemTime::now(), Some(callback)),
+        );
+
         Ok(())
+    }
+}
+
+pub fn mark_as_valid(block_hash: &String) -> Result<(), Box<dyn std::error::Error>> {
+    let mut map = MEMPOOL.lock()?;
+    if !map.contains_key(block_hash) {
+        Err("block not in mempool".into())
+    } else {
+        if let Some((block, _, _)) = map.remove(block_hash) {
+            let _ = block.enact()?;
+            block.save()?;
+            Ok(())
+        } else {
+            error!(
+                "Failed to remove {} from mempool (while marking as validated)",
+                block_hash
+            );
+            return Err("Failed to remove from mempool".into());
+        }
     }
 }
 
@@ -99,6 +117,15 @@ pub fn get_block(hash: &str) -> Result<Block, Box<dyn std::error::Error>> {
         }
     }
     Err("cant find block in mempool".into())
+}
+
+pub fn get_blocks() -> Result<Vec<Block>, Box<dyn std::error::Error>> {
+    let map = MEMPOOL.lock()?;
+    let mut to_return = vec![];
+    for (block, _, _) in map.values() {
+        to_return.push(block.clone());
+    }
+    return Ok(to_return);
 }
 
 impl Mempool {
@@ -239,11 +266,12 @@ impl Mempool {
             return Err("mempool not initalised".into());
         }
         let now = SystemTime::now();
+        let bypass_chunks = certificate::get_fullnode_count() == 0; // if there are no validators yet, blocks do not need to be contained in a block chunk
         let mut map = MEMPOOL.lock()?;
         let mut to_remove: Vec<(String, String)> = vec![];
         let mut blocks_to_check: HashMap<String, ()> = HashMap::new(); // Contains the list of hashes of send blocks that now have at least one corrosponding recieve block
         for (k, v) in map.iter() {
-            if v.0.block_type == BlockType::Recieve {
+            if v.0.block_type == BlockType::Recieve && bypass_chunks {
                 if !blocks_to_check.contains_key(v.0.send_block.as_ref().unwrap()) {
                     // add this block and to the hashmap of send block hashes that can be enacted
                     blocks_to_check.insert(v.0.send_block.as_ref().unwrap().to_owned(), ());
