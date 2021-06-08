@@ -1,12 +1,185 @@
-use avrio_core::{account::get_nonce, commitee::Comitee, certificate::get_fullnode_count};
+use avrio_core::{
+    account::get_nonce,
+    certificate::get_fullnode_count,
+    chunk::BlockChunk,
+    commitee::{self, Comitee},
+    mempool,
+};
 use avrio_crypto::raw_lyra;
-use avrio_p2p::guid::form_table;
+use avrio_p2p::guid::{self, form_table};
 use std::{thread::sleep, time::Duration};
 // contains functions called by the fullnode
 use crate::*;
+use avrio_core::mempool::MEMPOOL;
 use avrio_rpc::LOCAL_CALLBACKS;
 lazy_static! {
     static ref VRF_LOTTO_ENTRIES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]);
+    static ref COMMITEE_INDEX: Mutex<u64> = Mutex::new(1025);
+}
+
+/// # Validator Loop
+/// Called at the start of the main loop, calls the correct functions (for proposing and validating block chunks) then returns either an error (if enountered) or the number of chunks proposed and validated (in a tuple)
+pub fn validator_loop() -> Result<(u64, u64), Box<dyn std::error::Error>> {
+    Ok((0, 0))
+}
+
+pub fn handle_proposed_chunk(chunk: BlockChunk) -> Result<String, Box<dyn std::error::Error>> {
+    match FULLNODE_KEYS.lock() {
+        Ok(keys_lock) => {
+            /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
+            if keys_lock.len() != 6 {
+                error!(
+                    "Keys not loaded, expected 6 keys but have {}",
+                    keys_lock.len()
+                );
+                return Err("Keys not loaded".into());
+            }
+            let chunk_proposer = chunk.proposer()?;
+            trace!(
+                "Handling proposed chunk {}, proposed by {} for round {}",
+                chunk.hash,
+                chunk_proposer,
+                chunk.round
+            );
+            // check the chunk itself is valid
+            if let Err(chunk_validation_error) = chunk.valid() {
+                error!(
+                    "Proposed chunk {} (proposer: {}, round: {}) invalid, reason={}",
+                    chunk.hash, chunk_proposer, chunk.round, chunk_validation_error
+                );
+                return Err(format!("Chunk invalid {}", chunk_validation_error).into());
+            }
+            // the chunk is valid, check if we have all the blocks in the chunk
+            let mut chunk_blocks: Vec<Block> = vec![];
+            for block_hash in &chunk.blocks {
+                trace!("Looking for {} in mempool", block_hash);
+                if let Ok(block) = mempool::get_block(block_hash) {
+                    trace!("Found block {} in mempool", block_hash);
+                    chunk_blocks.push(block);
+                } else {
+                    trace!("Block {} contained in chunk {} not found in mempool, getting from GUID peers", block_hash, chunk.hash);
+                    match guid::send_to_all(format!("{}.1", block_hash), 0x45, true, false) {
+                        Err(e) => {
+                            error!("Failed to ask GUID peers for block, error={}", e)
+                        } 
+                        Ok(response) => {
+                            trace!("Got response from GUID peers: {:#?}", response);
+                        }
+                    }
+                }
+            }
+            // validate every block
+            // All blocks are valid, create a BLS signature for this chunk and return it
+            Ok(String::from("sig"))
+        }
+        Err(lock_error) => {
+            error!(
+                "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
+                lock_error
+            );
+            return Err(format!(
+                "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
+                lock_error
+            )
+            .into());
+        }
+    }
+}
+
+/// # Propose round chunk
+/// Proposes the current rounds chunk, returning the proposed chunk on sucsess or any errors enountered
+/// If called when the node is not the selected proposer then an error will be returned
+pub fn propose_round_chunk() -> Result<String, Box<dyn std::error::Error>> {
+    match FULLNODE_KEYS.lock() {
+        /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
+        Ok(keys_lock) => {
+            // get the rounds context
+            let epoch = get_top_epoch()?;
+            // get our commitees current state
+            let ci_lock = COMMITEE_INDEX.lock()?;
+            let committee_index = ci_lock.clone();
+            drop(ci_lock);
+            if committee_index == 1025 {
+                error!("Committee index not set (eq 1025)");
+                return Err("Committee index not set".into());
+            } else if committee_index > (epoch.committees.len() - 1) as u64 {
+                error!(
+                    "Committee index overflow, index={}, commitees={}",
+                    committee_index,
+                    epoch.committees.len()
+                );
+                return Err("Committee index overflow".into());
+            }
+            // get the committee struct
+            let committee = epoch.committees[committee_index as usize].clone();
+            // get the round number
+            let top_epoch = get_top_epoch()?;
+            let top_round_index: u64 = get_data(
+                config().db_path + "/blockchunks",
+                &(committee.index.to_string() + "-round-" + &epoch.epoch_number.to_string()),
+            )
+            .parse()?;
+            let top_chunk =
+                BlockChunk::get_by_round(top_round_index, top_epoch.epoch_number, committee.index)?;
+            // check we are the proposer for this round
+            let selected_round_leader = committee.get_round_leader()?;
+            if selected_round_leader != keys_lock[0] {
+                error!(
+                    "Not proposer for round {}, in commitee {}, selected proposer {}",
+                    top_chunk.round, committee.index, selected_round_leader
+                );
+                return Err("Not proposer for round".into());
+            }
+            info!(
+                "Proposing chunk for round {} in committee {}",
+                top_chunk.round, committee.index
+            );
+            // collect all blocks from mempool that are awaiting validation (from our address range)
+            let mut blocks: Vec<Block> = vec![];
+            let map = MEMPOOL.lock()?;
+            for (block, _, _) in map.values() {
+                if committee.manages_address(&block.header.chain_key)? {
+                    // sent by one of our managed addresses
+                    trace!(
+                        "Including block {} in chunk, sent by {}, new chunk size {}",
+                        block.hash,
+                        block.header.chain_key,
+                        blocks.len() + 1
+                    );
+                    blocks.push(block.clone());
+                } else {
+                    for reciever in block.recievers() {
+                        if committee.manages_address(&reciever)? {
+                            // This block is sent to one of the addresses in our shard, form a recieve block
+                            let recieve_block = block.form_receive_block(Some(reciever.clone()))?;
+                            trace!(
+                                "Formed recieve block {} for reciever {} of block {}, new chunk size {}",
+                                recieve_block.hash,
+                                reciever,
+                                block.hash,
+                                blocks.len() + 1
+                            );
+                            blocks.push(recieve_block);
+                        }
+                    }
+                }
+            }
+            debug!("{} blocks to use in new chunk", blocks.len());
+            let new_chunk = *BlockChunk::form(&blocks, committee_index)?;
+            return Ok(String::default());
+        }
+        Err(lock_error) => {
+            error!(
+                "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
+                lock_error
+            );
+            return Err(format!(
+                "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
+                lock_error
+            )
+            .into());
+        }
+    }
 }
 
 pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,11 +261,11 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
-                })
+                }),
             });
             drop(block_callbacks);
             sleep(Duration::from_millis(60000)); // wait a single minute
-            // now we can proceed
+                                                 // now we can proceed
             let mut blocks: Vec<Block> = vec![];
 
             // create the shuffle bits
@@ -282,6 +455,8 @@ pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
             for committee in &current_epoch.committees {
                 if committee.members.contains(&lock[0]) {
                     info!("In committee {}", committee.index);
+                    // set the commitee index lazy static
+                    *(COMMITEE_INDEX.lock()?) = committee.index;
                     our_committee = committee.clone();
                     break;
                 }
