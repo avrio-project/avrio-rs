@@ -1,11 +1,22 @@
-use std::{collections::HashMap, net::SocketAddr, sync::{Mutex, MutexGuard}};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    sync::{Mutex, MutexGuard},
+};
 
-use crate::{core::new_connection, format::P2pData, guid, io::send, peer::{in_peers, lock}};
+use crate::{
+    core::new_connection,
+    format::P2pData,
+    guid,
+    io::{read as read_from_peer, send},
+    peer::{in_peers, lock, unlock_peer},
+};
 use avrio_crypto::raw_hash;
-use log::*;
 use lazy_static::lazy_static;
+use log::*;
 lazy_static! {
-    static ref ROUTING_TABLE: Mutex<HashMap<u64, (String, SocketAddr)>> = Mutex::new(HashMap::new());
+    static ref ROUTING_TABLE: Mutex<HashMap<u64, (String, SocketAddr)>> =
+        Mutex::new(HashMap::new());
 }
 pub fn form_table(all_peers: Vec<(String, SocketAddr)>) -> Result<u64, Box<dyn std::error::Error>> {
     info!(
@@ -27,7 +38,10 @@ pub fn form_table(all_peers: Vec<(String, SocketAddr)>) -> Result<u64, Box<dyn s
                     routing_table_lock.insert(id, (all_peers[id as usize].0.clone(), addr));
                 }
                 Err(connection_error) => {
-                    error!("Failed to open connection to {}, error={}", all_peers[id as usize].0, connection_error);
+                    error!(
+                        "Failed to open connection to {}, error={}",
+                        all_peers[id as usize].0, connection_error
+                    );
                 }
             }
         }
@@ -36,28 +50,55 @@ pub fn form_table(all_peers: Vec<(String, SocketAddr)>) -> Result<u64, Box<dyn s
 }
 
 pub fn calculate_guid(public_key: &String, commitee_id: u64, ip_addr: SocketAddr) -> String {
-    raw_hash(
-        &format!("{}{}{}", public_key ,commitee_id.to_string() , ip_addr.to_string())
-    )
+    raw_hash(&format!(
+        "{}{}{}",
+        public_key,
+        commitee_id.to_string(),
+        ip_addr.to_string()
+    ))
 }
 
-pub fn guid_to_intra_committee_id(all_peers: Vec<(String, SocketAddr)>) ->  Vec<(u64, SocketAddr)> {
+pub fn guid_to_intra_committee_id(all_peers: Vec<(String, SocketAddr)>) -> Vec<(u64, SocketAddr)> {
     let mut return_table = vec![];
     let mut iteration = 0;
-    for peer in all_peers{
+    for peer in all_peers {
         return_table.push((iteration, peer.1));
         iteration += 1;
     }
     return_table
 }
 
-pub fn send_to_all(message: String, message_type: u16) -> Result<(), Box<dyn std::error::Error>> {
+/// # Send to all
+/// Sends a message to every peer in the GUID table
+/// if 'read' is true then this function will also lock the peer and read for their response (returning in a ```Result<Vec<P2pMessage>>>```)
+/// Otherwise any response will be handled by the handle thread
+/// If error_on_fail_read is true then the function will return an error if a peer cannot be read from
+pub fn send_to_all(
+    message: String,
+    message_type: u16,
+    read: bool,
+    error_on_fail_read: bool,
+) -> Result<Vec<P2pData>, Box<dyn std::error::Error>> {
+    let mut to_return: Vec<P2pData> = vec![];
     for (id, (guid, addr)) in &*(ROUTING_TABLE.lock()?) {
-        debug!("Sending message {} (type={}) to {} (id={})", message, message_type, guid, id);
+        debug!(
+            "Sending message {} (type={}) to {} (id={})",
+            message, message_type, guid, id
+        );
         let mut stream = lock(&addr, 10000)?;
         send(message.clone(), &mut stream, message_type, true, None)?;
+        if read {
+            // read from the peer
+            let read_data_res = read_from_peer(&mut stream, Some(10000), None);
+            if let Ok(read_data) = read_data_res {
+                to_return.push(read_data)
+            } else if error_on_fail_read {
+                return Err("Failed to read from peer".into());
+            }
+        }
+        unlock_peer(stream)?;
     }
-    Ok(())
+    Ok(to_return)
 }
 
 const fn num_bits<T>() -> usize {

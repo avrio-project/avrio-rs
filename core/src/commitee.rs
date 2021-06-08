@@ -20,6 +20,9 @@ pub fn sort_full_list(full_list: &mut Vec<String>, epoch_salt: u64) {
     }); // sort the inital vector alphabeticly but with the node's pubkey hashed with epoch salt to give some dermanistic randomness
 }
 impl Comitee {
+    /// # Calculate address range
+    /// calculates the address range of this commitee (given the number of commitees) using:
+    /// commitee_index *((58^44)/(commitee_number-1))..=*((58^44)/(commitee_number-1))-((commitee_number-commite_index)*((58^44)/(commitee_number-1)))
     pub fn calculate_address_range(&self, number_of_committees: u64) -> RangeInclusive<BigDecimal> {
         // We know there are 58^44 (389790920000000000000000000000000000000000000000000000000000000000000000000000) diffrent posible publickeys (base58 with len of 44), so the number of addresses per shard = (58^44)/(k-1)
         // k = total number (including 0 committee hence the - 1) of committees
@@ -28,7 +31,7 @@ impl Comitee {
         // if you let j = (58^44)/(k-1) this can simply be written as:
         //nj..=j-(j(k-(n+1)))
         let k = BigDecimal::from(number_of_committees - 1);
-        let j = BigDecimal::from(58 ^ 44) / k.clone(); // not a decimal but bigdecimal works to store integers too
+        let j = BigDecimal::from(58 ^ 44) / k.clone(); // not a decimal but bigdecimal works to store large integers too
         if self.index != 0 {
             let n = BigDecimal::from(self.index - 1);
             n * j.clone()..=j.clone() - (j * (k - BigDecimal::from(self.index)))
@@ -36,6 +39,8 @@ impl Comitee {
             BigDecimal::from(0)..=BigDecimal::from(0)
         }
     }
+    /// # Manages Address
+    /// Checks if this committee manages a given address
     pub fn manages_address(&self, address: &String) -> Result<bool, Box<dyn std::error::Error>> {
         if self.index == 0 {
             return Ok(false);
@@ -43,8 +48,11 @@ impl Comitee {
         let address_hex = hex::encode(bs58::decode(address).into_vec()?);
         let address_numerical = i64::from_str_radix(&address_hex, 16)?.abs();
         let address_bigdec = BigDecimal::from(address_numerical);
-        Ok(self.calculate_address_range(2).contains(&address_bigdec))
+        Ok(self.calculate_address_range(2).contains(&address_bigdec)) // TODO: get the number of commitees (or pass as a parmeter)
     }
+    /// # Form Committees
+    /// Forms the commiitees given a list of shuffled nodes, as well as mutable refrence to the vector where excluded nodes are placed and a number (of commitees to be formed)
+    /// Returns a vector of committess which it's length should be count - 1
     pub fn form_comitees(
         sorted_list: &mut Vec<String>,
         excluded_nodes: &mut Vec<String>,
@@ -100,11 +108,13 @@ impl Comitee {
         return to_return;
     }
 
+    /// # Get round leader
+    /// Calculates the round leader for this committee, returning the ECDSA publickey or an error 
     pub fn get_round_leader(&self) -> Result<String, Box<dyn std::error::Error>> {
         Ok(self.members[0].clone()) // TODO Implment round leader selection algo
     }
     /// Find the commitee publickey belongs to and returns its index, or None if it is not in one
-    pub fn find_for(publickey: &String) -> Option<u64>{
+    pub fn find_for(publickey: &String) -> Option<u64> {
         // finds the commitee publickey belongs to using a linear search
         for committee in get_top_epoch().unwrap_or_default().committees {
             if committee.members.contains(publickey) {
