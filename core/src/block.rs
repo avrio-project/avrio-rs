@@ -717,6 +717,14 @@ impl Block {
         self.hash_item()
     }
 
+    pub fn recievers(&self) -> Vec<String> {
+        let mut to_return = vec![];
+        for txn in &self.txns {
+            to_return.push(txn.receive_key.clone());
+        }
+        to_return
+    }
+
     /// Signs a block and sets the signature field on it.
     /// Returns a Result enum
     pub fn sign(&mut self, private_key: &str) -> std::result::Result<(), ring::error::KeyRejected> {
@@ -880,7 +888,7 @@ impl Block {
                 break;
             }
         }
-        let mut wallet = Wallet::from_private_key(private_key);
+        let wallet = Wallet::from_private_key(private_key);
         if consensus {
             let mut header = Header {
                 version_major: config().version_major,
