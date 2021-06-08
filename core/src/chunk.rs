@@ -45,7 +45,7 @@ impl Verifiable for BlockChunk {
                 collision.hash,
                 self.round,
                 self.committee,
-                self.signers[0],
+                self.proposer().unwrap_or_default(),
                 get_top_epoch()?.epoch_number
             );
             return Err("Chunk round collision".into());
@@ -58,7 +58,7 @@ impl Verifiable for BlockChunk {
              self.round,
              collision.round,
              self.committee,
-             self.signers[0],
+             self.proposer().unwrap_or_default(),
              get_top_epoch()?.epoch_number
          );
             return Err("Chunk hash collision".into());
@@ -99,6 +99,7 @@ impl Verifiable for BlockChunk {
                                         } else if index == 0 {
                                             // now check if the block proposer (the first signature in the vec) is the current round leader
                                             if committee.get_round_leader()? != ecdsa_publickey {
+                                                error!("Block chunk {} proposed by {}, expected proposer {}", self.hash, ecdsa_publickey, committee.get_round_leader()?);
                                                 return Err("Unauthorised block proposal".into());
                                             }
                                         }
@@ -293,6 +294,7 @@ impl BlockChunk {
         top.hash = top.hash_item();
         Ok(top)
     }
+
     // returns the ECDSA publickey of the proposer of this chunk, or an error
     pub fn proposer(&self) -> Result<String, Box<dyn std::error::Error>> {
         let bls_signer = self.signers[0];
@@ -351,6 +353,7 @@ impl BlockChunk {
         }
         return Ok(to_return);
     }
+
     pub fn form(
         blocks: &Vec<Block>,
         committee: u64,
@@ -472,3 +475,6 @@ pub fn signers_string_to_vec(
     }
     return Ok(out);
 }
+
+#[test]
+fn test_aggregate_signatures() {}
