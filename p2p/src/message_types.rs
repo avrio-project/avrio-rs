@@ -37,6 +37,10 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0x52, "Get block chunk range (response)");
     message_types.insert(0x60, "Get Chain List (ask)");
     message_types.insert(0x61, "Get Chain List (response)");
+    message_types.insert(0x62, "Generate epoch salt seeds (ask)");
+    message_types.insert(0x63, "Generate epoch salt seeds (response)");
+    message_types.insert(0x64, "Propose chunk for round");
+    message_types.insert(0x65, "Proposed chunk signature"); 
     message_types.insert(0x6f, "Get Block Above Hash, chain concurrent"); // get the blocks above hash x, concurernt to chain c
     message_types.insert(0x7f, "Get Block Above Hash, global concurrent"); // get the blocks above hash x, but globally concurernt rather than chain concurrent
     message_types.insert(0x91, "Ping");
