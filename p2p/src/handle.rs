@@ -428,11 +428,55 @@ pub fn process_handle_msg(
             let _ = send(chain_digest, stream, 0xcd, true, None);
         }
         0x05 => {
+            // check if the peer has set the spiral tag (if we ask peers in our GUID table for the block as well)
+            let split_message = read_msg.message.split('.').collect::<Vec<&str>>();
+            if split_message.len() == 2 {
+                trace!("Peer has asked for block with spiral, hash={}", split_message[0]);
+                // first see if we have the block ourselves
+                let block = get_block_from_raw(split_message[0].to_string());
+                if block.is_default() {
+                    trace!("Cannot find {} on disk, trying mempool", split_message[0]);
+                    let block_mempool = avrio_core::mempool::get_block(split_message[0]);
+                    if block_mempool.is_err() {
+                        trace!("Cannot find {} on disk or in mempool, asking GUID peers", split_message[0]);
+                        // ask all peers in our GUID table for this block (with the same spiral tag)
+                        if let Ok(responses) = crate::guid::send_to_all(read_msg.message, read_msg.message_type, true, false) {
+                            let mut blocks: Vec<Block> = vec![];
+                            for block_encoded in responses {
+                                let mut block = Block::default();
+                                if let Ok(_) = block.decode_compressed(block_encoded.message) {
+                                    blocks.push(block);
+                                }
+                            }
+                            let mut hashes: Vec<String> = vec![];
+                            for (index, block) in blocks.clone().into_iter().enumerate() {
+                                // check the hash is valid
+                                if block.hash_return() != block.hash{
+                                    // remove this block, its hash is not correct
+                                    blocks.remove(index);
+                                } else {
+                                    hashes.push(block.hash);
+                                }
+                            }
+                            // find the most common hash
+                            let mode_hash = crate::utils::get_mode(hashes);
+                            for block in &blocks {
+                                if block.hash == mode_hash {
+                                    // send this block
+                                    let _ = crate::helper::send_block_struct(block, stream);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
             // send the peer the block with the hash they specifyed in the message field
             let _ = crate::helper::send_block_with_hash(
                 read_msg.message,
                 stream,
             );
+        }
         }
         0x0b => { // peer accepted our block
             if let Ok(addr) =  stream.peer_addr() {
