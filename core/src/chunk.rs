@@ -466,6 +466,13 @@ pub fn string_to_bls_publickey(
     return Ok(PublicKey::from_bytes(&as_bytes)?);
 }
 
+pub fn string_to_bls_privatkey(
+    as_string: &String,
+) -> Result<PrivateKey, Box<dyn std::error::Error>> {
+    let as_bytes = bs58::decode(as_string).into_vec()?;
+    return Ok(PrivateKey::from_bytes(&as_bytes)?);
+}
+
 pub fn signers_string_to_vec(
     signers: &Vec<String>,
 ) -> Result<Vec<PublicKey>, Box<dyn std::error::Error>> {
