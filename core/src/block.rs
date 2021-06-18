@@ -707,6 +707,12 @@ impl Block {
         self == &Block::default()
     }
 
+    pub fn from_compressed(encoded: String) -> Result<Block, Box<dyn std::error::Error>> {
+        let mut ret = Block::default();
+        ret.decode_compressed(encoded)?;
+        Ok(ret)
+    }
+
     /// Sets the hash of a block
     pub fn hash(&mut self) {
         self.hash = self.hash_item();
@@ -1377,7 +1383,6 @@ fn enact_recieve(block: Block) -> std::result::Result<(), Box<dyn std::error::Er
     }
     Ok(())
 }
-
 pub fn from_compact(encoded: String) -> Result<Block, Box<dyn std::error::Error>> {
     let mut ret = Block::default();
     ret.decode_compressed(encoded)?;
