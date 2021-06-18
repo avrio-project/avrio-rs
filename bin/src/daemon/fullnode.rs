@@ -1,10 +1,4 @@
-use avrio_core::{
-    account::get_nonce,
-    certificate::get_fullnode_count,
-    chunk::BlockChunk,
-    commitee::{self, Comitee},
-    mempool,
-};
+use avrio_core::{account::get_nonce, certificate::get_fullnode_count, chunk::{BlockChunk, string_to_bls_privatkey}, commitee::{self, Comitee}, mempool};
 use avrio_crypto::raw_lyra;
 use avrio_p2p::guid::{self, form_table};
 use std::{thread::sleep, time::Duration};
@@ -60,17 +54,47 @@ pub fn handle_proposed_chunk(chunk: BlockChunk) -> Result<String, Box<dyn std::e
                     trace!("Block {} contained in chunk {} not found in mempool, getting from GUID peers", block_hash, chunk.hash);
                     match guid::send_to_all(format!("{}.1", block_hash), 0x45, true, false) {
                         Err(e) => {
-                            error!("Failed to ask GUID peers for block, error={}", e)
-                        } 
+                            error!("Failed to ask GUID peers for block, error={}", e);
+                            return Err("Failed to ask GUID peers for block".into());
+                        }
                         Ok(response) => {
                             trace!("Got response from GUID peers: {:#?}", response);
+                            if let Ok(block) = Block::from_compressed(response[0].message.clone()) {
+                                debug!("Decoded block from compressed, block hash={}", block.hash);
+                                chunk_blocks.push(block);
+                            } else {
+                                return Err("Failed to decode block got from GUID peers".into());
+                            }
                         }
                     }
                 }
             }
+            if chunk_blocks.len() != chunk.blocks.len() {
+                error!(
+                    "Failed to get {} blocks for chunk {}",
+                    chunk.blocks.len() - chunk_blocks.len(),
+                    chunk.hash
+                );
+                return Err("Could not get all blocks".into());
+            }
             // validate every block
+            for block in chunk_blocks {
+                if let Err(e) = block.valid() {
+                    error!(
+                        "Block {} contained in chunk {} invalid, reason {}",
+                        block.hash, chunk.hash, e
+                    );
+                    return Err("Invalid block".into());
+                } else {
+                    debug!(
+                        "Block {} contained in chunk {} valid",
+                        block.hash, chunk.hash
+                    );
+                }
+            }
             // All blocks are valid, create a BLS signature for this chunk and return it
-            Ok(String::from("sig"))
+            let sig = chunk.sign(string_to_bls_privatkey(&keys_lock[3])?);
+            Ok(bs58::encode(sig.as_bytes()).into_string())
         }
         Err(lock_error) => {
             error!(
@@ -82,6 +106,22 @@ pub fn handle_proposed_chunk(chunk: BlockChunk) -> Result<String, Box<dyn std::e
                 lock_error
             )
             .into());
+        }
+    }
+}
+
+pub fn should_handle_chunk(chunk: BlockChunk) -> bool {
+    match FULLNODE_KEYS.lock() {
+        /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
+        Ok(keys_lock) => {
+            
+        }
+        Err(lock_error) => {
+            error!(
+                "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
+                lock_error
+            );
+            return false;
         }
     }
 }
@@ -166,6 +206,7 @@ pub fn propose_round_chunk() -> Result<String, Box<dyn std::error::Error>> {
             }
             debug!("{} blocks to use in new chunk", blocks.len());
             let new_chunk = *BlockChunk::form(&blocks, committee_index)?;
+            // now ask each of our GUID peers to sign our chunk, as well as send it to their GUID peers to sign
             return Ok(String::default());
         }
         Err(lock_error) => {
