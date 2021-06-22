@@ -264,18 +264,14 @@ pub fn get_vrf(
     // VRF proof and hash output
     let proof = vrf.prove(&secret_key, &message).unwrap();
     let hash = vrf.proof_to_hash(&proof).unwrap();
-    return Ok((
-        bs58::encode(proof).into_string(),
-        bs58::encode(hash).into_string(),
-    ));
+    return Ok((hex::encode(proof), hex::encode(hash)));
 }
 pub fn proof_to_hash(proof: &String) -> Result<String, Box<dyn std::error::Error>> {
     trace!("Turning VRF proof: {} into hash", proof);
-    let _as_bytes = bs58::decode(proof).into_vec().unwrap_or_default();
     let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).unwrap();
-    let proof_to_hash_result = vrf.proof_to_hash(&bs58::decode(&proof).into_vec()?);
+    let proof_to_hash_result = vrf.proof_to_hash(&hex::decode(proof)?);
     if let Ok(hash) = proof_to_hash_result {
-        Ok(bs58::encode(hash).into_string())
+        Ok(hex::encode(hash))
     } else {
         error!(
             "Failed to turn proof={} into hash, gave error={}",
@@ -288,7 +284,7 @@ pub fn proof_to_hash(proof: &String) -> Result<String, Box<dyn std::error::Error
 
 pub fn validate_vrf(public_key: String, proof: String, message: String) -> bool {
     if let Ok(mut vrf) = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI) {
-        if let Ok(pi) = bs58::decode(proof).into_vec() {
+        if let Ok(pi) = hex::decode(proof) {
             let msg_vec = message.as_bytes().to_vec();
             if let Ok(publickey_bytes) = bs58::decode(public_key).into_vec() {
                 if let Ok(publickey) = PublicKey::from_slice(&publickey_bytes) {
@@ -311,7 +307,15 @@ pub fn validate_vrf(public_key: String, proof: String, message: String) -> bool 
     }
     false
 }
+/// hash must be hex encoded or this will fail
+pub fn vrf_hash_to_u64(hash: String) -> Result<u64, Box<dyn std::error::Error>> {
+    let hash_slice: String = String::from_utf8(hash.as_bytes()[0..16].to_vec())?;
+    Ok(u64::from_str_radix(&hash_slice, 16)?)
+}
 
+pub fn normalize(num: u64) -> f64 {
+    (num as f64 / u64::MAX as f64) as f64
+}
 pub fn vrf_hash_to_integer(hash: String) -> BigDecimal {
     let mut as_binary: String = String::from("");
     for hash_bit in hash.as_bytes() {
