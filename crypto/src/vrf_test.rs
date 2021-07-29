@@ -3,7 +3,7 @@ use secp256k1::bitcoin_hashes::hex::ToHex;
 use crate::*;
 #[test]
 fn find_average_lambda() {
-    let n = 50; // total number of candidates
+    let n = 500; // total number of candidates
     for r_target in 1..n {
         let mut tries = 0;
         loop {
@@ -18,13 +18,13 @@ fn find_average_lambda() {
                 entries.push(int_vrf.clone());
                 if val_vrf < r_target as f64 / n as f64 {
                     // (BigDecimal::from(r_target) / BigDecimal::from(n)) {
-                    println!(
+                    /*println!(
                         "Attempt {}, value: {} < {} {}",
                         attempt,
                         val_vrf,
                         r_target as f64 / n as f64,
                         val_vrf < r_target as f64 / n as f64
-                    );
+                    );*/
                     amount_this_try += 1;
                 }
             }
@@ -80,6 +80,7 @@ fn test_vrf_keys() {
     let _pubkey = PublicKey::from_slice(&bs58::decode(&keys[1]).into_vec().unwrap()).unwrap();
 
     let mut vrf = ECVRF::from_suite(CipherSuite::SECP256K1_SHA256_TAI).unwrap();
+
     let derived_public_key = vrf.derive_public_key(seckey.as_ref()).unwrap();
     assert_eq!(
         _pubkey.to_hex(),

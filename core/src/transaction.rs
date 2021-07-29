@@ -1232,6 +1232,9 @@ impl Verifiable for Transaction {
                     curr_epoch.committees = committees;
                     curr_epoch.total_fullnodes += new_fullnodes;
                     curr_epoch.total_fullnodes -= removed_fullnodes;
+                    if curr_epoch.total_fullnodes == 0 {
+                        curr_epoch.total_fullnodes = 1;
+                    }
                     curr_epoch.stage = EpochStage::Reorg;
                     curr_epoch.save()?;
                     curr_epoch.set_top_epoch()?;

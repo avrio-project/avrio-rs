@@ -41,12 +41,11 @@ pub fn to_dec(amount: u64) -> f64 {
 
 pub fn get_nonce(publickey: String) -> u64 {
     avrio_database::get_data(
-        config().db_path
-            + &"/chains/".to_owned()
-            + &publickey
-            + &"-chainindex".to_owned(),
+        config().db_path + &"/chains/".to_owned() + &publickey + &"-chainindex".to_owned(),
         &"txncount".to_owned(),
-    ).parse().unwrap_or(0)
+    )
+    .parse()
+    .unwrap_or(0)
 }
 
 impl Account {

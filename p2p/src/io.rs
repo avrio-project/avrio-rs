@@ -42,7 +42,7 @@ pub trait Sendable {
         let buf = en.as_bytes();
         peer.write_all(&buf)?;
         if true {
-            // TEMP FIX, always flush stream                  flush {
+            // TEMP FIX, always flush stream
             peer.flush()?;
         }
         Ok(())

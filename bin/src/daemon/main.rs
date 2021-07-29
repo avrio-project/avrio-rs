@@ -1,13 +1,4 @@
 pub(crate) mod fullnode;
-use bls_signatures::{PrivateKey, Serialize};
-use fullnode::*;
-use rand::thread_rng;
-use std::{fs::File, io::Read, thread, time::Duration};
-use std::{
-    io::{self, Write},
-    time::{SystemTime, UNIX_EPOCH},
-};
-use std::panic;
 use avrio_core::{
     account::to_dec,
     certificate::{generate_certificate, get_fullnode_count},
@@ -20,7 +11,17 @@ use avrio_core::{
     },
     validate::Verifiable,
 };
+use avrio_p2p::core::HANDLE_CHUNK_CALLBACK;
 use avrio_rpc::*;
+use bls_signatures::{PrivateKey, Serialize};
+use fullnode::*;
+use rand::thread_rng;
+use std::panic;
+use std::{fs::File, io::Read, thread, time::Duration};
+use std::{
+    io::{self, Write},
+    time::{SystemTime, UNIX_EPOCH},
+};
 extern crate clap;
 use clap::{App, Arg};
 
@@ -375,6 +376,19 @@ fn main() {
                     Err(lock_error) => {
                         error!(
                             "Failed to gain mutex lock on VRF_LOTTERY_CALLBACKS lazy static, got error={}",
+                            lock_error
+                        );
+                        process::exit(0);
+                    }
+                }
+                match HANDLE_CHUNK_CALLBACK.lock() {
+                    Ok(mut lock) => {
+                        *lock = Some(Box::new(fullnode::handle_proposed_chunk));
+                        debug!("Registered in HANDLE_CHUNK_CALLBACK");
+                    }
+                    Err(lock_error) => {
+                        error!(
+                            "Failed to gain mutex lock on HANDLE_CHUNK_CALLBACK lazy static, got error={}",
                             lock_error
                         );
                         process::exit(0);

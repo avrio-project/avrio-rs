@@ -1,6 +1,13 @@
-use avrio_core::{account::get_nonce, certificate::get_fullnode_count, chunk::{BlockChunk, string_to_bls_privatkey}, commitee::{self, Comitee}, mempool};
+use avrio_core::{
+    account::get_nonce,
+    certificate::get_fullnode_count,
+    chunk::{string_to_bls_privatkey, BlockChunk},
+    commitee::Comitee,
+    mempool,
+};
 use avrio_crypto::raw_lyra;
 use avrio_p2p::guid::{self, form_table};
+use bls_signatures::{Serialize, Signature};
 use std::{thread::sleep, time::Duration};
 // contains functions called by the fullnode
 use crate::*;
@@ -17,7 +24,9 @@ pub fn validator_loop() -> Result<(u64, u64), Box<dyn std::error::Error>> {
     Ok((0, 0))
 }
 
-pub fn handle_proposed_chunk(chunk: BlockChunk) -> Result<String, Box<dyn std::error::Error>> {
+pub fn handle_proposed_chunk(
+    chunk: BlockChunk,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
     match FULLNODE_KEYS.lock() {
         Ok(keys_lock) => {
             /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
@@ -93,8 +102,11 @@ pub fn handle_proposed_chunk(chunk: BlockChunk) -> Result<String, Box<dyn std::e
                 }
             }
             // All blocks are valid, create a BLS signature for this chunk and return it
-            let sig = chunk.sign(string_to_bls_privatkey(&keys_lock[3])?);
-            Ok(bs58::encode(sig.as_bytes()).into_string())
+            let sig: Signature = chunk.sign(string_to_bls_privatkey(&keys_lock[3])?);
+            Ok((
+                keys_lock[0].clone(),
+                bs58::encode(sig.as_bytes()).into_string(),
+            ))
         }
         Err(lock_error) => {
             error!(
@@ -114,7 +126,18 @@ pub fn should_handle_chunk(chunk: BlockChunk) -> bool {
     match FULLNODE_KEYS.lock() {
         /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
         Ok(keys_lock) => {
-            
+            if let Ok(top_epoch) = get_top_epoch() {
+                for commitee in top_epoch.committees {
+                    if commitee.members.contains(&keys_lock[0]) {
+                        // found our commitee
+                        if commitee.index == chunk.committee {
+                            return true;
+                        }
+                        break;
+                    }
+                }
+            }
+            false
         }
         Err(lock_error) => {
             error!(

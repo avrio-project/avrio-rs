@@ -256,8 +256,8 @@ impl Default for NetworkConfig {
             transaction_timestamp_max_offset: 600000, // 10 mins
             max_time_to_live: 600000,                 // millisecconds
             target_epoch_length: 180000, // 3 mins (technically not target epoch length, but main stage length)
-            fullnode_lock_time: 30 * 5,   // epoches (30 days)
-            username_burn_amount: 5000,   // 0.5000 AIO
+            fullnode_lock_time: 30 * 5,  // epoches (30 days)
+            username_burn_amount: 5000,  // 0.5000 AIO
             first_block_hash: "0x...".to_string(),
             min_suported_version: vec![0, 1, 0],
             max_supported_version: vec![0, 1, 0],

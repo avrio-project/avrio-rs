@@ -1,4 +1,7 @@
-use crate::{block::{save_block, Block, BlockType}, certificate};
+use crate::{
+    block::{save_block, Block, BlockType},
+    certificate,
+};
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

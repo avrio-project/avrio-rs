@@ -88,6 +88,7 @@ pub fn form_state_digest(cd_db: String) -> std::result::Result<String, Box<dyn s
     // leaf[n] = hash(leaf[n-1] + chain_digest[n+1])
     let mut _roots: Vec<(String, String)> = vec![]; // 0: chain_key, 1: chain_digest
                                                     //iter.seek_to_first();
+    
     let _chains_list: Vec<String> = Vec::new();
     for (chain_key_string, chain_digest_string) in open_database(cd_db.to_owned())?.iter() {
         if chain_key_string != "master"

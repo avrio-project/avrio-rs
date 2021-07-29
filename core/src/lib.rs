@@ -13,6 +13,6 @@ pub mod gas;
 pub mod invite;
 pub mod mempool;
 pub mod states;
+pub mod timer;
 pub mod transaction;
 pub mod validate;
-pub mod timer;

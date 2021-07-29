@@ -113,8 +113,7 @@ pub fn generate_certificate(
             timestamp: 0,
             bls_public_key: String::from(""),
             bls_signature: String::from(""),
-            secp256k1_publickey: bs58::encode(secp256k1_publickey.serialize())
-                .into_string(),
+            secp256k1_publickey: bs58::encode(secp256k1_publickey.serialize()).into_string(),
             secp256k1_signature: String::from(""),
             signature: String::from(""),
         };
@@ -460,10 +459,22 @@ impl Certificate {
                 return false;
             }
             // now check the secp256k1 signature
-            if let Ok(res) = valid_signature_secp256k1(&self.secp256k1_publickey, &self.hash, &self.secp256k1_signature) {
+            if let Ok(res) = valid_signature_secp256k1(
+                &self.secp256k1_publickey,
+                &self.hash,
+                &self.secp256k1_signature,
+            ) {
                 return res;
             } else {
-                debug!("Invalid secp256k1 sig, error={:#?}", valid_signature_secp256k1(&self.secp256k1_publickey, &self.hash, &self.secp256k1_signature).err());
+                debug!(
+                    "Invalid secp256k1 sig, error={:#?}",
+                    valid_signature_secp256k1(
+                        &self.secp256k1_publickey,
+                        &self.hash,
+                        &self.secp256k1_signature
+                    )
+                    .err()
+                );
                 return false;
             }
         } else {

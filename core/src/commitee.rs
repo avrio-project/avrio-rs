@@ -109,7 +109,7 @@ impl Comitee {
     }
 
     /// # Get round leader
-    /// Calculates the round leader for this committee, returning the ECDSA publickey or an error 
+    /// Calculates the round leader for this committee, returning the ECDSA publickey or an error
     pub fn get_round_leader(&self) -> Result<String, Box<dyn std::error::Error>> {
         Ok(self.members[0].clone()) // TODO Implment round leader selection algo
     }
