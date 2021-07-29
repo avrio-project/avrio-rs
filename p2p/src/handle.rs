@@ -1,4 +1,5 @@
 use crate::{
+    core,
     format::P2pData,
     io::{peek, read, send},
     peer::remove_peer,
@@ -12,11 +13,14 @@ use std::{
 };
 
 use avrio_config::config;
-use avrio_core::{mempool::{add_block, Caller, get_block as get_block_mempool}, validate::Verifiable};
 use avrio_core::{
     block::{from_compact, get_block, get_block_from_raw, Block},
+    chunk::BlockChunk,
     epoch::get_top_epoch,
-    chunk::BlockChunk
+};
+use avrio_core::{
+    mempool::{add_block, get_block as get_block_mempool, Caller},
+    validate::Verifiable,
 };
 use avrio_database::{get_data, open_database};
 use avrio_rpc::block_announce;
@@ -311,6 +315,7 @@ pub fn process_handle_msg(
                 error!("Failed to parse get block chunks params");
             } else {
                 let mut chunks: Vec<String> = vec![];
+                
                 for round in start..=end {
                     trace!("Getting chunk for round {}", round);
                     if let Ok(chunk) = BlockChunk::get_by_round(round, epoch, committee) {
@@ -318,7 +323,7 @@ pub fn process_handle_msg(
                     }
                 }
                 trace!("Found {} chunks from {} to {} (epoch={}, committee={})", chunks.len(), start, end, epoch, committee);
-                if let Ok(encoded_payload) = serde_json::to_string(&chunks) {   
+                if let Ok(encoded_payload) = serde_json::to_string(&chunks) {
                     trace!("Encoded block chunks payload: {}", encoded_payload);             
                     if let Err(send_error) = send(encoded_payload, stream, 0x50, true, None) {
                         error!("Failed to respond to get block chunks (range) request, got error={} while sending response", send_error);
@@ -335,6 +340,51 @@ pub fn process_handle_msg(
             // we just got a block chunk, validate it and ask for any blocks we dont have yet, then enact it and all blocks
             if let Ok(chunk) = BlockChunk::decode(read_msg.message.clone()) {
                 trace!("Decoded block chunk {} from peer", chunk.hash);
+                // check if we are part of a commitee and if this should be validated by this
+                if *(core::COMMITTEE_INDEX.lock().unwrap()) == chunk.committee {
+                    let mut signatures: Vec<(String, String)> = vec![];
+                    let mut already_processed = false;
+                    // check if we have already processed this chunk, by checking in the chunk signatures cache stack
+                    if let Ok(cache_lock) = core::CACHED_BLOCKCHUNK_SIGNATURES.lock() {
+                        let mut found_index= 6;
+                        for (index, item) in cache_lock.iter().enumerate() {
+                            if item.0 == chunk.hash {
+                                found_index = index;
+                            }
+                        }
+                        if found_index != 6 {
+                            // already signed this, get the other signatures we have
+                            signatures.push((cache_lock[found_index].0.to_owned(), cache_lock[found_index].1.to_owned()));
+                            if let Ok(peer_signatures_cache) = core::TOP_CHUNK_SIGNATURES_CACHE.lock() {
+                                for signature in peer_signatures_cache.iter() {
+                                    signatures.push((signature.0.to_owned(), signature.1.to_owned()));
+                                }
+                            }
+                            already_processed = true;
+                        }
+                    }
+                    if !already_processed {
+                    if let Some(callback) = &*core::HANDLE_CHUNK_CALLBACK.lock().unwrap() {
+                        if let Ok((pk, signature)) = (callback)(chunk.clone()) {
+                            debug!("Processed block chunk {} from peer {:?}, created signature {}", chunk.hash, stream.peer_addr(), signature);
+                            signatures.push((pk, signature));
+                            // TODO: ask our LOWER GUID peers to sign this chunk as well
+                        }
+                    }
+                    if signatures.len() != 0 {
+                        // send our vector of signatures to the peer
+                        let _ = send(match serde_json::to_string(&signatures) {
+                            Ok(it) => it,
+                            _ => unreachable!(),
+                        }, stream, 0x53, true, None);
+                        return None;
+                    } else {
+                        let _ = send(String::from("us"), stream, 0x54, true, None);
+                        return None;
+                    }
+                }
+                }
+
                 if let Err(block_chunk_error) = chunk.valid() {
                     debug!("Recieved block chunk {}, invalid. reason={}", chunk.hash, block_chunk_error)
                 } else {
@@ -366,6 +416,8 @@ pub fn process_handle_msg(
                             }
                         }
                         debug!("Enacted all {} blocks for chunk {}; done", got_blocks.len(), chunk.hash);
+                        let _ = send(String::from("ns"), stream, 0x54, true, None);
+                        return None;
                     }
                 }
             }
@@ -488,7 +540,7 @@ pub fn process_handle_msg(
         0x0c => { // peer rejected our block
             if let Ok(addr) =  stream.peer_addr() {
                 debug!("Peer={} rejected our block, reason={}", addr, read_msg.message);
-            } else {
+            } else if read_msg.message != "ahb" {
                 debug!("Peer (failed to get addr) rejeted our reason={}", read_msg.message);
             }
         }
@@ -538,6 +590,19 @@ pub fn process_handle_msg(
                 } else if let Err(e) = send(s, stream, 0x61, true, None) {
                     log::debug!("Failed to send chain list to peer, gave error: {}", e);
                 }
+            }
+        }
+        0x62 => {
+            log::trace!(
+                "Peer: {} has requested our epoch salt",
+                stream.peer_addr().expect("(Could not get addr for peer)") 
+            );
+            // call the registered callback, producing a vrf proof
+            let salt: Result<String, Box<dyn std::error::Error>>  = Ok(String::default());
+            if let Ok(salt_proof) = salt {
+                let _ = send(salt_proof, stream, 0x62, true, None);
+            } else {
+                let _ = send(format!("{}", salt.unwrap_err()), stream, 0x62, true, None);
             }
         }
         0x45 => {

@@ -6,7 +6,8 @@ extern crate rand;
 extern crate x25519_dalek;
 use crate::peer::in_peers;
 use avrio_config::config;
-use std::time::Duration;
+use avrio_core::chunk::BlockChunk;
+use std::{collections::HashMap, sync::Mutex, time::Duration};
 use std::{
     convert::TryInto,
     net::{Shutdown, SocketAddr},
@@ -20,7 +21,51 @@ fn from_slice(bytes: &[u8]) -> [u8; 32] {
     array
 }
 use log::trace;
+const CACHED_BLOCKCHUNK_SIGNATURES_SIZE: u64 = 5;
+lazy_static! {
+pub static ref COMMITTEE_INDEX: Mutex<u64> = Mutex::new(0);
+pub static ref HANDLE_CHUNK_CALLBACK: Mutex<Option<Box<dyn Fn(BlockChunk) -> Result<(String, String), Box<dyn std::error::Error>> + Send>>> =
+    Mutex::new(None);
+pub static ref CACHED_BLOCKCHUNK_SIGNATURES: Mutex<Vec<(String, String)>> =
+    Mutex::new(vec![]); // A cache of our signatures, uses LIFO structure
+pub static ref TOP_CHUNK_SIGNATURES_CACHE: Mutex<HashMap<String, String>> =
+    Mutex::new(HashMap::new()); // a cache of all signatures we have seen on our commites top chunk (indexed by the nodes ecdsa key)
+pub static ref TOP_CHUNK_HASH: Mutex<String> = Mutex::new(String::default());
+pub static ref FORM_SALT_SEED: Option<Box<dyn Fn() -> Result<String, Box<dyn std::error::Error>> + Sync>> = None;
+}
 
+pub fn push_to_signature_stack(
+    hash: Option<String>,
+    node: Option<String>,
+    signature: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(node_sig) = signature {
+        if let Some(chunk_hash) = hash {
+            if let Some(node_publickey) = node {
+                if *TOP_CHUNK_HASH.lock()? != chunk_hash {
+                    return Err("Hash != top hash".into());
+                }
+                TOP_CHUNK_SIGNATURES_CACHE
+                    .lock()?
+                    .insert(node_publickey, node_sig);
+                return Ok(());
+            } else {
+                // this must be our sig, add to the signature stack
+
+                let lock = &mut *CACHED_BLOCKCHUNK_SIGNATURES.lock()?;
+                if lock.len() == 5 {
+                    lock.remove(0);
+                }
+                lock.push((chunk_hash, node_sig));
+                return Ok(());
+            }
+        } else {
+            return Err("Chunk hash not set".into());
+        }
+    } else {
+        return Err("Signature not set".into());
+    }
+}
 pub fn new_connection(addr: &str) -> Result<std::net::TcpStream, Box<dyn std::error::Error>> {
     if in_peers(&addr.parse::<SocketAddr>()?)? {
         return Err("Already connected".into());
