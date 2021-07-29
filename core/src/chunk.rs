@@ -7,9 +7,11 @@ use crate::{
 use avrio_config::config;
 use avrio_crypto::Hashable;
 use avrio_database::{get_data, save_data};
-use bls_signatures::{aggregate, verify_messages, PrivateKey, PublicKey, Serialize, Signature};
-use std::convert::TryInto;
-#[derive(Debug)]
+use bls_signatures::{
+    aggregate, verify, verify_messages, PrivateKey, PublicKey, Serialize, Signature,
+};
+use std::{convert::TryInto, time::SystemTime};
+#[derive(Debug, Clone)]
 pub struct BlockChunk {
     pub hash: String,
     pub round: u64,
@@ -376,7 +378,29 @@ impl BlockChunk {
     }
 
     pub fn sign(&self, privatekey: PrivateKey) -> Signature {
-        privatekey.sign(self.hash.to_owned())
+        privatekey.sign(
+            format!(
+                "{}{}",
+                self.hash,
+                bs58::encode(privatekey.public_key().as_bytes()).into_string()
+            )
+            .into_bytes(),
+        )
+    }
+
+    pub fn to_sign(&self, signers: Vec<PublicKey>) -> Vec<Vec<u8>> {
+        let mut out = vec![];
+        for signer in signers {
+            out.push(
+                format!(
+                    "{}{}",
+                    self.hash,
+                    bs58::encode(signer.as_bytes()).into_string()
+                )
+                .into_bytes(),
+            )
+        }
+        out
     }
 
     pub fn add_signatures(
@@ -484,4 +508,80 @@ pub fn signers_string_to_vec(
 }
 
 #[test]
-fn test_aggregate_signatures() {}
+fn test_aggregate_signatures() {
+    for num_sig in 1..500 {
+        let mut chunk = BlockChunk {
+            hash: String::default(),
+            round: 0,
+            blocks: vec![],
+            aggregated_signature: String::default(),
+            committee: 1,
+            signers: vec![],
+        };
+        chunk.hash = chunk.hash_item();
+        let mut bls_private_keys = vec![];
+        let mut bls_public_keys = vec![];
+        let mut sigs = vec![];
+        for _ in 0..num_sig {
+            //println!("Generating {} keypair...", num_sig);
+            let mut rng = rand::thread_rng();
+            let sk = PrivateKey::generate(&mut rng);
+            bls_private_keys.push(sk);
+            bls_public_keys.push(sk.public_key());
+            sigs.push(chunk.sign(sk))
+        }
+        let messages: Vec<Vec<u8>> = chunk.to_sign(bls_public_keys.clone());
+       /* let sigs = messages
+            .iter()
+            .zip(bls_private_keys)
+            .map(|(m, k)| {
+                println!(
+                    "Signing {:?} with {:?}",
+                    String::from_utf8(m.to_vec()).unwrap(),
+                    bs58::encode(k.public_key().as_bytes()).into_string()
+                );
+                k.sign(m)
+            })
+            .collect();*/
+        if let Err(error) = chunk.add_signatures(&sigs, bls_public_keys) {
+            println!("ERROR agregating {} sigs, error={}", sigs.len(), error);
+        } else {
+           /* println!(
+                "Added all {} signatures, agregate signature: {}, messages: {:#?}",
+                chunk.signers.len(),
+                chunk.aggregated_signature,
+                messages
+                    .iter()
+                    .map(|bytes| String::from_utf8(bytes.to_owned()).unwrap())
+                    .collect::<Vec<String>>()
+            );*/
+            match bs58::decode(&chunk.aggregated_signature).into_vec() {
+                Ok(raw_aggregated) => match Signature::from_bytes(&raw_aggregated) {
+                    Ok(aggregated) => {
+                        // now check the signature is valid and has been signed by all the signers
+                        let start = SystemTime::now();
+                        if verify_messages(
+                            &aggregated,
+                            &messages.iter().map(|r| &r[..]).collect::<Vec<_>>(),
+                            &chunk.signers,
+                        ) {
+                            /*println!(
+                                "Aggregated signature on block chunk {} valid, took {}ms",
+                                chunk.hash,
+                                SystemTime::now().duration_since(start).unwrap().as_millis()
+                            );*/
+                            println!("{},{}", sigs.len(), SystemTime::now().duration_since(start).unwrap().as_millis());
+                        } else {
+                            println!(
+                                "INVALID, took {}ms",
+                                SystemTime::now().duration_since(start).unwrap().as_millis()
+                            );
+                        }
+                    }
+                    Err(e) => println!("{}", e),
+                },
+                Err(e) => println!("{}", e),
+            }
+        }
+    }
+}
