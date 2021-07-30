@@ -305,9 +305,10 @@ pub fn process_handle_msg(
                 .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)));
             } else {
                 debug!("Creating epoch salt seed VRF");
+                // call the callback for creating epoch salt seed VRF
             }
         }
-        // ping 
+        // Get block chunk 
         0x49 => {
             // params: commitee, epoch, start_round, end_round (checksum = sum(params))
             let (committee, epoch, start, end, checksum): (u64, u64, u64, u64, u64) = serde_json::from_str(&read_msg.message).unwrap_or_default();
@@ -315,7 +316,6 @@ pub fn process_handle_msg(
                 error!("Failed to parse get block chunks params");
             } else {
                 let mut chunks: Vec<String> = vec![];
-                
                 for round in start..=end {
                     trace!("Getting chunk for round {}", round);
                     if let Ok(chunk) = BlockChunk::get_by_round(round, epoch, committee) {
@@ -336,55 +336,112 @@ pub fn process_handle_msg(
                 }
             }
         }
-        0x50 => {
-            // we just got a block chunk, validate it and ask for any blocks we dont have yet, then enact it and all blocks
-            if let Ok(chunk) = BlockChunk::decode(read_msg.message.clone()) {
-                trace!("Decoded block chunk {} from peer", chunk.hash);
-                // check if we are part of a commitee and if this should be validated by this
-                if *(core::COMMITTEE_INDEX.lock().unwrap()) == chunk.committee {
-                    let mut signatures: Vec<(String, String)> = vec![];
-                    let mut already_processed = false;
-                    // check if we have already processed this chunk, by checking in the chunk signatures cache stack
-                    if let Ok(cache_lock) = core::CACHED_BLOCKCHUNK_SIGNATURES.lock() {
-                        let mut found_index= 6;
-                        for (index, item) in cache_lock.iter().enumerate() {
-                            if item.0 == chunk.hash {
-                                found_index = index;
-                            }
-                        }
-                        if found_index != 6 {
-                            // already signed this, get the other signatures we have
-                            signatures.push((cache_lock[found_index].0.to_owned(), cache_lock[found_index].1.to_owned()));
-                            if let Ok(peer_signatures_cache) = core::TOP_CHUNK_SIGNATURES_CACHE.lock() {
-                                for signature in peer_signatures_cache.iter() {
-                                    signatures.push((signature.0.to_owned(), signature.1.to_owned()));
-                                }
-                            }
-                            already_processed = true;
-                        }
-                    }
-                    if !already_processed {
-                    if let Some(callback) = &*core::HANDLE_CHUNK_CALLBACK.lock().unwrap() {
-                        if let Ok((pk, signature)) = (callback)(chunk.clone()) {
-                            debug!("Processed block chunk {} from peer {:?}, created signature {}", chunk.hash, stream.peer_addr(), signature);
-                            signatures.push((pk, signature));
-                            // TODO: ask our LOWER GUID peers to sign this chunk as well
-                        }
-                    }
-                    if signatures.len() != 0 {
-                        // send our vector of signatures to the peer
-                        let _ = send(match serde_json::to_string(&signatures) {
-                            Ok(it) => it,
-                            _ => unreachable!(),
-                        }, stream, 0x53, true, None);
-                        return None;
-                    } else {
-                        let _ = send(String::from("us"), stream, 0x54, true, None);
-                        return None;
-                    }
-                }
-                }
+        0x64 => {
+            // this is a chunk proposal, first check we are in a valid position 
+            if let Ok(committee_index_lock) = core::COMMITTEE_INDEX.lock() {
+                if *committee_index_lock == 0 {
+                    // either unset or we are part of the consensus commitee, eitherway we do not need to handle this message
+                    log::warn!("Asked to vote on chunk, but not in valid position");
+                } else {
+                    // decode the chunk
+                    let chunk_decode = BlockChunk::decode(read_msg.message.to_owned());
+                    if let Ok(chunk) = chunk_decode {
+                        // check if we are not round leader
+                        let top_epoch = get_top_epoch().unwrap();
+                        if top_epoch.committees[*committee_index_lock as usize].get_round_leader().unwrap_or_default() == config().chain_key {
+                            error!("Asked to vote on chunk by {} but not in valid position (is round leader)", stream.peer_addr()
+                            .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)));
+                        } else {
+                                // check if we are in the same committee as the chunk
+                                if chunk.committee != *committee_index_lock {
+                                    error!("Asked to vote on chunk by {} but not in the same committee as the chunk (chunk commitee: {}, our commitee: {})", stream.peer_addr()
+                                    .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)), chunk.committee, *committee_index_lock);
+                                } else {
+                                    // we are in a valid position, proceed
+                                    // TODO: validate chunk
+                                    let chunk_validation_res = chunk.valid();
+                                    if let Err(chunk_validation_error) = chunk_validation_res {
+                                        error!("Chunk {} invalid, got error={} while validating", chunk.hash, chunk_validation_error);
+                                        // send a chunk invaid message
+                                        if let Err(send_error) = send(chunk.hash, stream, 0x55, true, None) {
+                                            error!("Failed to respond to invalid chunk proposal request, got error={} while sending response", send_error);
+                                        }
+                                    } else {
 
+                                        let mut signatures: Vec<(String, String)> = vec![];
+                                        let mut already_processed = false;
+                                        // check if we have already processed this chunk, by checking in the chunk signatures cache stack
+                                        if let Ok(cache_lock) = core::CACHED_BLOCKCHUNK_SIGNATURES.lock() {
+                                            let mut found_index= 6; // there is at most 5 signatures in the cache, so 6 would never be a valid index
+                                            for (index, item) in cache_lock.iter().enumerate() {
+                                                if item.0 == chunk.hash {
+                                                    found_index = index;
+                                                }
+                                            }
+                                            if found_index != 6 { // see above comment as to why we are using 6
+                                                // already signed this, get the other signatures we have
+                                                signatures.push((cache_lock[found_index].0.to_owned(), cache_lock[found_index].1.to_owned())); // push a tuple (signature, public key) to our local signature list for this chunk
+                                                if let Ok(peer_signatures_cache) = core::TOP_CHUNK_SIGNATURES_CACHE.lock() {
+                                                    for signature in peer_signatures_cache.iter() {
+                                                        if signature.0 == &chunk.hash {
+                                                            signatures.push((signature.0.to_owned(), signature.1.to_owned()));
+                                                        }
+                                                    }
+                                                }
+                                                already_processed = true;
+                                            }
+                                        }
+                                        if !already_processed {
+                                            // we have not yet processed this chunk, so we need to sign it
+                                            if let Some(callback) = &*core::HANDLE_CHUNK_CALLBACK.lock().unwrap() {
+                                                if let Ok((pk, signature)) = (callback)(chunk.clone()) {
+                                                    debug!("Processed block chunk {} from peer {:?}, created signature {}", chunk.hash, stream.peer_addr(), signature);
+                                                    signatures.push((pk, signature)); // put our newly created signature to the local signature list for this chunk
+                                                    // TODO: ask our LOWER GUID peers to sign this chunk as well (V2 goal)
+                                                }
+                                            }
+                                            // only run if this is a debug build, this is a slow O(n^2) operation
+                                            if cfg!(debug_assertions) {
+                                                debug!("Detected debug build, running test");
+                                                // test if there are any duplicate pubkeys in the signatures list
+                                                for (public_key, signature) in signatures.iter() {
+                                                    for (public_key2, signature2) in signatures.iter() {
+                                                        if public_key == public_key2 {
+                                                            error!("Detected duplicate public key in signatures list, sig1={}, sig2={}", signature, signature2);
+                                                        }
+                                                    }
+
+                                                }
+                                            }
+                                            if signatures.len() != 0 {
+                                                // send our vector of signatures to the peer
+                                                let _ = send(match serde_json::to_string(&signatures) {
+                                                    Ok(it) => it,
+                                                    _ => unreachable!(),
+                                                }, stream, 0x53, true, None);
+                                                return None;
+                                            } else {
+                                                let _ = send(String::from("us"), stream, 0x54, true, None);
+                                                return None;
+                                            }
+                                        }
+                                    }
+                                }
+                        }
+                    } else {
+                        error!("Failed to decode chunk from peer, error: {}", chunk_decode.unwrap_err());
+                    }
+                }
+            }
+        }
+        0x50 => {
+            // we just got a block chunk, validate it and ask for any blocks we dont have yet
+            // If the chunk is valid & has enough signatures enact it and all included blocks
+            // Otherwise place in the mempool chunk overflow untill it is valid or expires
+            let block_chunk_decode = BlockChunk::decode(read_msg.message.clone());
+            if let Ok(chunk) = block_chunk_decode {
+                trace!("Decoded block chunk {} from peer", chunk.hash);
+                // TODO: Just validate the signature and delta list of the chunk (minimal validation)
                 if let Err(block_chunk_error) = chunk.valid() {
                     debug!("Recieved block chunk {}, invalid. reason={}", chunk.hash, block_chunk_error)
                 } else {
@@ -420,6 +477,8 @@ pub fn process_handle_msg(
                         return None;
                     }
                 }
+            } else {
+                error!("Failed to decode block chunk from peer, error: {}", block_chunk_decode.unwrap_err());
             }
         }
         0x91 => {
