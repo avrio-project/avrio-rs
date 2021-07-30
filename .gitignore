@@ -20,3 +20,4 @@ start.sh
 *.mp4
 settings.json
 *csv
+*code-workspace
