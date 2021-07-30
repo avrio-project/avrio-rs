@@ -28,6 +28,8 @@ pub fn form_table(all_peers: Vec<(String, SocketAddr)>) -> Result<u64, Box<dyn s
     // You then take the GUID of each member of a commitee and put it in a vector, sorted from lowest GUID to highest
     // the position/index of peer within the vector (eg 0, 1, 2 ) is your intra-commitee GUID
     // TODO: Implement the GUID routing stuff; for now connect to each peer
+    // TODO: Calc the GUID of each peer, as well as the GUIDs which should be in our tabel
+
     let mut routing_table_lock = ROUTING_TABLE.lock()?;
     for (id, addr) in guid_to_intra_committee_id(all_peers.clone()) {
         if !in_peers(&addr)? {
@@ -47,6 +49,17 @@ pub fn form_table(all_peers: Vec<(String, SocketAddr)>) -> Result<u64, Box<dyn s
         }
     }
     Ok(routing_table_lock.len() as u64)
+}
+
+/// # Hash into u64
+/// Turns a hash in string form into a u64 (using 8 wise bitshifts)
+pub fn hash_to_u64(hash: String) -> u64 {
+    let hash_bytes = hash.into_bytes();
+    let mut hash_u64: u64 = 0;
+    for i in 0..hash_bytes.len() {
+        hash_u64 = (hash_u64 << 8) + (hash_bytes[i] as u64);
+    }
+    hash_u64
 }
 
 pub fn calculate_guid(public_key: &String, commitee_id: u64, ip_addr: SocketAddr) -> String {
