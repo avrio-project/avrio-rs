@@ -337,8 +337,9 @@ pub fn process_handle_msg(
             }
         }
         0x64 => {
-            // this is a chunk proposal, first check we are in a valid position 
-            if let Ok(committee_index_lock) = core::COMMITTEE_INDEX.lock() {
+            // this is a chunk proposal
+            // TODO: Include search in the chunk signatures cache
+            /*if let Ok(committee_index_lock) = core::COMMITTEE_INDEX.lock() {
                 if *committee_index_lock == 0 {
                     // either unset or we are part of the consensus commitee, eitherway we do not need to handle this message
                     log::warn!("Asked to vote on chunk, but not in valid position");
@@ -432,6 +433,42 @@ pub fn process_handle_msg(
                         error!("Failed to decode chunk from peer, error: {}", chunk_decode.unwrap_err());
                     }
                 }
+            }*/
+            if let Ok(callback_lock) = core::HANDLE_CHUNK_CALLBACK.lock() {
+                let callback_option = &*callback_lock;
+                if let Some(callback) = callback_option {
+                    // decode the chunk 
+                    let chunk_decode = BlockChunk::decode(read_msg.message.to_owned());
+                    if let Err(chunk_decode_error) = chunk_decode {
+                        error!("Failed to decode chunk from peer, error: {}", chunk_decode_error);
+                    } else {
+                        let chunk = chunk_decode.unwrap();
+                        let callback_res = (callback)(chunk.clone());
+                        if let Err(error) = callback_res {
+                            error!("Failed to process chunk from peer, error: {}", error);
+                            // send a chunk invalid message
+                            if let Err(send_error) = send(chunk.hash.to_string(), stream, 0x55, true, None) {
+                                error!("Failed to respond to invalid chunk proposal request, got error={} while sending response", send_error);
+                            } else {
+                                debug!("Responded to invalid chunk proposal request {}", chunk.hash);
+                            }
+                        } else {
+                            debug!("Processed proposed block chunk {} from peer {:?} (fullnode identitiy: {})", chunk.hash, stream.peer_addr(), chunk.proposer().unwrap_or_default());
+                            let signature  = vec![callback_res.unwrap()]; // (publickey, signature)
+                            // send the signature to the peer
+                            if let Err(send_error) = send(match serde_json::to_string(&signature) {
+                                Ok(it) => it,
+                                _ => unreachable!(),
+                            }, stream, 0x53, true, None) {
+                                error!("Failed to respond to chunk proposal request, got error={} while sending signature vector: {:?}", send_error, signature);
+                            } else {
+                                debug!("Responded to chunk proposal request {} with signature vector: {:?}", chunk.hash, signature);
+                            }
+                        }
+                    }
+                }
+            } else {
+                error!("Failed to get lock on HANDLE CHUNK CALLBACK mutex");
             }
         }
         0x50 => {
@@ -656,12 +693,14 @@ pub fn process_handle_msg(
                 "Peer: {} has requested our epoch salt",
                 stream.peer_addr().expect("(Could not get addr for peer)") 
             );
-            // call the registered callback, producing a vrf proof
+            // TODO: call the registered callback, producing a vrf proof
             let salt: Result<String, Box<dyn std::error::Error>>  = Ok(String::default());
             if let Ok(salt_proof) = salt {
                 let _ = send(salt_proof, stream, 0x62, true, None);
             } else {
-                let _ = send(format!("{}", salt.unwrap_err()), stream, 0x62, true, None);
+                let salt_err = salt.unwrap_err();
+                error!("Failed to produce salt seed for peer, callback returned error: {}", salt_err);
+                let _ = send(format!("{}", salt_err), stream, 0x62, true, None);
             }
         }
         0x45 => {
