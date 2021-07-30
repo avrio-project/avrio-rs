@@ -16,12 +16,27 @@ use avrio_rpc::LOCAL_CALLBACKS;
 lazy_static! {
     static ref VRF_LOTTO_ENTRIES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]);
     static ref COMMITEE_INDEX: Mutex<u64> = Mutex::new(1025);
+    static ref VALIDATED_CHUNKS: Mutex<Vec<String>> = Mutex::new(vec![]); // holds a vector of strings of all of the chunks that we validated this epoch
+}
+
+pub fn mark_validated(chunk: &str) {
+    if let Ok(mut lock) = VALIDATED_CHUNKS.lock() {
+        lock.push(chunk.to_string());
+    }
 }
 
 /// # Validator Loop
 /// Called at the start of the main loop, calls the correct functions (for proposing and validating block chunks) then returns either an error (if enountered) or the number of chunks proposed and validated (in a tuple)
-pub fn validator_loop() -> Result<(u64, u64), Box<dyn std::error::Error>> {
-    Ok((0, 0))
+fn validator_loop() -> Result<(u64, u64), Box<dyn std::error::Error>> {
+    Ok((0, VALIDATED_CHUNKS.lock()?.len() as u64))
+}
+
+/// # Create salt seed
+/// Creates a salt seed for the round leader to consume
+/// returns the salt seed vrf proof as a string
+
+pub fn create_salt_seed() -> Result<String, Box<dyn std::error::Error>> {
+    unimplemented!()
 }
 
 pub fn handle_proposed_chunk(
@@ -103,6 +118,7 @@ pub fn handle_proposed_chunk(
             }
             // All blocks are valid, create a BLS signature for this chunk and return it
             let sig: Signature = chunk.sign(string_to_bls_privatkey(&keys_lock[3])?);
+            mark_validated(&chunk.hash);
             Ok((
                 keys_lock[0].clone(),
                 bs58::encode(sig.as_bytes()).into_string(),
