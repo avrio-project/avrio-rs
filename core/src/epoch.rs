@@ -85,7 +85,7 @@ impl Epoch {
             shuffle_bits: 0,
             stage: EpochStage::Main,
         }
-    }            
+    }
 
     pub fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.hash();

@@ -531,22 +531,22 @@ fn test_aggregate_signatures() {
             sigs.push(chunk.sign(sk))
         }
         let messages: Vec<Vec<u8>> = chunk.to_sign(bls_public_keys.clone());
-       /* let sigs = messages
-            .iter()
-            .zip(bls_private_keys)
-            .map(|(m, k)| {
-                println!(
-                    "Signing {:?} with {:?}",
-                    String::from_utf8(m.to_vec()).unwrap(),
-                    bs58::encode(k.public_key().as_bytes()).into_string()
-                );
-                k.sign(m)
-            })
-            .collect();*/
+        /* let sigs = messages
+        .iter()
+        .zip(bls_private_keys)
+        .map(|(m, k)| {
+            println!(
+                "Signing {:?} with {:?}",
+                String::from_utf8(m.to_vec()).unwrap(),
+                bs58::encode(k.public_key().as_bytes()).into_string()
+            );
+            k.sign(m)
+        })
+        .collect();*/
         if let Err(error) = chunk.add_signatures(&sigs, bls_public_keys) {
             println!("ERROR agregating {} sigs, error={}", sigs.len(), error);
         } else {
-           /* println!(
+            /* println!(
                 "Added all {} signatures, agregate signature: {}, messages: {:#?}",
                 chunk.signers.len(),
                 chunk.aggregated_signature,
@@ -570,7 +570,11 @@ fn test_aggregate_signatures() {
                                 chunk.hash,
                                 SystemTime::now().duration_since(start).unwrap().as_millis()
                             );*/
-                            println!("{},{}", sigs.len(), SystemTime::now().duration_since(start).unwrap().as_millis());
+                            println!(
+                                "{},{}",
+                                sigs.len(),
+                                SystemTime::now().duration_since(start).unwrap().as_millis()
+                            );
                         } else {
                             println!(
                                 "INVALID, took {}ms",
