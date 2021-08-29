@@ -1,6 +1,7 @@
 use crate::{
     block::{save_block, Block, BlockType},
     certificate,
+    chunk::BlockChunk,
 };
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
@@ -29,13 +30,19 @@ enum MempoolState {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Mempool {
-    blocks: HashMap<String, (Block, SystemTime)>,
+    blocks: HashMap<String, (Block, SystemTime)>, // Stores the blocks that have not been enacted via a block chunk or override yet
     #[serde(skip)]
-    init: MempoolState,
+    // TODO: Fix this, it's a hack to get around the fact that we can't serialize a BLockChunk with serde
+    chunk_slot: Option<BlockChunk>, // The current chunk being proposed in our committee
     #[serde(skip)]
-    purge_handle: Option<JoinHandle<()>>,
+    // TODO: Fix this, it's a hack to get around the fact that we can't serialize a BLockChunk with serde
+    chunk_overflow: Vec<BlockChunk>, // The overflow stores chunks from other commitees that for whatever reason have not been enacted
     #[serde(skip)]
-    purge_stream: Option<mpsc::Sender<String>>,
+    init: MempoolState, // The current state of the mempool
+    #[serde(skip)]
+    purge_handle: Option<JoinHandle<()>>, // The stream handle of the purge thread
+    #[serde(skip)]
+    purge_stream: Option<mpsc::Sender<String>>, // The multi producer single consumer message pipe to the purge thread
 }
 pub struct Caller {
     pub callback: Box<dyn Fn(SocketAddr, Block) + Send>,
@@ -57,6 +64,8 @@ impl Default for Mempool {
     fn default() -> Mempool {
         Mempool {
             blocks: HashMap::new(),
+            chunk_slot: None,
+            chunk_overflow: Vec::new(),
             init: MempoolState::Uninitialized,
             purge_handle: None,
             purge_stream: None,
@@ -135,7 +144,9 @@ impl Mempool {
     pub fn new(blocks: Vec<Block>) -> Self {
         let mut mem: Mempool = Mempool {
             blocks: HashMap::new(),
-            init: MempoolState::Uninitialized,
+            chunk_slot: None,
+            chunk_overflow: Vec::new(),
+            init: MempoolState::Initialized,
             purge_handle: None,
             purge_stream: None,
         };
@@ -145,6 +156,21 @@ impl Mempool {
         }
         mem
     }
+    pub fn new_from_hashmap(map: &HashMap<String, (Block, SystemTime, Option<Caller>)>) -> Self {
+        let mut mem: Mempool = Mempool {
+            blocks: HashMap::new(),
+            chunk_slot: None,
+            chunk_overflow: Vec::new(),
+            init: MempoolState::Initialized,
+            purge_handle: None,
+            purge_stream: None,
+        };
+        for (k, (block, time, _)) in map.iter() {
+            mem.blocks.insert(k.clone(), (block.clone(), time.clone()));
+        }
+        mem
+    }
+
     pub fn load(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut to_set: HashMap<String, (Block, SystemTime, Option<Caller>)> = HashMap::new();
         for (key, (block, time)) in self.blocks.clone().iter() {
@@ -166,6 +192,8 @@ impl Mempool {
     ) -> Result<JoinHandle<()>, Box<dyn std::error::Error>> {
         let mut self_clone = Mempool {
             blocks: self.blocks.clone(),
+            chunk_slot: None,
+            chunk_overflow: Vec::new(),
             init: MempoolState::Initialized,
             purge_handle: None,
             purge_stream: None,
@@ -197,7 +225,8 @@ impl Mempool {
     }
 
     pub fn into_string() -> Result<String, Box<dyn std::error::Error>> {
-        let mut mem: Mempool = Mempool::new(vec![]);
+        let map = &*(MEMPOOL.lock()?);
+        let mut mem: Mempool = Mempool::new_from_hashmap(map);
         mem.save()?;
         if let Ok(s) = serde_json::to_string(&mem) {
             Ok(s)
