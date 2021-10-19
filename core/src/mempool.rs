@@ -146,7 +146,7 @@ impl Mempool {
             blocks: HashMap::new(),
             chunk_slot: None,
             chunk_overflow: Vec::new(),
-            init: MempoolState::Initialized,
+            init: MempoolState::Uninitialized,
             purge_handle: None,
             purge_stream: None,
         };
