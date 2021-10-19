@@ -43,6 +43,7 @@ pub struct NetworkConfig {
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
     pub target_committee_count: u64, // the ideal number of committes to have,if there is not enough fullnodes this will not be reached
+    pub vrf_lottery_length: u64, // The length of the VRF lottery period
 }
 
 /// This is what is saved in a file, the stuff the user can change and edit to fit their needs
@@ -113,6 +114,7 @@ pub struct Config {
     pub max_syncing_peers: u64,
     pub first_epoch_time: u64,
     pub god_account: String,
+    pub vrf_lottery_length: u64, 
 }
 
 pub fn config_read(path: &str) -> Config {
@@ -224,6 +226,7 @@ impl ConfigSave {
             max_syncing_peers: self.max_syncing_peers,
             first_epoch_time: self.first_epoch_time,
             god_account: self.god_account.to_owned(),
+            vrf_lottery_length: nconf.vrf_lottery_length,
         }
     }
 }
@@ -262,6 +265,7 @@ impl Default for NetworkConfig {
             min_suported_version: vec![0, 1, 0],
             max_supported_version: vec![0, 1, 0],
             target_committee_count: 2, // consensus & normal
+            vrf_lottery_length: 60000, // 1 min
         }
     }
 }
