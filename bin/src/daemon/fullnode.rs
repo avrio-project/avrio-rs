@@ -14,7 +14,7 @@ use crate::*;
 use avrio_core::mempool::MEMPOOL;
 use avrio_rpc::LOCAL_CALLBACKS;
 lazy_static! {
-    static ref VRF_LOTTO_ENTRIES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]);
+    static ref VRF_LOTTO_ENTRIES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]); // the public key of sender (first element), the hash the ticket is in
     static ref COMMITEE_INDEX: Mutex<u64> = Mutex::new(1025);
     static ref VALIDATED_CHUNKS: Mutex<Vec<String>> = Mutex::new(vec![]); // holds a vector of strings of all of the chunks that we validated this epoch
 }
@@ -28,15 +28,41 @@ pub fn mark_validated(chunk: &str) {
 /// # Validator Loop
 /// Called at the start of the main loop, calls the correct functions (for proposing and validating block chunks) then returns either an error (if enountered) or the number of chunks proposed and validated (in a tuple)
 fn validator_loop() -> Result<(u64, u64), Box<dyn std::error::Error>> {
+    match FULLNODE_KEYS.lock() {
+        /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
+        Ok(lock) => {
+            // get the current epoch
+            let epoch = get_top_epoch()?;
+        }
+        Err(e) => {
+            error!("Failed to get lock on fullnode keys {}", e);
+            return Err("Failed to get lock on fullnode keys".into());
+        }
+    }
     Ok((0, VALIDATED_CHUNKS.lock()?.len() as u64))
 }
 
 /// # Create salt seed
 /// Creates a salt seed for the round leader to consume
 /// returns the salt seed vrf proof as a string
-
 pub fn create_salt_seed() -> Result<String, Box<dyn std::error::Error>> {
-    unimplemented!()
+    match FULLNODE_KEYS.lock() {
+        /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
+        Ok(lock) => {
+            let (proof, _) = get_vrf(lock[5].clone(), String::from("genesis"))?;
+            if !avrio_crypto::validate_vrf(lock[4].clone(), proof.clone(), String::from("genesis"))
+            {
+                error!("Created salt seed invalid");
+                return Err("epoch salt seed invalid".into());
+            }
+            trace!("Created seed={}", proof);
+            return Ok(proof);
+        }
+        Err(e) => {
+            error!("Failed to get lock on fullnode keys{}", e);
+            return Err("Failed to get lock on fullnode keys".into());
+        }
+    }
 }
 
 pub fn handle_proposed_chunk(
@@ -276,7 +302,7 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             }
             trace!("Created seed={}", proof);
             let seeds = vec![(lock[0].clone(), proof)];
-            // form txn
+            // form announce epoch seed txn
             let mut transaction = Transaction {
                 hash: String::from(""),
                 amount: 0,
@@ -344,11 +370,12 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
                 }),
             });
             drop(block_callbacks);
-            sleep(Duration::from_millis(60000)); // wait a single minute
-                                                 // now we can proceed
+            sleep(Duration::from_millis(config().vrf_lottery_length)); // wait for the VRF lottery to end
+                                                                       // now we can proceed
             let mut blocks: Vec<Block> = vec![];
 
             // create the shuffle bits
+            // This is used to shuffle the fullnode list into a "random" order and form the committee lists
             let top_epoch = get_top_epoch()?;
             let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
             let (shuffle_proof, _) = get_vrf(
@@ -398,13 +425,22 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             }
             blocks.push(shuffle_bits_block);
             blocks.push(shuffle_bits_block_rec);
+            let mut lottery_entries_ = VRF_LOTTO_ENTRIES.lock()?;
+            let mut lottery_entries = lottery_entries_.clone();
+            *lottery_entries_ = vec![];
+            drop(lottery_entries_);
 
             // create an empty fullnode delta list txn
-            let delta_list: ((String, String), Vec<(String, u8, String)>) = (
+            // TODO: Shouldnt we be processing all the VRF tickets that came in
+            let mut delta_list: ((String, String), Vec<(String, u8, String)>) = (
                 (raw_lyra(&lock[0]), raw_lyra(&top_epoch.committees[0].hash)),
                 vec![],
             );
-
+            for (sender, ticket_txn) in &lottery_entries
+            {
+                // get the txn the ticket is in
+                
+            }
             let mut transaction = Transaction {
                 hash: String::from(""),
                 amount: 0,
@@ -523,6 +559,7 @@ pub fn handle_vrf_submitted(txn: Transaction) {
 // Returns a result, if we are in a committee this epoch and we sucsessfully started this epoch Ok(true), if we are excluded this epoch Ok(false)
 /// Otherwise if there was an error return it
 pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
+    trace!("handle_new_epoch called");
     create_timer(
         Duration::from_millis(config().target_epoch_length),
         Box::new(start_vrf_lotto),
@@ -573,6 +610,7 @@ pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 pub fn start_vrf_lotto(_null: ()) {
+    trace!("Starting VRF lotto");
     match FULLNODE_KEYS.lock() {
         Ok(lock) => {
             let current_epoch = get_top_epoch().unwrap_or_default();
@@ -583,6 +621,7 @@ pub fn start_vrf_lotto(_null: ()) {
             {
                 info!("Consensus committee round leader, coordinating epoch salt formation");
                 // TODO: Send a generateEpochSalt p2p message to every peer in our GUID, collect the responses, then form a announceSaltSeeds txn and process
+                // for now just form a salt ourselves
             } else {
                 debug!(
                     "Not consensus committee round leader, not coordinating epoch salt formation"
