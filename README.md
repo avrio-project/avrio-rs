@@ -78,6 +78,25 @@ cd target
 ./avrio-daemon
 ```
 
+## Windows
+Compiling on widnows is a tad more complicated due to the requirment of openssl for various cryptographic functions. 
+First, ensure rust is installed and the default toolchain is set to nightly, then install vcpkg (used to install openssl, other methods can be used if you are confident, however this should be included in any bug reports it will likley result in)
+```
+> git clone https://github.com/microsoft/vcpkg
+> .\vcpkg\bootstrap-vcpkg.bat
+```
+
+Now, install open ssl
+```
+.\vcpkg install openssl
+```
+
+You can now compile avrio as described in the ubuntu/generic linux section:
+```
+cd avrio-rs
+cargo build --release
+```
+
 ## File structure
 Each aspect of the code is split up into libraries (e.g. database, blockchain, p2p). Libraries are further split into modules (e.g., transaction is a module part of the core library; genesis is a module part of the blockchain lib). If you want to use one of these libs in your code then please add the following to your Cargo.toml and clone this repo into your extern folder
 for the blockchain library
