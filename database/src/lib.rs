@@ -10,10 +10,13 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-use rocksdb::{DBRawIterator, IteratorMode, Options, DB};
+//use rocksdb::{DBRawIterator, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 use std::mem::size_of_val;
 use std::net::SocketAddr;
+
+// sled imports
+use sled::{open, Db as SledDb};
 
 use avrio_config::config;
 static CACHE_VALUES: bool = false; // should we use a memtable to store database values in memory (NO, this is not yet working)
@@ -33,10 +36,14 @@ type DatabaseHashmap = HashMap<String, (HashMap<String, (String, u16)>, u16)>;
 type DatabaseLock<'a> =
     std::sync::MutexGuard<'a, Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>>;
 
+// Sled complex types
+type SledDatabaseFileCache = Mutex<HashMap<String, SledDb>>;
+
 lazy_static! {
     static ref DATABASES: Databases = Mutex::new(None);
     static ref FLUSH_STREAM_HANDLER: FlushStreamHandler = Mutex::new(None);
     static ref DATABASEFILES: DatabaseFiles = Mutex::new(HashMap::new());
+    static ref DATABASE_CACHE: SledDatabaseFileCache = Mutex::new(HashMap::new());
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,62 +68,56 @@ pub fn close_flush_stream() {
     }
 }
 
+pub fn cache_database(path: String) -> Result<bool, Box<dyn std::error::Error>> {
+    if !CACHE_VALUES {
+        return Err("Cant cache DB when CACHE_VALUES == false".into());
+    }
+    // check this DB is not already cached
+    if let Ok(mut database_cache_lock) = DATABASE_CACHE.lock() {
+        if database_cache_lock.values().len() != 0 {
+            // now check if the database cache contains this db
+            if database_cache_lock.contains_key(&path) {
+                return Ok(false); // this db is already cached
+            } else {
+                // open this DB and add to the cache
+                let db_lock = sled::open(config().db_path + path)?;
+                // add to the db lock to the hashmap
+                database_cache_lock.insert(&path, db_lock);
+                return Ok(true);
+            }
+        }
+    }
+}
+
 pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    let db: SledDb;
     //  gain a lock on the DATABASES lazy_sataic
     if CACHE_VALUES {
-        if let Ok(database_lock) = DATABASES.lock() {
-            // check if it contains a Some(x) value
-            if let Some(databases) = database_lock.clone() {
+        if let Ok(database_lock) = DATABASE_CACHE.lock() {
+            // check if it contains values
+            if databases.keys().len() != 0 {
                 // it does; now check if the databases hashmap contains our path (eg is this db cached)
                 if databases.contains_key(&path) {
                     //  we have this database cached, read from it
                     trace!("Open database: Database cached (path={})", path);
                     let mut return_databases: HashMap<String, String> = HashMap::new();
-                    for (key, (val, _)) in databases[&path].0.clone() {
+                    for (key, (val, _)) in databases[&path].iter() {
                         trace!("OD: key={}, val={}", key, val);
                         return_databases.insert(key, val);
                     }
                     return Ok(return_databases);
                 }
             }
+
+            // we need to read from disc
+            cache_database(path)?;
+            db = database_lock.get(&path).unwrap();
         }
+    } else {
+        db = sled::open(config().db_path + path)?;
     }
-    // we need to write to disc
-    let mut db_file_lock = DATABASEFILES.lock().unwrap();
-    let db_deref: DB;
-    let db: &DB;
-    match db_file_lock.keys().len() {
-        0 => {
-            let mut opts = Options::default();
-            opts.create_if_missing(true);
-            opts.set_skip_stats_update_on_db_open(false);
-            opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
-            db_deref = DB::open(&opts, path).unwrap();
-            db = &db_deref;
-        }
-        _ => {
-            let db_hashmap = &mut *db_file_lock;
-            if db_hashmap.contains_key(&path) {
-                trace!("OD: db lock cached in hashmap");
-                db = &db_hashmap[&path];
-            } else {
-                trace!("OD: db lock not cached in hashmap");
-                let mut opts = Options::default();
-                opts.create_if_missing(true);
-                opts.set_skip_stats_update_on_db_open(false);
-                opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
-                db_deref = DB::open(&opts, &path).unwrap();
-                db = &db_deref;
-                let cloned_path = path.clone();
-                trace!("Open database, reloading cache");
-                let _ = reload_cache(vec![cloned_path], &mut db_file_lock, &mut DATABASES.lock()?);
-                trace!("Finished reloading cache, continuing");
-            }
-        }
-    };
     let mut return_databases: HashMap<String, String> = HashMap::new();
-    let iter = db.iterator(IteratorMode::Start); // Always iterates forward
-    for (key, value) in iter {
+    for (key, value) in db.iter() {
         trace!(
             "OD: saw {}, {}",
             String::from_utf8(key.to_vec())?,
