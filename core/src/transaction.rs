@@ -1248,6 +1248,7 @@ impl Verifiable for Transaction {
                         excluded_nodes.len()
                     );
                     for callback in &*(EPOCH_STARTED_CALLBACKS.lock()?) {
+                        trace!("Callback for ESC");
                         (callback)()?;
                     }
                 }
@@ -1309,7 +1310,7 @@ impl Transaction {
             'x' => "Block/ restrict account".to_owned(), // means the account (linked via public key in the extra field) you block cannot send you transactions
             'p' => "Unblock account".to_owned(), // reverts the block transaction (linked by the txn hash in extra field)
             'v' => "Publish VRF lottery ticket".to_owned(),
-            'g' => "Propose penalty".to_owned(), // Proposes, with attached proof of absence thata  fullnode should recieve a penalty
+            'g' => "Propose penalty".to_owned(), // Proposes, with attached proof of absence that a fullnode should recieve a penalty
             'o' => "Toggle participation".to_owned(), // Toggles the fullnodes participation status (eg if they are taking part in validation)
             // CONSENSUS ONLY
             'a' => "Announce epoch salt seed".to_owned(),
