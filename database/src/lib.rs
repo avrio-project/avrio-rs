@@ -16,7 +16,7 @@ use std::mem::size_of_val;
 use std::net::SocketAddr;
 
 // sled imports
-use sled::{open, Db as SledDb};
+use sled::{open, Db as SledDb, Iter};
 
 use avrio_config::config;
 static CACHE_VALUES: bool = false; // should we use a memtable to store database values in memory (NO, this is not yet working)
@@ -31,7 +31,7 @@ static CACHE_VALUES: bool = false; // should we use a memtable to store database
 // Complex types to satisfy most of clippy's nagging
 type Databases = Mutex<Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>>;
 type FlushStreamHandler = Mutex<Option<std::sync::mpsc::Sender<String>>>;
-type DatabaseFiles = Mutex<HashMap<String, rocksdb::DB>>;
+type DatabaseFiles = Mutex<HashMap<String, SledDb>>;
 type DatabaseHashmap = HashMap<String, (HashMap<String, (String, u16)>, u16)>;
 type DatabaseLock<'a> =
     std::sync::MutexGuard<'a, Option<HashMap<String, (HashMap<String, (String, u16)>, u16)>>>;
@@ -80,12 +80,16 @@ pub fn cache_database(path: String) -> Result<bool, Box<dyn std::error::Error>> 
                 return Ok(false); // this db is already cached
             } else {
                 // open this DB and add to the cache
-                let db_lock = sled::open(config().db_path + path)?;
+                let db_lock = sled::open(config().db_path + &path)?;
                 // add to the db lock to the hashmap
-                database_cache_lock.insert(&path, db_lock);
+                database_cache_lock.insert(path, db_lock);
                 return Ok(true);
             }
+        } else {
+            return Ok(false);
         }
+    } else {
+        return Err("Failed to get a lock on DATABASE CACHE".into());
     }
 }
 
@@ -93,70 +97,82 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
     let db: SledDb;
     //  gain a lock on the DATABASES lazy_sataic
     if CACHE_VALUES {
-        if let Ok(database_lock) = DATABASE_CACHE.lock() {
+        if let Ok(database_cache_lock) = DATABASE_CACHE.lock() {
+            let database_cache_lock = &*database_cache_lock;
             // check if it contains values
-            if databases.keys().len() != 0 {
+            if database_cache_lock.values().len() != 0 {
                 // it does; now check if the databases hashmap contains our path (eg is this db cached)
-                if databases.contains_key(&path) {
+                if database_cache_lock.contains_key(&path) {
                     //  we have this database cached, read from it
                     trace!("Open database: Database cached (path={})", path);
                     let mut return_databases: HashMap<String, String> = HashMap::new();
-                    for (key, (val, _)) in databases[&path].iter() {
-                        trace!("OD: key={}, val={}", key, val);
-                        return_databases.insert(key, val);
-                    }
+                    database_cache_lock
+                        .get(&path)
+                        .unwrap()
+                        .iter()
+                        .for_each(|item| {
+                            if let Ok(value) = item {
+                                let key = String::from_utf8(value.0.to_vec()).unwrap();
+                                let val = String::from_utf8(value.1.to_vec()).unwrap();
+                                trace!("OD: key={}, val={}", key, val);
+                                return_databases.insert(key, val);
+                            } else {
+                                error!(
+                                    "Failed to get value from sled database, error={:?}",
+                                    item.unwrap_err()
+                                );
+                            }
+                        });
                     return Ok(return_databases);
                 }
             }
 
             // we need to read from disc
-            cache_database(path)?;
-            db = database_lock.get(&path).unwrap();
+            cache_database(path.clone())?;
+            db = database_cache_lock.get(&path).unwrap().clone();
+        } else {
+            return Err("Failed to get a lock on DATABASE CACHE".into());
         }
     } else {
-        db = sled::open(config().db_path + path)?;
+        db = sled::open(config().db_path + &path)?;
     }
     let mut return_databases: HashMap<String, String> = HashMap::new();
-    for (key, value) in db.iter() {
-        trace!(
-            "OD: saw {}, {}",
-            String::from_utf8(key.to_vec())?,
-            String::from_utf8(value.to_vec())?,
-        );
-        return_databases.insert(
-            String::from_utf8(key.to_vec())?,
-            String::from_utf8(value.to_vec())?,
-        );
+    for item in db.iter() {
+        if let Ok(item_tuple) = item {
+            let key = item_tuple.0.to_vec();
+            let val = item_tuple.1.to_vec();
+            trace!(
+                "OD: saw {}, {}",
+                String::from_utf8(key.to_vec())?,
+                String::from_utf8(val.to_vec())?,
+            );
+            return_databases.insert(
+                String::from_utf8(key.to_vec())?,
+                String::from_utf8(val.to_vec())?,
+            );
+        }
     }
     Ok(return_databases)
 }
 
-pub fn get_iterator(db: &rocksdb::DB) -> DBRawIterator {
-    db.raw_iterator()
-}
-
 fn reload_cache(
     db_paths: Vec<String>,
-    db_file_lock: &mut std::sync::MutexGuard<HashMap<String, rocksdb::DB>>,
+    db_file_lock: &mut std::sync::MutexGuard<HashMap<String, SledDb>>,
     db_lock: &mut DatabaseLock,
 ) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Reloading cache for DBs: {:?}", db_paths);
-    let mut new_db_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
+    let mut new_db_hashmap: HashMap<String, SledDb> = HashMap::new();
     let mut additions = 0;
     let mut unchanged = 0;
     let mut databases_hashmap: DatabaseHashmap = HashMap::new();
-    for path in db_paths {
+    /* for path in db_paths {
         // iterate over all the new paths to add
         trace!("Recaching {}", path);
-        let db: DB;
+        let db: SledDb;
         match db_file_lock.keys().len() {
             0 => {
                 // the existing hashmap is empty, open the db from disk
-                let mut opts = Options::default();
-                opts.create_if_missing(true);
-                opts.set_skip_stats_update_on_db_open(false);
-                opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
-                db = DB::open(&opts, &path)?;
+                db = open()
                 additions += 1;
             }
             _ => {
@@ -244,9 +260,15 @@ fn reload_cache(
         );
         *(*db_lock) = Some(databases_hashmap);
         trace!("Set db global varible to the database_hashmap");
-    }
+    }*/
+    //TODO
     Ok(())
 }
+
+pub fn get_iterator(db: &SledDb) -> Iter {
+    db.iter()
+}
+
 pub fn init_cache(
     max_size: usize,
 ) -> Result<(Sender<String>, std::thread::JoinHandle<()>), Box<dyn std::error::Error>> {
@@ -262,31 +284,36 @@ pub fn init_cache(
         to_cache_paths.len()
     );
     let mut databases_hashmap: DatabaseHashmap = HashMap::new();
-    let mut database_lock_hashmap: HashMap<String, rocksdb::DB> = HashMap::new();
+    let mut database_lock_hashmap: HashMap<String, SledDb> = HashMap::new();
     for raw_path in to_cache_paths {
         let final_path = config().db_path + raw_path;
         log::debug!("Caching db, path={}", final_path);
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.set_skip_stats_update_on_db_open(false);
-        opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
         let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
         if CACHE_VALUES {
-            let db = DB::open(&opts, final_path.to_owned())?;
-            let db_iter = db.raw_iterator();
-            while db_iter.valid() {
-                if let Some(key_bytes) = db_iter.key() {
-                    if let Ok(key) = String::from_utf8(Vec::from(key_bytes)) {
-                        // now get the value
-                        if let Some(value_bytes) = db_iter.value() {
-                            if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
-                                trace!("(DB={}) Got key={} for value={}", final_path, key, value);
-                                // now put that into a hashmap
-                                values_hashmap.insert(key, (value, 0));
-                            }
-                        }
+            let db = open(final_path.clone())?;
+            let mut db_iter = db.iter();
+            let mut next_val = db_iter.next(); // the first value will never fail
+            while next_val.is_some() {
+                let next_unwrapped = next_val.unwrap();
+                if let Err(e) = next_unwrapped {
+                    error!(
+                        "Error getting next value from db, path={}, error={}",
+                        final_path, e
+                    );
+                    break;
+                }
+                let next_unwrapped = next_unwrapped.unwrap();
+
+                if let Ok(key) = String::from_utf8(next_unwrapped.0.to_vec()) {
+                    // now get the value
+
+                    if let Ok(value) = String::from_utf8(next_unwrapped.1.to_vec()) {
+                        trace!("(DB={}) Got key={} for value={}", final_path, key, value);
+                        // now put that into a hashmap
+                        values_hashmap.insert(key, (value, 0));
                     }
                 }
+                next_val = db_iter.next();
             }
 
             // get size of values_hashmap HashMap
@@ -308,9 +335,9 @@ pub fn init_cache(
             }
         }
         // (re)open the db
-        let db_new = DB::open(&opts, final_path.to_owned())?;
+        let db_new = open(final_path.clone())?;
         // now we add the on-disk DB lock to DATABASEFILES
-        database_lock_hashmap.insert(final_path.to_string(), db_new);
+        database_lock_hashmap.insert(final_path.clone(), db_new);
     }
     let percent_usage: f64 =
         ((size_of_val(&databases_hashmap) + size_of_val(&database_lock_hashmap)) / max_size) as f64;
@@ -372,17 +399,11 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                         );
                         // we need to write to disc
                         let mut db_file_lock = DATABASEFILES.lock()?;
-                        let db_deref: DB;
-                        let db: &DB;
+                        let db_deref: SledDb;
+                        let db: &SledDb;
                         match db_file_lock.keys().len() {
                             0 => {
-                                let mut opts = Options::default();
-                                opts.create_if_missing(true);
-                                opts.set_skip_stats_update_on_db_open(false);
-                                opts.increase_parallelism(
-                                    ((1.0 / 3.0) * num_cpus::get() as f64) as i32,
-                                );
-                                db_deref = DB::open(&opts, &path)?;
+                                db_deref = open(&path).unwrap();
                                 db = &db_deref;
                             }
                             _ => {
@@ -390,13 +411,7 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                                 if db_hashmap.contains_key(&path) {
                                     db = &db_hashmap[&path];
                                 } else {
-                                    let mut opts = Options::default();
-                                    opts.create_if_missing(true);
-                                    opts.set_skip_stats_update_on_db_open(false);
-                                    opts.increase_parallelism(
-                                        ((1.0 / 3.0) * num_cpus::get() as f64) as i32,
-                                    );
-                                    db_deref = DB::open(&opts, &path)?;
+                                    db_deref = open(&path).unwrap();
                                     db = &db_deref;
                                     let cloned_path = path.clone();
                                     trace!("Dirty dataflush stream, reloading cache");
@@ -411,12 +426,14 @@ fn flush_dirty_to_disk(rec: Receiver<String>) -> Result<(), Box<dyn std::error::
                         };
                         for (key, value) in db_tuple.0 {
                             if value.1 != 0 {
-                                if let Err(e) = db.put(key.clone(), value.0.clone()) {
+                                if let Err(e) =
+                                    db.insert(key.clone().as_bytes(), value.0.clone().as_bytes())
+                                {
                                     error!("Failed to save data to db, gave error: {}", e);
                                 } else {
                                     trace!(
                                         "flushed data to db: {}, key: {}, value, {}",
-                                        db.path().display(),
+                                        path,
                                         key,
                                         value.0
                                     );
@@ -478,16 +495,12 @@ pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
     // used to save data without having to create 1000's of functions (eg saveblock, savepeerlist, ect)
     // we need to write to disc
     let mut db_file_lock = DATABASEFILES.lock().unwrap();
-    let db_deref: DB;
-    let db: &DB;
+    let db_deref: SledDb;
+    let db: &SledDb;
     match db_file_lock.keys().len() {
         0 => {
             debug!("db_file_lock contains no keys");
-            let mut opts = Options::default();
-            opts.create_if_missing(true);
-            opts.set_skip_stats_update_on_db_open(false);
-            opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
-            db_deref = DB::open(&opts, path).unwrap();
+            db_deref = open(path).unwrap();
             db = &db_deref;
         }
         _ => {
@@ -496,11 +509,7 @@ pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
             if db_hashmap.contains_key(path) {
                 db = &db_hashmap[path];
             } else {
-                let mut opts = Options::default();
-                opts.create_if_missing(true);
-                opts.set_skip_stats_update_on_db_open(false);
-                opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
-                db_deref = DB::open(&opts, &path).unwrap();
+                db_deref = open(path).unwrap();
                 db = &db_deref;
                 let cloned_path = path.to_string();
                 let try_lock = DATABASES.lock();
@@ -515,14 +524,14 @@ pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
         }
     };
 
-    if let Err(e) = db.put(key.clone(), serialized.to_string()) {
+    if let Err(e) = db.insert(key.clone().as_bytes(), serialized.to_string().as_bytes()) {
         error!("Failed to save data to db, gave error: {}", e);
 
         0
     } else {
         trace!(
             "set data to db: {}, key: {}, value, {}",
-            db.path().display(),
+            path,
             key,
             serialized
         );
@@ -609,22 +618,15 @@ pub fn get_data(dbpath: String, key: &str) -> String {
     // 1) the database cached
     // or 2) the key cached
     // therefore we read from disk to be sure we dont have this value there instead
-    let mut opts = Options::default();
-    opts.create_if_missing(true);
-    opts.set_skip_stats_update_on_db_open(false);
-    opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
+
     let data: String;
     // we need to write to disc
     let mut db_file_lock = DATABASEFILES.lock().unwrap();
-    let db_deref: DB;
-    let db: &DB;
+    let db_deref: SledDb;
+    let db: &SledDb;
     match db_file_lock.keys().len() {
         0 => {
-            let mut opts = Options::default();
-            opts.create_if_missing(true);
-            opts.set_skip_stats_update_on_db_open(false);
-            opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
-            db_deref = DB::open(&opts, &dbpath).unwrap();
+            db_deref = open(&dbpath).unwrap();
             db = &db_deref;
         }
         _ => {
@@ -632,11 +634,7 @@ pub fn get_data(dbpath: String, key: &str) -> String {
             if db_hashmap.contains_key(&dbpath) {
                 db = &db_hashmap[&dbpath];
             } else {
-                let mut opts = Options::default();
-                opts.create_if_missing(true);
-                opts.set_skip_stats_update_on_db_open(false);
-                opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
-                db_deref = DB::open(&opts, &dbpath).unwrap();
+                db_deref = open(&dbpath).unwrap();
                 db = &db_deref;
                 let cloned_path = dbpath.clone();
                 let try_lock = DATABASES.lock();
@@ -652,7 +650,7 @@ pub fn get_data(dbpath: String, key: &str) -> String {
     };
     match db.get(key) {
         Ok(Some(value)) => {
-            data = String::from_utf8(value).unwrap_or_else(|_| "".to_owned());
+            data = String::from_utf8(value.to_vec()).unwrap_or_else(|_| "".to_owned());
 
             trace!("got data from db={}, data={}, key={}", dbpath, data, key);
         }

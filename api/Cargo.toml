@@ -10,7 +10,7 @@ edition = "2018"
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-rocket = { version = "0.4.7", default-features = true }
+rocket = { version = "0.4.10", default-features = true }
 avrio_core = { path = "../core" }
 avrio_database = { path = "../database" }
 avrio_config = { path = "../config" }

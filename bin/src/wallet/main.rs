@@ -1512,7 +1512,7 @@ pub fn save_wallet(
     let padded_string = String::from_utf8(padded).unwrap();
     trace!("key: {}", padded_string);
     let key = GenericArray::clone_from_slice(padded_string.as_bytes());
-    let aead = Aes256Gcm::new(key);
+    let aead = Aes256Gcm::new(&key);
     let mut padded = b"nonce".to_vec();
     while padded.len() != 12 {
         padded.push(b"n"[0]);
@@ -1551,7 +1551,7 @@ pub fn open_wallet(wallet_name: String, password: String) -> Wallet {
     let padded_string = String::from_utf8(padded).unwrap();
     trace!("key: {}", padded_string);
     let key = GenericArray::clone_from_slice(padded_string.as_bytes());
-    let aead = Aes256Gcm::new(key);
+    let aead = Aes256Gcm::new(&key);
     let mut padded = b"nonce".to_vec();
     while padded.len() != 12 {
         padded.push(b"n"[0]);
