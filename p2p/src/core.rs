@@ -31,7 +31,8 @@ pub static ref CACHED_BLOCKCHUNK_SIGNATURES: Mutex<Vec<(String, String)>> =
 pub static ref TOP_CHUNK_SIGNATURES_CACHE: Mutex<HashMap<String, String>> =
     Mutex::new(HashMap::new()); // a cache of all signatures we have seen on our commites top chunk (indexed by the nodes ecdsa key)
 pub static ref TOP_CHUNK_HASH: Mutex<String> = Mutex::new(String::default());
-pub static ref FORM_SALT_SEED: Option<Box<dyn Fn() -> Result<String, Box<dyn std::error::Error>> + Sync>> = None;
+pub static ref FORM_SALT_SEED: Mutex<Option<Box<dyn Fn() -> Result<String, Box<dyn std::error::Error>> + Send>>> =
+Mutex::new(None);
 }
 
 pub fn push_to_signature_stack(
