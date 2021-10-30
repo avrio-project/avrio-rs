@@ -81,6 +81,13 @@ pub fn get_fullnode_count() -> u64 {
         .parse::<u64>()
         .unwrap_or(0);
 }
+pub fn set_fullnode_count(count: u64) -> u8 {
+    save_data(
+        &count.to_string(),
+        &(config().db_path + "/candidates"),
+        "count".to_string(),
+    )
+}
 
 pub fn generate_certificate(
     pk: &str,
@@ -281,6 +288,7 @@ impl Verifiable for Certificate {
             return Err("failed to save ECDSA-BLS looukup entry".into());
         }
         let candidate_count = get_fullnode_count();
+        trace!("Candidate count: {}", candidate_count);
         if candidate_count == 0 {
             // there are no candidates registered, this must be the god address (TODO: check this was sent by config().god_account)
             // ecolse this candidate fully
@@ -317,14 +325,10 @@ impl Verifiable for Certificate {
                 public_key_to_address(&self.public_key)
             );
         }
-        if save_data(
-            "count",
-            &(config().db_path + "/candidates"),
-            (candidate_count + 1).to_string(),
-        ) != 1
-        {
-            return Err("failed to save candidate count".into());
+        if set_fullnode_count(candidate_count + 1) != 1 {
+            return Err("failed to update fullnode count".into());
         }
+
         Ok(())
     }
 }

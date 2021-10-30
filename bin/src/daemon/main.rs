@@ -408,7 +408,7 @@ fn main() {
                         process::exit(0);
                     }
                 }
-                if get_fullnode_count() == 0 {
+                if get_fullnode_count() == 1 {
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .expect("time went backwards")

@@ -303,9 +303,40 @@ pub fn process_handle_msg(
             if top_epoch.committees[0].get_round_leader().unwrap_or_default() == config().chain_key || !top_epoch.committees[0].members.contains(&config().chain_key) {
                 error!("Asked to create epoch salt by {} but not in valid position", stream.peer_addr()
                 .unwrap_or(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)));
+                let _ = send(
+                    "ivp".to_string(),
+                    stream,
+                    0x07,
+                    true,
+                    None,
+                );
             } else {
                 debug!("Creating epoch salt seed VRF");
                 // call the callback for creating epoch salt seed VRF
+                if let Some(callback) = &*crate::core::FORM_SALT_SEED.lock().unwrap() {
+                    let res = (callback)();
+                    match res {
+                        Ok(salt_seed) => {
+                            let _ = send(
+                                salt_seed,
+                                stream,
+                                0x07,
+                                true,
+                                None,
+                            );
+                        }
+                        Err(e) => {
+                            error!("Failed to create epoch salt seed VRF, error={}", e);
+                            let _ = send(
+                                "ftg".to_string(),
+                                stream,
+                                0x07,
+                                true,
+                                None,
+                            );
+                        }
+                    }
+                }
             }
         }
         // Get block chunk 
