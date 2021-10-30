@@ -10,7 +10,13 @@ use avrio_database::{get_data, save_data};
 use bls_signatures::{
     aggregate, verify, verify_messages, PrivateKey, PublicKey, Serialize, Signature,
 };
-use std::{convert::TryInto, time::SystemTime};
+use lazy_static::lazy_static;
+use std::{convert::TryInto, sync::Mutex, time::SystemTime};
+
+lazy_static! {
+    pub static ref ENACT_BLOCK_CALLBACK: Mutex<Option<Box<dyn Fn(&String) -> Result<(), Box<dyn std::error::Error>> + Send>>> =
+        Mutex::new(None);
+}
 #[derive(Debug, Clone)]
 pub struct BlockChunk {
     pub hash: String,
@@ -176,6 +182,20 @@ impl Verifiable for BlockChunk {
                     + &self.committee.to_string(),
             ) == 1
             {
+                // set the blocks to be enacted
+                let callback_lock = ENACT_BLOCK_CALLBACK.lock()?;
+                if let Some(callback) = callback_lock.as_ref() {
+                    for block in self.blocks.iter() {
+                        if let Err(e) = callback(block) {
+                            error!("Failed to enact contained block {}, error: {}", block, e);
+                        }
+                    }
+                } else {
+                    error!(
+                        "Mempool mark as enacted callback unset, cannot enact blocks in chunk {}",
+                        self.hash
+                    );
+                }
                 // Now we calculate the reward for the validators and the proposer:
                 // Proposer reward: txn_fees + (base_reward *  (signers_count / commitee size))
                 // Validator reward: 5 / signers_count
@@ -365,16 +385,34 @@ impl BlockChunk {
             config().db_path + "/blockchunks",
             &(committee.to_string() + "-round-" + &top_epoch.epoch_number.to_string()),
         )
-        .parse()?;
-        let mut top = BlockChunk::get_by_round(top_round_index, top_epoch.epoch_number, committee)?;
-        top.blocks = vec![];
-        top.aggregated_signature = String::from("");
-        top.signers = vec![];
-        for block in blocks {
-            top.blocks.push(block.hash.to_string());
+        .parse()
+        .unwrap_or_default();
+        if let Ok(mut top) =
+            BlockChunk::get_by_round(top_round_index, top_epoch.epoch_number, committee)
+        {
+            top.blocks = vec![];
+            top.aggregated_signature = String::from("");
+            top.signers = vec![];
+            for block in blocks {
+                top.blocks.push(block.hash.to_string());
+            }
+            top.hash = top.hash_item();
+            return Ok(top);
+        } else {
+            let mut chunk = BlockChunk {
+                round: 0,
+                blocks: vec![],
+                committee: committee,
+                aggregated_signature: String::from(""),
+                signers: vec![],
+                hash: String::from(""),
+            };
+            for block in blocks {
+                chunk.blocks.push(block.hash.to_string());
+            }
+            chunk.hash = chunk.hash_item();
+            return Ok(Box::new(chunk));
         }
-        top.hash = top.hash_item();
-        Ok(top)
     }
 
     pub fn sign(&self, privatekey: PrivateKey) -> Signature {
