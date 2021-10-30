@@ -19,6 +19,7 @@ where
                 + duration.as_millis()
         );
         thread::sleep(duration);
+        debug!("Executing timer");
         (callback)(params)
     });
 }
