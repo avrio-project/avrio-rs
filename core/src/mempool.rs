@@ -53,6 +53,12 @@ impl Caller {
     pub fn call(&self, blk: Block) {
         (self.callback)(self.rec_from, blk)
     }
+    pub fn blank() -> Caller {
+        Caller {
+            callback: Box::new(|_, _| {}),
+            rec_from: "127.0.0.1:9999".parse().unwrap(),
+        }
+    }
 }
 
 lazy_static! {
@@ -99,8 +105,8 @@ pub fn mark_as_valid(block_hash: &String) -> Result<(), Box<dyn std::error::Erro
         Err("block not in mempool".into())
     } else {
         if let Some((block, _, _)) = map.remove(block_hash) {
-            let _ = block.enact()?;
             block.save()?;
+            block.enact()?;
             Ok(())
         } else {
             error!(
