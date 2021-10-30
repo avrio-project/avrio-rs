@@ -159,7 +159,8 @@ pub fn publickey_to_address(publickey: String) -> String {
 
 #[get("/chainlist")]
 pub fn chainlist() -> String {
-    if let Ok(db) = open_database(config().db_path + &"/chainlist".to_owned()) {
+    let open_attempt = open_database(config().db_path + &"/chainlist".to_owned());
+    if let Ok(db) = open_attempt {
         let mut chains: Vec<String> = vec![];
 
         for (key, _) in db.iter() {
@@ -170,11 +171,11 @@ pub fn chainlist() -> String {
         if let Ok(s) = serde_json::to_string(&chains) {
             return "{ \"success\": true, \"list\": ".to_owned() + &s + " }";
         } else {
-            error!("Could not find seralise chainlist");
+            error!("Could not seralise chainlist");
             return "{ \"success\": false, \"chain\": \"\" }".to_string();
         }
     } else {
-        error!("Could not find open chainslist db");
+        error!("Could not open chainslist db, error: {}", open_attempt.unwrap_err());
         return "{ \"success\": false, \"list\": \"\" }".to_string();
     }
 }
