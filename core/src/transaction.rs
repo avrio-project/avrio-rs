@@ -454,7 +454,7 @@ impl Verifiable for Transaction {
                     return Err(Box::new(TransactionValidationErrors::NotFullNode));
                 }
             }
-            'o' => {
+            'g' => {
                 let size_of_extra = self.extra.len();
                 if size_of_extra >= 200 {
                     error!(
