@@ -160,7 +160,7 @@ fn reload_cache(
     db_file_lock: &mut std::sync::MutexGuard<HashMap<String, SledDb>>,
     db_lock: &mut DatabaseLock,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    debug!("Reloading cache for DBs: {:?}", db_paths);
+    //debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, SledDb> = HashMap::new();
     let mut additions = 0;
     let mut unchanged = 0;
@@ -514,9 +514,9 @@ pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
                 let cloned_path = path.to_string();
                 let try_lock = DATABASES.lock();
                 if let Ok(mut db_lock) = try_lock {
-                    trace!("Save data, reloading cache");
+                    //trace!("Save data, reloading cache");
                     let _ = reload_cache(vec![cloned_path], &mut db_file_lock, &mut db_lock);
-                    trace!("Finished reloading cache, continuing");
+                    //trace!("Finished reloading cache, continuing");
                 } else {
                     error!("Save data, failed to gain lock on DATABASES mutex; skipping recache, error={}", try_lock.unwrap_err());
                 }
@@ -639,9 +639,9 @@ pub fn get_data(dbpath: String, key: &str) -> String {
                 let cloned_path = dbpath.clone();
                 let try_lock = DATABASES.lock();
                 if let Ok(mut db_lock) = try_lock {
-                    trace!("Get data, reloading cache");
+                    //trace!("Get data, reloading cache");
                     let _ = reload_cache(vec![cloned_path], &mut db_file_lock, &mut db_lock);
-                    trace!("Finished reloading cache, continuing");
+                    //trace!("Finished reloading cache, continuing");
                 } else {
                     error!("Get data, failed to gain lock on DATABASES mutex; skipping recache, error={}", try_lock.unwrap_err());
                 }
