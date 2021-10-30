@@ -662,7 +662,7 @@ impl Verifiable for Transaction {
                         for delta in delta_list {
                             if delta.1 != 0 {
                                 // remove the fullnode
-                                // TODO: validate remove proof
+                                // TODO: validate remove proof 
                                 if fullnodes_hashset.contains(&delta.0) {
                                     trace!(
                                         "Removing {} from fullnode set, reason={}, proof={}",
@@ -670,21 +670,13 @@ impl Verifiable for Transaction {
                                         delta.1,
                                         delta.2
                                     );
+                                    fullnodes_hashset.remove(&delta.0);
                                 } else {
                                     error!("Fullnode set did not contain node removed by delta entry, delta entry={:?}", delta);
                                 }
                             } else {
-                                // eclose a candidate
+                                // TODO: validate add proof before eclsoure
                                 fullnodes_hashset.insert(delta.0.clone());
-                                // now update their on disk flag to validator, from candidate
-                                if save_data(
-                                    "f",
-                                    &(config().db_path + "/candidates"),
-                                    delta.0.clone(),
-                                ) != 1
-                                {
-                                    return Err("failed to save new fullnode candidate".into());
-                                }
                             }
                         }
                         let mut fullnodes: Vec<String> = Vec::from_iter(fullnodes_hashset);
