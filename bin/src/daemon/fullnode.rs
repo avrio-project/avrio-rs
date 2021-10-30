@@ -535,9 +535,7 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
                 (raw_lyra(&lock[0]), raw_lyra(&top_epoch.committees[0].hash)),
                 vec![],
             );
-            for (sender, ticket_txn) in &lottery_entries {
-                // get the txn the ticket is in
-            }
+            
             let mut transaction = Transaction {
                 hash: String::from(""),
                 amount: 0,
