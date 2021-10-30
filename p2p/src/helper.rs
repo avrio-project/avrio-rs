@@ -5,11 +5,7 @@ use crate::{
     utils::*,
 };
 use avrio_config::config;
-use avrio_core::{
-    block::{from_compact, get_block_from_raw, save_block, Block},
-    states::form_state_digest,
-    validate::Verifiable,
-};
+use avrio_core::{block::{from_compact, get_block_from_raw, save_block, Block}, chunk::BlockChunk, states::form_state_digest, validate::Verifiable};
 use avrio_database::get_data;
 
 //use bson;
@@ -83,6 +79,31 @@ pub fn prop_block(blk: &Block) -> Result<u64, Box<dyn std::error::Error>> {
         let _ = unlock_peer(peer_stream)?;
     }
     trace!("Sent block {} to {} peers", blk.hash, i);
+    Ok(i)
+}
+
+/// # Prop_block_chunk
+/// Sends a block chunk to all connected peers.
+/// # Returns
+/// a result enum conatining the error encountered or a u64 of the number of peers we sent to and got a block chunk ack response from
+pub fn prop_block_chunk(bc: &BlockChunk) -> Result<u64, Box<dyn std::error::Error>> {
+    let mut i: u64 = 0;
+    for peer in get_peers_addr()?.iter_mut() {
+        debug!("Sending block to peer: {:?}", peer);
+        let mut peer_stream = lock(peer, 10000)?;
+        let send_res = send_block_chunk_struct(bc, &mut peer_stream);
+        if send_res.is_ok() {
+            i += 1;
+        } else {
+            trace!(
+                "error sending block chunk to peer {}, error={}",
+                peer_stream.peer_addr()?,
+                send_res.unwrap_err()
+            );
+        }
+        let _ = unlock_peer(peer_stream)?;
+    }
+    trace!("Sent block {} to {} peers", bc.hash, i);
     Ok(i)
 }
 
@@ -802,6 +823,20 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
     }
 }
 
+pub fn send_block_chunk_struct(bc: &BlockChunk, peer: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+    if bc.hash == String::default() {
+        Err("tried to send default block chunk".into())
+    } else {
+        let block_ser: String = bc.encode()?; // serilise the block into bson
+
+        if let Err(e) = send(block_ser, peer, 0x50, true, None) {
+            Err(e)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub fn send_block_with_hash(hash: String, peer: &mut TcpStream) -> Result<(), Box<dyn Error>> {
     let block = get_block_from_raw(hash);
     if block.hash == Block::default().hash {
@@ -947,3 +982,8 @@ pub struct GetBlocks {
 }
 
 // -- End sync assist functions and structures-- //
+
+// -- Fullnode assist functions and structures -- //
+
+
+// -- End fullnode assist functions and structures -- //
