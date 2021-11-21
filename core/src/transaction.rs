@@ -592,7 +592,7 @@ impl Verifiable for Transaction {
                         TransactionValidationErrors::WrongAmountRecieverConsensusMessage,
                     ));
                 }
-                match serde_json::from_str::<Vec<(String, String)>>(&String::from_utf8(
+                match serde_json::from_str::<(String, String)>(&String::from_utf8(
                     bs58::decode(&self.extra).into_vec()?,
                 )?) {
                     Ok(salt_seeds) => {
@@ -602,18 +602,21 @@ impl Verifiable for Transaction {
                         if top_epoch.epoch_number != 0 {
                             message = raw_lyra(&(top_epoch.epoch_number.to_string() + "epoch"))
                         }
-                        for (publickey, seed) in salt_seeds {
-                            trace!("Validating seed {}", seed);
-                            // get the secp256k1 publickey for this salter
-                            let cert = Certificate::get(publickey)?;
-                            if !validate_vrf(
-                                cert.secp256k1_publickey.clone(),
-                                seed.clone(),
-                                message.clone(),
-                            ) {
-                                error!("Invalid VRF as epoch salt seed, proof={}, creator={}, message={}", seed, cert.secp256k1_publickey, message);
-                                return Err(Box::new(TransactionValidationErrors::InvalidVrf));
-                            }
+                        let publickey = salt_seeds.0;
+                        let seed = salt_seeds.1;
+                        trace!("Validating seed {}, created by {}", seed, publickey);
+                        // get the secp256k1 publickey for this salter
+                        let cert = Certificate::get(publickey)?;
+                        if !validate_vrf(
+                            cert.secp256k1_publickey.clone(),
+                            seed.clone(),
+                            message.clone(),
+                        ) {
+                            error!(
+                                "Invalid VRF as epoch salt seed, proof={}, creator={}, message={}",
+                                seed, cert.secp256k1_publickey, message
+                            );
+                            return Err(Box::new(TransactionValidationErrors::InvalidVrf));
                         }
                     }
                     Err(e) => {
@@ -662,7 +665,7 @@ impl Verifiable for Transaction {
                         for delta in delta_list {
                             if delta.1 != 0 {
                                 // remove the fullnode
-                                // TODO: validate remove proof 
+                                // TODO: validate remove proof
                                 if fullnodes_hashset.contains(&delta.0) {
                                     trace!(
                                         "Removing {} from fullnode set, reason={}, proof={}",
@@ -1073,18 +1076,15 @@ impl Verifiable for Transaction {
             top_epoch.save()?;
             trace!("Saved epoch");
         } else if txn_type == 'a' {
-            match serde_json::from_str::<Vec<(String, String)>>(&String::from_utf8(
+            match serde_json::from_str::<(String, String)>(&String::from_utf8(
                 bs58::decode(&self.extra).into_vec()?,
             )?) {
                 Ok(salt_seeds) => {
                     debug!("Decoded salt_seeds={:#?}", salt_seeds);
-                    let mut salt_string = String::from("");
-                    for (_, seed) in salt_seeds {
-                        trace!("Validating seed {}", seed);
 
-                        let vrf_hash = proof_to_hash(&seed).unwrap_or_default();
-                        salt_string += &vrf_hash_to_integer(vrf_hash).to_string();
-                    }
+                    let vrf_hash = proof_to_hash(&salt_seeds.1).unwrap_or_default();
+                    let salt_string = vrf_hash_to_integer(vrf_hash).to_string();
+
                     debug!("Final salt_string={}", salt_string);
                     // now parse the string into a big number
                     let salt_big = BigDecimal::from_str(&salt_string)?;
