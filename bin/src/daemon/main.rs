@@ -1,9 +1,12 @@
 pub(crate) mod fullnode;
 use avrio_core::{
     account::to_dec,
+    block::{genesis::genesis_blocks, *},
     certificate::{generate_certificate, get_fullnode_count},
+    chunk::ENACT_BLOCK_CALLBACK,
     epoch::{get_top_epoch, Epoch},
     invite::{generate_invite, new_invite},
+    mempool::Mempool,
     states::form_state_digest,
     timer::create_timer,
     transaction::{
@@ -38,11 +41,6 @@ use avrio_p2p::{
     core::new_connection,
     core::rec_server,
     helper::{prop_block, sync_in_order, sync_needed},
-};
-
-use avrio_core::{
-    block::{genesis::genesis_blocks, *},
-    mempool::Mempool,
 };
 
 extern crate avrio_database;
@@ -354,6 +352,15 @@ fn main() {
     }
     let conf = config();
     conf.create().unwrap();
+    match ENACT_BLOCK_CALLBACK.lock() {
+        Ok(mut lock) => {
+            *lock = Some(Box::new(avrio_core::mempool::mark_as_valid));
+        }
+        Err(_) => {
+            error!("Failed to lock ENACT_BLOCK_CALLBACK");
+            std::process::exit(1);
+        }
+    }
     if config().node_type == 'c' {
         info!("Running as candidate, loading keys");
         let keys = open_keypair();
@@ -367,6 +374,7 @@ fn main() {
             Ok(mut lock) => {
                 *lock = keys;
                 debug!("Set FULLNODE_KEYS");
+
                 match VRF_LOTTERY_CALLBACKS.lock() {
                     Ok(mut lock) => {
                         debug!("Got mutex lock on VRF_LOTTERY_CALLBACKS lazy static ");
