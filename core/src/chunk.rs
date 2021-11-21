@@ -29,10 +29,6 @@ pub struct BlockChunk {
 
 impl Verifiable for BlockChunk {
     fn valid(&self) -> Result<(), Box<dyn std::error::Error>> {
-        // check this is not from the consensus committee
-        if self.committee == 0 {
-            return Err("block chunk from consensus committee".into());
-        }
         // first check the hash of the BlockChunk
         if self.hash_item() != self.hash {
             error!(
@@ -218,7 +214,7 @@ impl Verifiable for BlockChunk {
                 );
 
                 // now the validator reward
-                let validator_reward = 5 / (self.signers.len() as u64);
+                let validator_reward =  to_atomc(5.0) / (self.signers.len() as u64);
                 debug!(
                     "Validator reward for block chunk {}: {}",
                     self.hash, validator_reward
