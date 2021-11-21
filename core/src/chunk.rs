@@ -1,5 +1,5 @@
 use crate::{
-    account::{get_account, to_atomc, Account},
+    account::{get_account, to_atomc, Account, set_account},
     block::Block,
     epoch::get_top_epoch,
     validate::Verifiable,
@@ -250,6 +250,15 @@ impl Verifiable for BlockChunk {
                             if index == 0 {
                                 if let Ok(mut proposer) = get_account(&ecdsa_publickey) {
                                     proposer.balance += proposer_reward;
+                                    if set_account(&proposer) == 0 {
+                                        error!(
+                                            "Failed to set proposer account with publickey={}",
+                                            ecdsa_publickey
+                                        );
+                                        return Err(
+                                            "Failed to set proposer account with publickey".into(),
+                                        );
+                                    }
                                 } else {
                                     error!(
                                         "Failed to get proposer {} of block chunk {}'s account",
@@ -260,6 +269,13 @@ impl Verifiable for BlockChunk {
                             } else {
                                 if let Ok(mut validator) = get_account(&ecdsa_publickey) {
                                     validator.balance += validator_reward;
+                                    if set_account(&validator) == 0 {
+                                        error!(
+                                            "Failed to set validator {} of block chunk {}'s account",
+                                            ecdsa_publickey, self.hash
+                                        );
+                                        return Err("Failed to set validator account".into());
+                                    }
                                 } else {
                                     error!(
                                         "Failed to get validator {} of block chunk {}'s account",
