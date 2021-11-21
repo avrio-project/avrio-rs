@@ -405,7 +405,7 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
                 return Err("epoch salt seed invalid".into());
             }
             trace!("Created seed={}", proof);
-            let seeds = vec![(lock[0].clone(), proof)];
+            let seeds = (lock[0].clone(), proof);
             // form announce epoch seed txn
             let mut transaction = Transaction {
                 hash: String::from(""),
@@ -772,7 +772,11 @@ pub fn start_vrf_lotto(_null: ()) {
                                     hash: String::from(""),
                                     amount: 0,
                                     extra: bs58::encode(
-                                        serde_json::to_string(&salt_proofs).unwrap(),
+                                        serde_json::to_string(&(
+                                            lock[0].clone(),
+                                            salt_proofs[0].clone(),
+                                        ))
+                                        .unwrap(),
                                     )
                                     .into_string(),
                                     flag: 'a',
@@ -809,7 +813,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                         );
                                         return;
                                     }
-                                    add_block(block, CallerM::blank());
+                                    let _ = add_block(block, CallerM::blank());
                                 }
                                 // form a block chunk containing the seed block and the seed block rec
                                 let mut block_chunk = *BlockChunk::form(&blocks, 0).unwrap();
@@ -827,7 +831,6 @@ pub fn start_vrf_lotto(_null: ()) {
                                     ),
                                 )
                                 .unwrap();
-
                                 let mut transaction = Transaction {
                                     hash: String::from(""),
                                     amount: 0,
