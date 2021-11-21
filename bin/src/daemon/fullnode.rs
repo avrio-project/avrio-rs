@@ -3,7 +3,7 @@ use avrio_core::{
     certificate::get_fullnode_count,
     chunk::{string_to_bls_privatkey, BlockChunk},
     commitee::Comitee,
-    mempool,
+    mempool::{self, add_block, Caller as CallerM},
 };
 use avrio_crypto::raw_lyra;
 use avrio_p2p::{
@@ -140,6 +140,7 @@ pub fn propose_premade_chunk(
             // now we have a block chunk with enough signatures, we can propagate it
             trace!("Propagating block chunk={:#?}", block_chunk);
             prop_block_chunk(&block_chunk).unwrap();
+            block_chunk.enact()?;
             // Done
             return Ok(());
         }
@@ -535,7 +536,7 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
                 (raw_lyra(&lock[0]), raw_lyra(&top_epoch.committees[0].hash)),
                 vec![],
             );
-            
+
             let mut transaction = Transaction {
                 hash: String::from(""),
                 amount: 0,
@@ -797,6 +798,24 @@ pub fn start_vrf_lotto(_null: ()) {
                                     .unwrap();
                                 let _ = seed_block_rec.sign(&lock[1]).unwrap();
                                 trace!("Created block={}", seed_block_rec.hash);
+
+                                let blocks = vec![seed_block, seed_block_rec];
+                                for block in &blocks {
+                                    trace!("Sending {} to peers", block.hash);
+                                    if let Err(prop_err) = prop_block(block) {
+                                        error!(
+                                            "Failed to send block {} to peers, encounted error={}",
+                                            block.hash, prop_err
+                                        );
+                                        return;
+                                    }
+                                    add_block(block, CallerM::blank());
+                                }
+                                // form a block chunk containing the seed block and the seed block rec
+                                let mut block_chunk = *BlockChunk::form(&blocks, 0).unwrap();
+                                trace!("Formed block chunk={}", block_chunk.hash);
+                                propose_premade_chunk(&mut block_chunk, &current_epoch).unwrap();
+                                //TODO: merge these into one chunk
                                 // Now create the shuffle bits
                                 let new_epoch = Epoch::get(current_epoch.epoch_number + 1).unwrap();
                                 let (shuffle_proof, _) = get_vrf(
@@ -834,13 +853,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                     .form_receive_block(Some(String::from("0")))
                                     .unwrap();
                                 let _ = shuffle_bits_block_rec.sign(&lock[1]).unwrap();
-
-                                let blocks = vec![
-                                    seed_block,
-                                    seed_block_rec,
-                                    shuffle_bits_block,
-                                    shuffle_bits_block_rec,
-                                ];
+                                let blocks = vec![shuffle_bits_block, shuffle_bits_block_rec];
                                 for block in &blocks {
                                     trace!("Sending {} to peers", block.hash);
                                     if let Err(prop_err) = prop_block(block) {
@@ -850,17 +863,12 @@ pub fn start_vrf_lotto(_null: ()) {
                                         );
                                         return;
                                     }
+                                    add_block(block, CallerM::blank());
                                 }
                                 // form a block chunk containing the seed block and the seed block rec
                                 let mut block_chunk = *BlockChunk::form(&blocks, 0).unwrap();
-                                // check the block chunk is valid
-                                if let Err(e) = block_chunk.valid() {
-                                    error!("Block chunk is invalid, error={}", e);
-                                    return;
-                                }
                                 trace!("Formed block chunk={}", block_chunk.hash);
                                 propose_premade_chunk(&mut block_chunk, &current_epoch).unwrap();
-
                                 // Now we wait for VRF tickets to come in
                                 // register with the announcement system, to collect all VRF lotto tickets
                                 let mut block_callbacks = LOCAL_CALLBACKS.lock().unwrap();
@@ -995,10 +1003,11 @@ pub fn start_vrf_lotto(_null: ()) {
                                         );
                                         return;
                                     }
+                                    add_block(block, CallerM::blank());
                                 }
                                 // form a block chunk containing the delta list blocks
                                 let mut dl_chunk = BlockChunk::form(&blocks, 0).unwrap();
-                                trace!("Formed bloc chunk {:#?}", dl_chunk);
+                                trace!("Formed block chunk {:#?}", dl_chunk);
                                 propose_premade_chunk(&mut dl_chunk, &get_top_epoch().unwrap())
                                     .unwrap();
                                 debug!("All tasks completed, new epoch coordinated!");
