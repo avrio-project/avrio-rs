@@ -11,6 +11,7 @@ use avrio_database::{get_data, save_data};
 use serde::{Deserialize, Serialize};
 
 use crate::commitee::Comitee;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 extern crate bs58;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -43,6 +44,7 @@ pub struct Epoch {
     pub committees: Vec<Comitee>,
     pub shuffle_bits: u128,
     pub stage: EpochStage,
+    pub time_started: u64,
 }
 impl Hashable for Epoch {
     fn bytes(&self) -> Vec<u8> {
@@ -84,6 +86,7 @@ impl Epoch {
             committees: vec![],
             shuffle_bits: 0,
             stage: EpochStage::Main,
+            time_started: 0,
         }
     }
 
@@ -101,7 +104,12 @@ impl Epoch {
             return Err("Failed to save data".into());
         }
     }
-    pub fn set_top_epoch(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn set_top_epoch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.time_started = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        self.save()?;
         if save_data(
             &self.epoch_number.to_string(),
             &(config().db_path + "/epochdata"),
