@@ -48,7 +48,7 @@ You will also need the following packages: [Boost](https://www.boost.org/), [Ope
 ```bash
 sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
 sudo apt-get update
-sudo apt-get install -y build-essential g++-8 gcc-8 git libboost-all-dev libssl1.0-dev cmake libclang-dev clang
+sudo apt-get install -y build-essential g++-8 gcc-8 git libboost-all-dev libssl-dev cmake libclang-dev clang
 git clone -b master --single-branch https://github.com/avrio-project/avrio-rs/
 cd avrio-rs
 cargo build --release
@@ -79,23 +79,7 @@ cd target
 ```
 
 ## Windows
-Compiling on widnows is a tad more complicated due to the requirment of openssl for various cryptographic functions. 
-First, ensure rust is installed and the default toolchain is set to nightly, then install vcpkg (used to install openssl, other methods can be used if you are confident, however this should be included in any bug reports it will likley result in)
-```
-> git clone https://github.com/microsoft/vcpkg
-> .\vcpkg\bootstrap-vcpkg.bat
-```
-
-Now, install open ssl
-```
-.\vcpkg install openssl
-```
-
-You can now compile avrio as described in the ubuntu/generic linux section:
-```
-cd avrio-rs
-cargo build --release
-```
+Compiling on native windows is currently impossible due to a fff 0.3 assembly bug. Please use MinGw to compile.
 
 ## File structure
 Each aspect of the code is split up into libraries (e.g. database, blockchain, p2p). Libraries are further split into modules (e.g., transaction is a module part of the core library; genesis is a module part of the blockchain lib). If you want to use one of these libs in your code then please add the following to your Cargo.toml and clone this repo into your extern folder
