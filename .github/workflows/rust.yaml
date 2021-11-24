@@ -1,0 +1,47 @@
+name: Rust
+
+on:
+  push:
+    branches: 
+      - master
+      - development
+  pull_request:
+    branches: 
+      - master
+      - development
+
+jobs:
+  build-unix:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Update
+      run:  sh scripts/unix-update.sh
+    - name: Build
+      run: cargo build --release
+    - name: Run tests
+      run: cargo test --verbose
+  build-osx:
+
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Update
+      run:  sh scripts/osx-update.sh
+    - name: Build
+      run: cargo build --release
+    - name: Run tests
+      run: cargo test --verbose
+  build-win:
+
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --release
+    - name: Run tests
+      run: cargo test --verbose
