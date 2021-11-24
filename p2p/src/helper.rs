@@ -79,6 +79,7 @@ pub fn prop_block(blk: &Block) -> Result<u64, Box<dyn std::error::Error>> {
         let _ = unlock_peer(peer_stream)?;
     }
     trace!("Sent block {} to {} peers", blk.hash, i);
+    let _ = avrio_rpc::block_announce(blk.clone());
     Ok(i)
 }
 
