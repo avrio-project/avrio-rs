@@ -18,7 +18,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Update
-      run:  sh unix-update.sh
+      run:  sh scripts/unix-update.sh
     - name: Build
       run: cargo build --release
     - name: Run tests
@@ -30,7 +30,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Update
-      run:  sh osx-update.sh
+      run:  sh scripts/osx-update.sh
     - name: Build
       run: cargo build --release
     - name: Run tests
