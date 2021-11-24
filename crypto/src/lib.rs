@@ -336,7 +336,6 @@ fn binary_to_u512(s: String) -> U512 {
     let two_u518: U512 = 2.into();
     for c in s.chars() {
         let mut temp_var = two_u518.pow(binary_digit.into());
-        trace!("temp_var={}, real_num={}", temp_var, real_num);
         temp_var /= 2;
         if c == '1' {
             real_num += temp_var;
