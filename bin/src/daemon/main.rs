@@ -9,9 +9,7 @@ use avrio_core::{
     mempool::Mempool,
     states::form_state_digest,
     timer::create_timer,
-    transaction::{
-        Transaction, EPOCH_STARTED_CALLBACKS, VRF_LOTTERY_CALLBACKS
-    },
+    transaction::{Transaction, EPOCH_STARTED_CALLBACKS, VRF_LOTTERY_CALLBACKS},
     validate::Verifiable,
 };
 use avrio_p2p::core::HANDLE_CHUNK_CALLBACK;
@@ -220,8 +218,10 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
     // Create the seed invites
     // TODO: change this to a block on the 0 chain
     new_invite("FZ2YbpGw1ZjRW2dkwMRfy7N98iZCkcfezy5BxCGWRPgZ")?;
+    new_invite("HMkWDsDQ9JTF5xkqh5QjZMq56iapH4UVHL8BDod7dQnX")?;
     // invite priv key:
     // GD8M1Qm17WXoukx8QqqfvYRJDoxmjf1jSXFXyVYHFeQtCX67cpw6otCpeporyLaNmLKrKAj8nFSNfszJYyuTL1UFt6SFeodz3QJ8iDkvwBPM4SMMGkV3
+    // and GD8M1Qm17WXoukx8QqqfvXP9c8xBx3egZAk4WEYux9GuTKMUjwTn8dxtAHL2Ffn3LGWz7pprKNAm7bNEuiKu7CDXfiDtM5zuug4p7UHfQoLKoYfiA5Vm
     // set up the top epoch
     let mut genesis_epoch = Epoch::new();
     genesis_epoch.epoch_number = 0;
@@ -361,7 +361,7 @@ fn main() {
             std::process::exit(1);
         }
     }
-    if config().node_type == 'c' {
+    if config().node_type == 'c' || config().node_type == 'f' {
         info!("Running as candidate, loading keys");
         let keys = open_keypair();
         if keys.len() != 6 {
@@ -416,7 +416,8 @@ fn main() {
                         process::exit(0);
                     }
                 }
-                if get_fullnode_count() == 1 {
+                let epoch = get_top_epoch().unwrap();
+                if get_fullnode_count() == 1 && epoch.epoch_number == 0 {
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .expect("time went backwards")
@@ -588,6 +589,11 @@ fn main() {
         launch(17785);
     });
     info!("Launched RPC server on port=17785");
+    // figure out the current epoch stage
+    let running = *(fullnode::RUNNING.lock().unwrap());
+    if !running && config().node_type == 'f' {
+        resume_operation().unwrap();
+    }
     loop {
         // Now we loop until shutdown
         let _ = io::stdout().flush();

@@ -21,6 +21,7 @@ lazy_static! {
     static ref COMMITEE_INDEX: Mutex<u64> = Mutex::new(1025);
     static ref VALIDATED_CHUNKS: Mutex<Vec<String>> = Mutex::new(vec![]); // holds a vector of strings of all of the chunks that we validated this epoch
     static ref PROPOSED_CHUNKS: Mutex<Vec<String>> = Mutex::new(vec![]); // holds a vector of strings of all of the chunks that we proposed this epoch
+    pub (crate) static ref RUNNING: Mutex<bool> = Mutex::new(false); 
 }
 
 pub fn mark_validated(chunk: &str) {
@@ -395,270 +396,8 @@ pub fn get_keys() -> Result<Vec<String>, Box<dyn std::error::Error>> {
 
 pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting genesis epoch");
-    // create the salt from just our VRF
-    match get_keys() {
-        /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
-        Ok(lock) => {
-            let (proof, _) = get_vrf(lock[5].clone(), String::from("genesis"))?;
-            if !avrio_crypto::validate_vrf(lock[4].clone(), proof.clone(), String::from("genesis"))
-            {
-                error!("Created salt seed invalid");
-                return Err("epoch salt seed invalid".into());
-            }
-            trace!("Created seed={}", proof);
-            let seeds = (lock[0].clone(), proof);
-            // form announce epoch seed txn
-            let mut transaction = Transaction {
-                hash: String::from(""),
-                amount: 0,
-                extra: bs58::encode(serde_json::to_string(&seeds)?).into_string(),
-                flag: 'a',
-                sender_key: lock[0].clone(),
-                receive_key: String::from("0"),
-                access_key: String::from(""),
-                unlock_time: 0,
-                gas_price: 1,
-                max_gas: u64::MAX,
-                nonce: get_nonce(lock[0].clone()),
-                timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
-            };
-            transaction.hash();
-            let seed_block = Block::new(vec![transaction], lock[1].clone(), None);
-            trace!("Created block={}", seed_block.hash);
-            let mut seed_block_rec = seed_block.form_receive_block(Some(String::from("0")))?;
-            let _ = seed_block_rec.sign(&lock[1]).unwrap();
-            trace!("Created block={}", seed_block_rec.hash);
-
-            if let Err(seed_error) = seed_block
-                .valid()
-                .and_then(|_| seed_block.save())
-                .and_then(|_| seed_block.enact())
-                .and_then(|_| seed_block_rec.valid())
-                .and_then(|_| seed_block_rec.save())
-                .and_then(|_| seed_block_rec.enact())
-            {
-                error!(
-                    "Failed to broadcast epoch seed in block, got error={}",
-                    seed_error
-                );
-                return Err(format!(
-                    "Failed to broadcast epoch seed in block, got error={}",
-                    seed_error
-                )
-                .into());
-            }
-            trace!("Enacted blocks");
-            // propagate these blocks early as we need the VRF responses
-            for block in &[seed_block, seed_block_rec] {
-                trace!("Sending {} to peers", block.hash);
-                if let Err(prop_err) = prop_block(block) {
-                    error!(
-                        "Failed to send block {} to peers, encounted error={}",
-                        block.hash, prop_err
-                    );
-                    return Err(format!("Failed to prop epoch seed block {}", block.hash).into());
-                }
-            }
-            // Now we wait for VRF tickets to come in
-            // register with the announcement system, to collect all VRF lotto tickets
-            let mut block_callbacks = LOCAL_CALLBACKS.lock()?;
-            block_callbacks.push(Caller {
-                callback: Box::new(|ann| {
-                    if ann.m_type == "block" {
-                        let block: Block = serde_json::from_str(&ann.content).unwrap();
-                        for txn in block.txns {
-                            if txn.flag == 'v' {
-                                handle_vrf_submitted(txn);
-                            }
-                        }
-                    }
-                }),
-            });
-            drop(block_callbacks);
-            sleep(Duration::from_millis(config().vrf_lottery_length)); // wait for the VRF lottery to end
-                                                                       // now we can proceed
-            let mut blocks: Vec<Block> = vec![];
-
-            // create the shuffle bits
-            // This is used to shuffle the fullnode list into a "random" order and form the committee lists
-            let top_epoch = get_top_epoch()?;
-            let new_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
-            let (shuffle_proof, _) = get_vrf(
-                lock[5].clone(),
-                raw_lyra(
-                    &(new_epoch.salt.to_string() + &new_epoch.epoch_number.to_string() + &lock[0]),
-                ),
-            )?;
-
-            let mut transaction = Transaction {
-                hash: String::from(""),
-                amount: 0,
-                extra: bs58::encode(shuffle_proof).into_string(),
-                flag: 'z',
-                sender_key: lock[0].clone(),
-                receive_key: String::from("0"),
-                access_key: String::from(""),
-                unlock_time: 0,
-                gas_price: 1,
-                max_gas: u64::MAX,
-                nonce: get_nonce(lock[0].clone()),
-                timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
-            };
-            transaction.hash();
-            let shuffle_bits_block = Block::new(vec![transaction], lock[1].clone(), None);
-            let mut shuffle_bits_block_rec =
-                shuffle_bits_block.form_receive_block(Some(String::from("0")))?;
-            let _ = shuffle_bits_block_rec.sign(&lock[1]).unwrap();
-
-            if let Err(shuffle_bits_error) = shuffle_bits_block
-                .valid()
-                .and_then(|_| shuffle_bits_block.save())
-                .and_then(|_| shuffle_bits_block.enact())
-                .and_then(|_| shuffle_bits_block_rec.valid())
-                .and_then(|_| shuffle_bits_block_rec.save())
-                .and_then(|_| shuffle_bits_block_rec.enact())
-            {
-                error!(
-                    "Failed to broadcast shuffle bits in block, got error={}",
-                    shuffle_bits_error
-                );
-                return Err(format!(
-                    "Failed to broadcast shuffle bits in block, got error={}",
-                    shuffle_bits_error
-                )
-                .into());
-            }
-            blocks.push(shuffle_bits_block);
-            blocks.push(shuffle_bits_block_rec);
-            // Use the collected vrf tickets to create this delta list
-            let mut delta_list: ((String, String), Vec<(String, u8, String)>) = (
-                (raw_lyra(&lock[0]), raw_lyra(&top_epoch.committees[0].hash)),
-                vec![],
-            );
-            let tickets = collect_and_clear_vrf()?;
-            if tickets.len() != 0 {
-                for (ticket_auth, block_hash) in tickets {
-                    delta_list.1.push((ticket_auth, 0, block_hash));
-                }
-                // form the hashes for the delta list
-                let mut fullnodes_hashset: HashSet<String> = HashSet::new();
-                for committee in top_epoch.committees {
-                    for fullnode in committee.members {
-                        fullnodes_hashset.insert(fullnode);
-                    }
-                }
-                for delta in &delta_list.1 {
-                    if delta.1 != 0 {
-                        // remove the fullnode
-                        // TODO: validate remove proof
-                        if fullnodes_hashset.contains(&delta.0) {
-                            trace!(
-                                "Removing {} from fullnode set, reason={}, proof={}",
-                                delta.0,
-                                delta.1,
-                                delta.2
-                            );
-                            fullnodes_hashset.remove(&delta.0);
-                        } else {
-                            error!("Fullnode set did not contain node removed by delta entry, delta entry={:?}", delta);
-                        }
-                    } else {
-                        // TODO: validate add proof before eclsoure
-                        fullnodes_hashset.insert(delta.0.clone());
-                    }
-                }
-                let mut fullnodes: Vec<String> = Vec::from_iter(fullnodes_hashset);
-                let mut preshuffle_hash = String::from("");
-                for fullnode in &fullnodes {
-                    preshuffle_hash = raw_lyra(&(preshuffle_hash + fullnode));
-                }
-
-                // now we shuffle the list
-                let curr_epoch = Epoch::get(top_epoch.epoch_number + 1).unwrap();
-                let shuffle_seed = vrf_hash_to_integer(raw_lyra(
-                    &(curr_epoch.shuffle_bits.to_string()
-                        + &curr_epoch.salt.to_string()
-                        + &curr_epoch.epoch_number.to_string()),
-                ));
-                let shuffle_seed = (shuffle_seed.clone() / (shuffle_seed + BigDecimal::from(1))) // map between 0-1
-                    .to_string() // turn to string
-                    .parse::<f64>()
-                    .unwrap(); // parse as f64
-                avrio_core::commitee::sort_full_list(
-                    &mut fullnodes,
-                    (shuffle_seed * (u64::MAX as f64)) as u64,
-                );
-                // now form the committees from this shuffled list
-                let mut excluded_nodes: Vec<String> = vec![]; // will contain the publickey of any nodes not included in tis epoch
-                let number_of_committes = 1;
-                let committees: Vec<Comitee> = Comitee::form_comitees(
-                    &mut fullnodes,
-                    &mut excluded_nodes,
-                    number_of_committes,
-                );
-                let mut postshuffle_hash = String::from("");
-                for committee in &committees {
-                    postshuffle_hash = raw_lyra(&(postshuffle_hash + &committee.hash));
-                }
-                // set the hashes
-                delta_list.0 .0 = preshuffle_hash;
-                delta_list.0 .1 = postshuffle_hash;
-            }
-
-            let mut transaction = Transaction {
-                hash: String::from(""),
-                amount: 0,
-                extra: bs58::encode(serde_json::to_string(&delta_list)?).into_string(),
-                flag: 'y',
-                sender_key: lock[0].clone(),
-                receive_key: String::from("0"),
-                access_key: String::from(""),
-                unlock_time: 0,
-                gas_price: 1,
-                max_gas: u64::MAX,
-                nonce: get_nonce(lock[0].clone()),
-                timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
-            };
-            transaction.hash();
-            let delta_list_block = Block::new(vec![transaction], lock[1].clone(), None);
-            let mut delta_list_block_rec =
-                delta_list_block.form_receive_block(Some(String::from("0")))?;
-            let _ = delta_list_block_rec.sign(&lock[1]).unwrap();
-
-            if let Err(delta_list_error) = delta_list_block
-                .valid()
-                .and_then(|_| delta_list_block.save())
-                .and_then(|_| delta_list_block.enact())
-                .and_then(|_| delta_list_block_rec.valid())
-                .and_then(|_| delta_list_block_rec.save())
-                .and_then(|_| delta_list_block_rec.enact())
-            {
-                error!(
-                    "Failed to broadcast delta_list in block, got error={}",
-                    delta_list_error
-                );
-                return Err(format!(
-                    "Failed to broadcast delta_list in block, got error={}",
-                    delta_list_error
-                )
-                .into());
-            }
-            blocks.push(delta_list_block);
-            blocks.push(delta_list_block_rec);
-            // send blocks to network
-            for block in &blocks {
-                let _ = prop_block(block)?;
-            }
-            return Ok(());
-        }
-        Err(lock_error) => {
-            error!(
-                "Failed to get mutex lock on FULLNODE_KEYS lazy static, error={}",
-                lock_error
-            );
-            return Err("Could not lock FULLNODE_KEYS".into());
-        }
-    };
+    start_vrf_lotto(());
+    Ok(())
 }
 
 pub fn handle_vrf_submitted(txn: Transaction) {
@@ -736,7 +475,7 @@ pub fn handle_vrf_submitted(txn: Transaction) {
 // Returns a result, if we are in a committee this epoch and we sucsessfully started this epoch Ok(true), if we are excluded this epoch Ok(false)
 /// Otherwise if there was an error return it
 pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
-    trace!("handle_new_epoch called");
+    *(RUNNING.lock()?) = true;
     create_timer(
         Duration::from_millis(config().target_epoch_length),
         Box::new(start_vrf_lotto),
@@ -773,8 +512,113 @@ pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
                         return Err("Failed to form GUID routing table".into());
                     }
                 }
-                // Start the validator loop
-                validator_loop(our_committee);
+                if our_committee.index != 0 {
+                    // Start the validator loop
+                    let vl = validator_loop(our_committee);
+                    if let Err(e) = vl {
+                        error!("Encountered error {} during main validation loop", e);
+                    } else {
+                        let vl = vl.unwrap();
+                        info!(
+                            "Main stage finished, validated {} chunks, proposed {}",
+                            vl.1, vl.0
+                        );
+                    }
+                } else {
+                    // Nothing to do during main stage for 0 commitee (for now)
+                }
+            }
+        }
+        Err(lock_error) => {
+            error!(
+                "Failed to get mutex lock on FULLNODE_KEYS lazy static, error={}",
+                lock_error
+            );
+            return Err("Could not lock FULLNODE_KEYS".into());
+        }
+    }
+    Ok(true)
+}
+
+/// Resumes operation
+// Returns a result, if we are in a committee this epoch and we sucsessfully started this epoch Ok(true), if we are excluded this epoch Ok(false)
+/// Otherwise if there was an error return it
+pub fn resume_operation() -> Result<bool, Box<dyn std::error::Error>> {
+    *(RUNNING.lock()?) = true;
+    let current_epoch = get_top_epoch()?;
+    if current_epoch.time_started != 0 {
+        let target_vrf_time = current_epoch.time_started + config().target_epoch_length;
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let time_left = target_vrf_time - current_time;
+        if time_left > 0 {
+            info!("Waiting {} ms for next epoch to start", time_left);
+            create_timer(
+                Duration::from_millis(time_left),
+                Box::new(|()| {
+                    let _ = start_vrf_lotto(());
+                }),
+                (),
+            );
+        } else {
+            info!("Starting VRF lottery now");
+            let _ = start_vrf_lotto(());
+            return Ok(false);
+        }
+    } else {
+        create_timer(
+            Duration::from_millis(config().target_epoch_length),
+            Box::new(start_vrf_lotto),
+            (),
+        );
+    }
+    match get_keys() {
+        Ok(lock) => {
+            let mut our_committee: Comitee = Comitee::default();
+            for committee in &current_epoch.committees {
+                if committee.members.contains(&lock[0]) {
+                    info!("In committee {}", committee.index);
+                    // set the commitee index lazy static
+                    *(COMMITEE_INDEX.lock()?) = committee.index;
+                    our_committee = committee.clone();
+                    break;
+                }
+            }
+            if our_committee == Comitee::default() && config().node_type == 'f' {
+                info!("Not in any commitee, assuming excluded");
+                return Ok(false);
+            } else {
+                info!("Forming GUID routing table");
+                // Form GUID table
+                match form_table(vec![]) {
+                    Ok(size) => {
+                        info!("Formed intra-committee GUID routing table, size={}", size)
+                    }
+                    Err(error) => {
+                        error!(
+                            "Failed to form GUID routing table, encountered fatal error={}",
+                            error
+                        );
+                        return Err("Failed to form GUID routing table".into());
+                    }
+                }
+                if our_committee.index != 0 {
+                    // Start the validator loop
+                    let vl = validator_loop(our_committee);
+                    if let Err(e) = vl {
+                        error!("Encountered error {} during main validation loop", e);
+                    } else {
+                        let vl = vl.unwrap();
+                        info!(
+                            "Main stage finished, validated {} chunks, proposed {}",
+                            vl.1, vl.0
+                        );
+                    }
+                } else {
+                    // Nothing to do during main stage for 0 commitee (for now)
+                }
             }
         }
         Err(lock_error) => {
@@ -790,6 +634,7 @@ pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
 
 pub fn start_vrf_lotto(_null: ()) {
     trace!("Starting VRF lottery");
+    *(RUNNING.lock().unwrap()) = true;
     match get_keys() {
         Ok(lock) => {
             let current_epoch = get_top_epoch().unwrap_or_default();
