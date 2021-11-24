@@ -26,7 +26,7 @@ pub struct Account {
     pub access_keys: Vec<Accesskey>,
 }
 
-pub fn to_atomc(amount: f64) -> u64 {
+pub fn to_atomic(amount: f64) -> u64 {
     (amount * (10_i64.pow(config().decimal_places as u32) as f64)) as u64 // (amount * 10000 for 4 dec places)
 }
 

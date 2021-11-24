@@ -13,7 +13,7 @@ use avrio_blockchain::{
     BlockType,
 };
 use avrio_config::config;
-use avrio_core::{account::{get_account, to_atomc}, transaction::Transaction};
+use avrio_core::{account::{get_account, to_atomic}, transaction::Transaction};
 use avrio_database::{get_data, save_data};
 use log::*;
 use rocket::{routes, Route};

@@ -1,5 +1,5 @@
 use crate::{
-    account::{get_account, to_atomc, Account, set_account},
+    account::{get_account, to_atomic, Account, set_account},
     block::Block,
     epoch::get_top_epoch,
     validate::Verifiable,
@@ -195,7 +195,7 @@ impl Verifiable for BlockChunk {
                 // Now we calculate the reward for the validators and the proposer:
                 // Proposer reward: txn_fees + (base_reward *  (signers_count / commitee size))
                 // Validator reward: 5 / signers_count
-                let base_reward: u64 = to_atomc(1.0);
+                let base_reward: u64 = to_atomic(1.0);
                 let mut txn_fees: u64 = 0;
                 for block_hash in &self.blocks {
                     // get the block
@@ -214,15 +214,15 @@ impl Verifiable for BlockChunk {
                 );
 
                 // now the validator reward
-                let validator_reward =  to_atomc(5.0) / (self.signers.len() as u64);
+                let validator_reward =  to_atomic(5.0) / (self.signers.len() as u64);
                 debug!(
                     "Validator reward for block chunk {}: {}",
                     self.hash, validator_reward
                 );
                 debug!(
-                    "Total mint for block chunk {} = {}",
+                    "Total mint for block chunk {}: {}",
                     self.hash,
-                    (base_reward * signer_percent as u64) + 5
+                    (base_reward * signer_percent as u64) + to_atomic(5.0)
                 );
                 // now apply these rewards
                 for (index, bls_signer) in self.signers.clone().iter().enumerate() {
