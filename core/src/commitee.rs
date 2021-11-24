@@ -112,19 +112,20 @@ impl Comitee {
     /// # Get round leader
     /// Calculates the round leader for this committee, returning the ECDSA publickey or an error
     pub fn get_round_leader(&self) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(self.members[self.round() % (self.members.len() - 1)].clone()) // TODO Implment round leader selection algo
+        Ok(self.members[self.round()? as usize % (self.members.len() - 1)].clone())
+        // TODO Implment round leader selection algo
     }
 
     pub fn round(&self) -> Result<u64, Box<dyn std::error::Error>> {
         let top_epoch = get_top_epoch()?;
         let read = get_data(
-            config().db_path + "/blockchunks",
+            avrio_config::config().db_path + "/blockchunks",
             &(self.index.to_string() + "-round-" + &top_epoch.epoch_number.to_string()),
         );
         if read == "-1" {
             return Err("Round cannot be found".into());
         }
-        return Ok(parse(read));
+        return Ok(read.parse().unwrap());
     }
     /// Find the commitee publickey belongs to and returns its index, or None if it is not in one
     pub fn find_for(publickey: &String) -> Option<u64> {

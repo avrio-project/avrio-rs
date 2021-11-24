@@ -3,10 +3,11 @@ use avrio_core::{
     certificate::get_fullnode_count,
     chunk::{string_to_bls_privatkey, BlockChunk},
     commitee::Comitee,
+    epoch::EpochStage,
     mempool::get_blocks,
     mempool::{self, add_block, Caller as CallerM},
 };
-use avrio_crypto::raw_lyra;
+use avrio_crypto::{raw_lyra, Hashable};
 use avrio_p2p::{
     guid::{self, form_table},
     helper::prop_block_chunk,
@@ -52,36 +53,38 @@ fn validator_loop(commitee: Comitee) -> Result<(u64, u64), Box<dyn std::error::E
             loop {
                 let epoch = get_top_epoch()?;
                 // check if we are still in the main phase of the epoch
-                if epoch.stage != EpochStage::main {
+                if epoch.stage != EpochStage::Main {
                     debug!("Main stage ended, terminating validator loop");
                     break;
                 }
-                if commitee.get_round_leader() == lock[0] {
+                if commitee.get_round_leader()? == lock[0] {
                     // we are round leader
                     // collect all unprocessed blocks from mempool related to our committee
                     let blocks = get_blocks()?;
                     let mut bc_blocks: Vec<Block> = vec![];
 
-                    let addr_range = commitee.calculate_address_range(epoch.committees.len());
+                    let addr_range =
+                        commitee.calculate_address_range(epoch.committees.len() as u64);
                     for block in blocks {
-                        let wall = Wallet::new(block.sender_key, String::default());
+                        let wall = Wallet::new(block.header.chain_key.clone(), String::default());
                         let address_hex = hex::encode(bs58::decode(wall.address()).into_vec()?);
                         let address_numerical = i64::from_str_radix(&address_hex, 16)?.abs();
                         let address_bigdec = BigDecimal::from(address_numerical);
                         if addr_range.contains(&address_bigdec) {
-                            bc_blocks.push(block);
+                            bc_blocks.push(block.clone());
                         }
                         if block.block_type == BlockType::Send {
                             for reciever in block.recievers() {
-                                let wall = Wallet::new(block.sender_key.clone(), String::default());
+                                let wall =
+                                    Wallet::new(block.header.chain_key.clone(), String::default());
                                 let address_hex =
                                     hex::encode(bs58::decode(wall.address()).into_vec()?);
                                 let address_numerical =
                                     i64::from_str_radix(&address_hex, 16)?.abs();
                                 let address_bigdec = BigDecimal::from(address_numerical);
                                 if addr_range.contains(&address_bigdec) {
-                                    let rec_block =
-                                        block.form_receive_block(Some(block.sender_key.clone()));
+                                    let rec_block = block
+                                        .form_receive_block(Some(reciever));
                                     if let Err(e) = rec_block {
                                         error!("Failed to form recieve block for {} on block {}, gave error: {}", wall.address(), block.hash, e);
                                         continue;
@@ -99,20 +102,20 @@ fn validator_loop(commitee: Comitee) -> Result<(u64, u64), Box<dyn std::error::E
                         info!(
                             "Forming block chunk with {} blocks, for round {}",
                             bc_blocks.len(),
-                            commitee.round()
+                            commitee.round()?
                         );
                         let bc = BlockChunk::form(&bc_blocks, commitee.index);
                         if let Err(e) = bc {
                             error!("Failed to form block chunk, gave error {}", e);
                             // TODO: Should we return or just try again?
                         } else {
-                            let mut bc = bc.unwrap();
+                            let mut bc = *bc.unwrap();
                             bc.hash = bc.hash_item();
                             debug!("Formed block chunk with hash {}", bc.hash);
                             // propose the block chunk
                             match propose_premade_chunk(&mut bc, &epoch) {
                                 Ok(()) => {
-                                    info!("Proposed block chunk {} for round {}, containing {} blocks", bc.hash, commitee.round(), bc_blocks.len());
+                                    info!("Proposed block chunk {} for round {}, containing {} blocks", bc.hash, commitee.round()?, bc_blocks.len());
                                     // add the hash of the chunk to proposed chunk lsit
                                     mark_proposed(&bc.hash);
                                     break;
@@ -137,7 +140,10 @@ fn validator_loop(commitee: Comitee) -> Result<(u64, u64), Box<dyn std::error::E
             return Err("Failed to get lock on fullnode keys".into());
         }
     }
-    Ok((PROPOSED_CHUNKS.lock()?.len() as u64, VALIDATED_CHUNKS.lock()?.len() as u64))
+    Ok((
+        PROPOSED_CHUNKS.lock()?.len() as u64,
+        VALIDATED_CHUNKS.lock()?.len() as u64,
+    ))
 }
 
 /// # Create salt seed
