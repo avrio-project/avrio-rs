@@ -42,6 +42,7 @@ struct WalletDetails {
     locked: u64,
     top_block_hash: String,
     username: String,
+    proccessed_anns: Vec<String>,
 }
 #[derive(Clone, Deserialize, Debug)]
 struct Blockcount {
@@ -258,6 +259,10 @@ pub fn new_ann(ann: Announcement) {
         if ann.m_type == "block".to_string() {
             // ann.msg contains a block in json format
             if let Ok(blk) = serde_json::from_str::<Block>(&ann.content) {
+                if locked.proccessed_anns.contains(&blk.hash) {
+                    return;
+                }
+                locked.proccessed_anns.push(blk.hash.clone());
                 if blk.block_type == BlockType::Recieve {
                     let balance_before = locked.balance;
                     let locked_balance_before = locked.locked;
@@ -504,6 +509,7 @@ async fn main() {
                 locked: 0,
                 top_block_hash: "".to_string(),
                 username: "".to_string(),
+                proccessed_anns: vec![],
             };
             drop(locked_ls);
             let request_url = format!(
@@ -733,7 +739,7 @@ async fn main() {
                             } else {
                                 let mut txn = Transaction {
                                     hash: String::from(""),
-                                    amount: to_atomc(amount),
+                                    amount: to_atomic(amount),
                                     extra: extra_data.clone(),
                                     flag: 'n',
                                     sender_key: wall.public_key.clone(),
@@ -822,7 +828,7 @@ async fn main() {
                                 trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
                             let mut txn = Transaction {
                                 hash: String::from(""),
-                                amount: to_atomc(amount),
+                                amount: to_atomic(amount),
                                 extra: String::from(""),
                                 flag: 'c',
                                 sender_key: wall.public_key.clone(),
@@ -890,7 +896,7 @@ async fn main() {
                                                 } else {
                                                     let mut txn = Transaction {
                                                         hash: String::from(""),
-                                                        amount: to_atomc(0.50),
+                                                        amount: to_atomic(0.50),
                                                         extra: desired_username.clone(),
                                                         flag: 'u',
                                                         sender_key: wall.public_key.clone(),
@@ -999,7 +1005,7 @@ async fn main() {
                                 trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
                             let mut txn = Transaction {
                                 hash: String::from(""),
-                                amount: to_atomc(amount),
+                                amount: to_atomic(amount),
                                 extra: String::from(""),
                                 flag: 'b',
                                 sender_key: wall.public_key.clone(),
@@ -1355,7 +1361,7 @@ async fn main() {
                             if let Ok(amount_int) = amount.parse::<f64>() {
                                 let mut txn = Transaction {
                                     hash: String::from(""),
-                                    amount: to_atomc(amount_int),
+                                    amount: to_atomic(amount_int),
                                     extra: String::from(""),
                                     flag: 'l',
                                     sender_key: wall.public_key.clone(),
