@@ -10,7 +10,7 @@ use avrio_core::{
     states::form_state_digest,
     timer::create_timer,
     transaction::{
-        Transaction, EPOCH_STARTED_CALLBACKS, VRF_LOTTERY_CALLBACKS, VRF_TICKET_SUBMITTED,
+        Transaction, EPOCH_STARTED_CALLBACKS, VRF_LOTTERY_CALLBACKS
     },
     validate::Verifiable,
 };
