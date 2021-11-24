@@ -3,6 +3,7 @@ use avrio_core::{
     certificate::get_fullnode_count,
     chunk::{string_to_bls_privatkey, BlockChunk},
     commitee::Comitee,
+    mempool::get_blocks,
     mempool::{self, add_block, Caller as CallerM},
 };
 use avrio_crypto::raw_lyra;
@@ -20,6 +21,7 @@ lazy_static! {
     static ref VRF_LOTTO_ENTRIES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]); // the public key of sender (first element), the hash the ticket is in
     static ref COMMITEE_INDEX: Mutex<u64> = Mutex::new(1025);
     static ref VALIDATED_CHUNKS: Mutex<Vec<String>> = Mutex::new(vec![]); // holds a vector of strings of all of the chunks that we validated this epoch
+    static ref PROPOSED_CHUNKS: Mutex<Vec<String>> = Mutex::new(vec![]); // holds a vector of strings of all of the chunks that we proposed this epoch
 }
 
 pub fn mark_validated(chunk: &str) {
@@ -28,21 +30,114 @@ pub fn mark_validated(chunk: &str) {
     }
 }
 
+pub fn mark_proposed(chunk: &str) {
+    if let Ok(mut lock) = PROPOSED_CHUNKS.lock() {
+        lock.push(chunk.to_string());
+    }
+}
+
 /// # Validator Loop
 /// Called at the start of the main loop, calls the correct functions (for proposing and validating block chunks) then returns either an error (if enountered) or the number of chunks proposed and validated (in a tuple)
-fn validator_loop() -> Result<(u64, u64), Box<dyn std::error::Error>> {
+fn validator_loop(commitee: Comitee) -> Result<(u64, u64), Box<dyn std::error::Error>> {
+    if commitee.index == 0 {
+        // consensus commitee
+        return Err("Cannot run validator loop on consensus commitee".into());
+    }
     match FULLNODE_KEYS.lock() {
         /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
         Ok(lock) => {
-            // get the current epoch
-            let epoch = get_top_epoch()?;
+            if !commitee.members.contains(&lock[0]) {
+                return Err("Not in passed commitee".into());
+            }
+            loop {
+                let epoch = get_top_epoch()?;
+                // check if we are still in the main phase of the epoch
+                if epoch.stage != EpochStage::main {
+                    debug!("Main stage ended, terminating validator loop");
+                    break;
+                }
+                if commitee.get_round_leader() == lock[0] {
+                    // we are round leader
+                    // collect all unprocessed blocks from mempool related to our committee
+                    let blocks = get_blocks()?;
+                    let mut bc_blocks: Vec<Block> = vec![];
+
+                    let addr_range = commitee.calculate_address_range(epoch.committees.len());
+                    for block in blocks {
+                        let wall = Wallet::new(block.sender_key, String::default());
+                        let address_hex = hex::encode(bs58::decode(wall.address()).into_vec()?);
+                        let address_numerical = i64::from_str_radix(&address_hex, 16)?.abs();
+                        let address_bigdec = BigDecimal::from(address_numerical);
+                        if addr_range.contains(&address_bigdec) {
+                            bc_blocks.push(block);
+                        }
+                        if block.block_type == BlockType::Send {
+                            for reciever in block.recievers() {
+                                let wall = Wallet::new(block.sender_key.clone(), String::default());
+                                let address_hex =
+                                    hex::encode(bs58::decode(wall.address()).into_vec()?);
+                                let address_numerical =
+                                    i64::from_str_radix(&address_hex, 16)?.abs();
+                                let address_bigdec = BigDecimal::from(address_numerical);
+                                if addr_range.contains(&address_bigdec) {
+                                    let rec_block =
+                                        block.form_receive_block(Some(block.sender_key.clone()));
+                                    if let Err(e) = rec_block {
+                                        error!("Failed to form recieve block for {} on block {}, gave error: {}", wall.address(), block.hash, e);
+                                        continue;
+                                    } else {
+                                        bc_blocks.push(rec_block.unwrap());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if bc_blocks.len() == 0 {
+                        debug!("Collected no blocks for chunk, retrying");
+                        sleep(Duration::from_millis(5000))
+                    } else {
+                        info!(
+                            "Forming block chunk with {} blocks, for round {}",
+                            bc_blocks.len(),
+                            commitee.round()
+                        );
+                        let bc = BlockChunk::form(&bc_blocks, commitee.index);
+                        if let Err(e) = bc {
+                            error!("Failed to form block chunk, gave error {}", e);
+                            // TODO: Should we return or just try again?
+                        } else {
+                            let mut bc = bc.unwrap();
+                            bc.hash = bc.hash_item();
+                            debug!("Formed block chunk with hash {}", bc.hash);
+                            // propose the block chunk
+                            match propose_premade_chunk(&mut bc, &epoch) {
+                                Ok(()) => {
+                                    info!("Proposed block chunk {} for round {}, containing {} blocks", bc.hash, commitee.round(), bc_blocks.len());
+                                    // add the hash of the chunk to proposed chunk lsit
+                                    mark_proposed(&bc.hash);
+                                    break;
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "Failed to propagate premade chunk {}, gave error {}",
+                                        bc.hash, e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    trace!("Not round leader, acting as validator instead");
+                    // Nothing to do (for now)
+                }
+            }
         }
         Err(e) => {
             error!("Failed to get lock on fullnode keys {}", e);
             return Err("Failed to get lock on fullnode keys".into());
         }
     }
-    Ok((0, VALIDATED_CHUNKS.lock()?.len() as u64))
+    Ok((PROPOSED_CHUNKS.lock()?.len() as u64, VALIDATED_CHUNKS.lock()?.len() as u64))
 }
 
 /// # Create salt seed
@@ -705,6 +800,8 @@ pub fn handle_new_epoch() -> Result<bool, Box<dyn std::error::Error>> {
                         return Err("Failed to form GUID routing table".into());
                     }
                 }
+                // Start the validator loop
+                validator_loop(our_committee);
             }
         }
         Err(lock_error) => {
