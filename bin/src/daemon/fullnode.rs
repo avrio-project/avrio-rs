@@ -1,6 +1,5 @@
 use avrio_core::{
     account::get_nonce,
-    certificate::get_fullnode_count,
     chunk::{string_to_bls_privatkey, BlockChunk},
     commitee::Comitee,
     epoch::EpochStage,
@@ -16,7 +15,6 @@ use bls_signatures::{PublicKey, Serialize, Signature};
 use std::{collections::HashSet, iter::FromIterator, thread::sleep, time::Duration};
 // contains functions called by the fullnode
 use crate::*;
-use avrio_core::mempool::MEMPOOL;
 use avrio_rpc::LOCAL_CALLBACKS;
 lazy_static! {
     static ref VRF_LOTTO_ENTRIES: Mutex<Vec<(String, String)>> = Mutex::new(vec![]); // the public key of sender (first element), the hash the ticket is in
@@ -83,8 +81,7 @@ fn validator_loop(commitee: Comitee) -> Result<(u64, u64), Box<dyn std::error::E
                                     i64::from_str_radix(&address_hex, 16)?.abs();
                                 let address_bigdec = BigDecimal::from(address_numerical);
                                 if addr_range.contains(&address_bigdec) {
-                                    let rec_block = block
-                                        .form_receive_block(Some(reciever));
+                                    let rec_block = block.form_receive_block(Some(reciever));
                                     if let Err(e) = rec_block {
                                         error!("Failed to form recieve block for {} on block {}, gave error: {}", wall.address(), block.hash, e);
                                         continue;
@@ -378,103 +375,6 @@ pub fn should_handle_chunk(chunk: BlockChunk) -> bool {
     }
 }
 
-/// # Propose round chunk
-/// Proposes the current rounds chunk, returning the proposed chunk on sucsess or any errors enountered
-/// If called when the node is not the selected proposer then an error will be returned
-pub fn propose_round_chunk() -> Result<String, Box<dyn std::error::Error>> {
-    match get_keys() {
-        /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
-        Ok(keys_lock) => {
-            // get the rounds context
-            let epoch = get_top_epoch()?;
-            // get our commitees current state
-            let ci_lock = COMMITEE_INDEX.lock()?;
-            let committee_index = ci_lock.clone();
-            drop(ci_lock);
-            if committee_index == 1025 {
-                error!("Committee index not set (eq 1025)");
-                return Err("Committee index not set".into());
-            } else if committee_index > (epoch.committees.len() - 1) as u64 {
-                error!(
-                    "Committee index overflow, index={}, commitees={}",
-                    committee_index,
-                    epoch.committees.len()
-                );
-                return Err("Committee index overflow".into());
-            }
-            // get the committee struct
-            let committee = epoch.committees[committee_index as usize].clone();
-            // get the round number
-            let top_epoch = get_top_epoch()?;
-            let top_round_index: u64 = get_data(
-                config().db_path + "/blockchunks",
-                &(committee.index.to_string() + "-round-" + &epoch.epoch_number.to_string()),
-            )
-            .parse()?;
-            let top_chunk =
-                BlockChunk::get_by_round(top_round_index, top_epoch.epoch_number, committee.index)?;
-            // check we are the proposer for this round
-            let selected_round_leader = committee.get_round_leader()?;
-            if selected_round_leader != keys_lock[0] {
-                error!(
-                    "Not proposer for round {}, in commitee {}, selected proposer {}",
-                    top_chunk.round, committee.index, selected_round_leader
-                );
-                return Err("Not proposer for round".into());
-            }
-            info!(
-                "Proposing chunk for round {} in committee {}",
-                top_chunk.round, committee.index
-            );
-            // collect all blocks from mempool that are awaiting validation (from our address range)
-            let mut blocks: Vec<Block> = vec![];
-            let map = MEMPOOL.lock()?;
-            for (block, _, _) in map.values() {
-                if committee.manages_address(&block.header.chain_key)? {
-                    // sent by one of our managed addresses
-                    trace!(
-                        "Including block {} in chunk, sent by {}, new chunk size {}",
-                        block.hash,
-                        block.header.chain_key,
-                        blocks.len() + 1
-                    );
-                    blocks.push(block.clone());
-                } else {
-                    for reciever in block.recievers() {
-                        if committee.manages_address(&reciever)? {
-                            // This block is sent to one of the addresses in our shard, form a recieve block
-                            let recieve_block = block.form_receive_block(Some(reciever.clone()))?;
-                            trace!(
-                                "Formed recieve block {} for reciever {} of block {}, new chunk size {}",
-                                recieve_block.hash,
-                                reciever,
-                                block.hash,
-                                blocks.len() + 1
-                            );
-                            blocks.push(recieve_block);
-                        }
-                    }
-                }
-            }
-            debug!("{} blocks to use in new chunk", blocks.len());
-            let new_chunk = *BlockChunk::form(&blocks, committee_index)?;
-            // TODO: now ask each of our GUID peers to sign our chunk, as well as send it to their GUID peers to sign
-            return Ok(String::default());
-        }
-        Err(lock_error) => {
-            error!(
-                "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
-                lock_error
-            );
-            return Err(format!(
-                "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
-                lock_error
-            )
-            .into());
-        }
-    }
-}
-
 pub fn get_keys() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     match FULLNODE_KEYS.lock() {
         /* 0 - ECDSA pub, 1 - ECDSA priv, 2 - BLS pub, 3 - BLS priv, 4 - secp2561k pub, 5 - secp2561k priv*/
@@ -630,13 +530,80 @@ pub fn start_genesis_epoch() -> Result<(), Box<dyn std::error::Error>> {
             }
             blocks.push(shuffle_bits_block);
             blocks.push(shuffle_bits_block_rec);
-            //TODO: Use the collected vrf tickets to create this delta list
-            // create an empty fullnode delta list txn
-            // TODO: Shouldnt we be processing all the VRF tickets that came in
+            // Use the collected vrf tickets to create this delta list
             let mut delta_list: ((String, String), Vec<(String, u8, String)>) = (
                 (raw_lyra(&lock[0]), raw_lyra(&top_epoch.committees[0].hash)),
                 vec![],
             );
+            let tickets = collect_and_clear_vrf()?;
+            if tickets.len() != 0 {
+                for (ticket_auth, block_hash) in tickets {
+                    delta_list.1.push((ticket_auth, 0, block_hash));
+                }
+                // form the hashes for the delta list
+                let mut fullnodes_hashset: HashSet<String> = HashSet::new();
+                for committee in top_epoch.committees {
+                    for fullnode in committee.members {
+                        fullnodes_hashset.insert(fullnode);
+                    }
+                }
+                for delta in &delta_list.1 {
+                    if delta.1 != 0 {
+                        // remove the fullnode
+                        // TODO: validate remove proof
+                        if fullnodes_hashset.contains(&delta.0) {
+                            trace!(
+                                "Removing {} from fullnode set, reason={}, proof={}",
+                                delta.0,
+                                delta.1,
+                                delta.2
+                            );
+                            fullnodes_hashset.remove(&delta.0);
+                        } else {
+                            error!("Fullnode set did not contain node removed by delta entry, delta entry={:?}", delta);
+                        }
+                    } else {
+                        // TODO: validate add proof before eclsoure
+                        fullnodes_hashset.insert(delta.0.clone());
+                    }
+                }
+                let mut fullnodes: Vec<String> = Vec::from_iter(fullnodes_hashset);
+                let mut preshuffle_hash = String::from("");
+                for fullnode in &fullnodes {
+                    preshuffle_hash = raw_lyra(&(preshuffle_hash + fullnode));
+                }
+
+                // now we shuffle the list
+                let curr_epoch = Epoch::get(top_epoch.epoch_number + 1).unwrap();
+                let shuffle_seed = vrf_hash_to_integer(raw_lyra(
+                    &(curr_epoch.shuffle_bits.to_string()
+                        + &curr_epoch.salt.to_string()
+                        + &curr_epoch.epoch_number.to_string()),
+                ));
+                let shuffle_seed = (shuffle_seed.clone() / (shuffle_seed + BigDecimal::from(1))) // map between 0-1
+                    .to_string() // turn to string
+                    .parse::<f64>()
+                    .unwrap(); // parse as f64
+                avrio_core::commitee::sort_full_list(
+                    &mut fullnodes,
+                    (shuffle_seed * (u64::MAX as f64)) as u64,
+                );
+                // now form the committees from this shuffled list
+                let mut excluded_nodes: Vec<String> = vec![]; // will contain the publickey of any nodes not included in tis epoch
+                let number_of_committes = 1;
+                let committees: Vec<Comitee> = Comitee::form_comitees(
+                    &mut fullnodes,
+                    &mut excluded_nodes,
+                    number_of_committes,
+                );
+                let mut postshuffle_hash = String::from("");
+                for committee in &committees {
+                    postshuffle_hash = raw_lyra(&(postshuffle_hash + &committee.hash));
+                }
+                // set the hashes
+                delta_list.0 .0 = preshuffle_hash;
+                delta_list.0 .1 = postshuffle_hash;
+            }
 
             let mut transaction = Transaction {
                 hash: String::from(""),
@@ -971,7 +938,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                     }
                                     add_block(block, CallerM::blank());
                                 }
-                                // form a block chunk containing the seed block and the seed block rec
+                                // form a block chunk containing the shuffle bits block and the shuffle bits block rec
                                 let mut block_chunk = *BlockChunk::form(&blocks, 0).unwrap();
                                 trace!("Formed block chunk={}", block_chunk.hash);
                                 propose_premade_chunk(&mut block_chunk, &current_epoch).unwrap();
@@ -998,9 +965,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                                                      // format: ((String, String), Vec<(String, u8, String)) 0.0: Preshuffle hash, 0.1: postshuffle hash, 1.0: publickey, 1.1: reason/type (0 = join via vrf everything else = leave), 1.2: proof (the hash of the block it happened in)
                                 let mut delta_list: ((String, String), Vec<(String, u8, String)>) =
                                     ((String::default(), String::default()), vec![]);
-                                let tickets_lock = VRF_LOTTO_ENTRIES.lock().unwrap();
-                                let tickets = tickets_lock.to_vec();
-                                drop(tickets_lock);
+                                let tickets = collect_and_clear_vrf().unwrap();
                                 for (ticket_auth, block_hash) in tickets {
                                     delta_list.1.push((ticket_auth, 0, block_hash));
                                 }
@@ -1143,6 +1108,13 @@ pub fn start_vrf_lotto(_null: ()) {
             lock_error
         ),
     }
+}
+
+pub fn collect_and_clear_vrf() -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    let mut tickets_lock = VRF_LOTTO_ENTRIES.lock()?;
+    let tickets = tickets_lock.clone();
+    *tickets_lock = vec![];
+    Ok(tickets)
 }
 
 pub fn handle_vrf_lottery() {
