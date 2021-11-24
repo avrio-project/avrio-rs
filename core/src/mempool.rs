@@ -1,8 +1,4 @@
-use crate::{
-    block::{save_block, Block, BlockType},
-    certificate,
-    chunk::BlockChunk,
-};
+use crate::{block::{save_block, Block, BlockType}, certificate, chunk::BlockChunk, epoch::get_top_epoch};
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -304,7 +300,8 @@ impl Mempool {
             return Err("mempool not initalised".into());
         }
         let now = SystemTime::now();
-        let bypass_chunks = certificate::get_fullnode_count() == 0; // if there are no validators yet, blocks do not need to be contained in a block chunk
+        let epoch = get_top_epoch()?;
+        let bypass_chunks = certificate::get_fullnode_count() <= 1 && epoch.committees.len() == 0; // if there are no validators yet, blocks do not need to be contained in a block chunk
         let mut map = MEMPOOL.lock()?;
         let mut to_remove: Vec<(String, String)> = vec![];
         let mut blocks_to_check: HashMap<String, ()> = HashMap::new(); // Contains the list of hashes of send blocks that now have at least one corrosponding recieve block
