@@ -1,5 +1,5 @@
 //use avrio_config::config;
-use avrio_crypto::{generate_keypair, raw_hash, Hashable};
+use avrio_crypto::{generate_keypair, raw_hash, Hashable, vrf_hash_to_u64};
 use avrio_database::get_data;
 use bigdecimal::BigDecimal;
 use log::*;
@@ -112,12 +112,48 @@ impl Comitee {
     /// # Get round leader
     /// Calculates the round leader for this committee, returning the ECDSA publickey or an error
     pub fn get_round_leader(&self) -> Result<String, Box<dyn std::error::Error>> {
-        let mut idx = self.round().unwrap_or(0) as usize % self.members.len();
-        if idx != 0 {
-            idx -= 1;
+        let epoch = get_top_epoch()?;
+        let round = self.round().unwrap_or(0);
+        let block_chunk =
+            crate::chunk::BlockChunk::get_by_round(round, epoch.epoch_number, self.index)?;
+        let hash_string = raw_hash(&format!(
+            "{}{}{}{}",
+            round,
+            block_chunk.hash,
+            block_chunk.proposer()?,
+            epoch.epoch_number
+        ));
+        let hash_hex = hex::encode(bs58::decode(&hash_string).into_vec()?);
+        let hash_int = vrf_hash_to_u64(hash_hex.clone())?;
+
+        let mut smallest_member = u64::MAX;
+        let mut chosen_member: Option<String> = None;
+        
+
+        for member in &self.members {
+            let pk_hex = hex::encode(bs58::decode(&member).into_vec()?);
+            let pk_int = vrf_hash_to_u64(pk_hex)?;
+            let diff: u64;
+            if pk_int < hash_int {
+                diff = hash_int - pk_int;
+            } else {
+                diff = pk_int - hash_int;
+            }
+            
+            if diff < smallest_member {
+                smallest_member = diff;
+                chosen_member = Some(member.clone());
+            }
         }
-        Ok(self.members[idx].clone())
-        // TODO Implment round leader selection algo
+
+        if chosen_member == None {
+            error!("Failed to choose round leader out of {} members, hash={}, hash_hex={}, hash_int={}, smallest_member={}", self.members.len(), hash_string, hash_hex, hash_int, smallest_member);
+            return Err(format!("Failed to choose round leader out of {} members, hash={}, hash_hex={}, hash_int={}, smallest_member={}", self.members.len(), hash_string, hash_hex, hash_int, smallest_member).into());
+        }
+        let chosen_member = chosen_member.unwrap();
+        trace!("Chosen {}, closest to {} (int: {})", chosen_member, hash_string, hash_int);
+        
+        Ok(chosen_member)
     }
 
     pub fn round(&self) -> Result<u64, Box<dyn std::error::Error>> {
