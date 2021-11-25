@@ -115,7 +115,7 @@ impl Comitee {
         let epoch = get_top_epoch()?;
         let round = self.round().unwrap_or(0);
         let block_chunk =
-            crate::chunk::BlockChunk::get_by_round(round, epoch.epoch_number, self.index)?;
+            crate::chunk::BlockChunk::get_by_round(round, epoch.epoch_number, self.index).unwrap_or_default();
         let hash_string = raw_hash(&format!(
             "{}{}{}{}",
             round,

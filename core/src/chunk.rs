@@ -17,7 +17,7 @@ lazy_static! {
     pub static ref ENACT_BLOCK_CALLBACK: Mutex<Option<Box<dyn Fn(&String) -> Result<(), Box<dyn std::error::Error>> + Send>>> =
         Mutex::new(None);
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BlockChunk {
     pub hash: String,
     pub round: u64,
