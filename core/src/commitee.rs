@@ -1,12 +1,12 @@
 //use avrio_config::config;
-use avrio_crypto::{generate_keypair, raw_hash, Hashable, vrf_hash_to_u64};
+use avrio_crypto::{generate_keypair, raw_hash, vrf_hash_to_u64, Hashable};
 use avrio_database::get_data;
 use bigdecimal::BigDecimal;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 
-use crate::epoch::get_top_epoch;
+use crate::{chunk::BlockChunk, epoch::get_top_epoch};
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Comitee {
     pub index: u64,
@@ -115,12 +115,19 @@ impl Comitee {
         let epoch = get_top_epoch()?;
         let round = self.round().unwrap_or(0);
         let block_chunk =
-            crate::chunk::BlockChunk::get_by_round(round, epoch.epoch_number, self.index).unwrap_or_default();
+            *BlockChunk::get_by_round(round, epoch.epoch_number, self.index).unwrap_or_default();
+        let proposer: String;
+
+        if block_chunk.signers.len() == 0{
+            proposer = String::from("genesis");
+        } else {
+            proposer = block_chunk.proposer()?;
+        }
         let hash_string = raw_hash(&format!(
             "{}{}{}{}",
             round,
             block_chunk.hash,
-            block_chunk.proposer()?,
+            proposer,
             epoch.epoch_number
         ));
         let hash_hex = hex::encode(bs58::decode(&hash_string).into_vec()?);
@@ -128,7 +135,6 @@ impl Comitee {
 
         let mut smallest_member = u64::MAX;
         let mut chosen_member: Option<String> = None;
-        
 
         for member in &self.members {
             let pk_hex = hex::encode(bs58::decode(&member).into_vec()?);
@@ -139,7 +145,7 @@ impl Comitee {
             } else {
                 diff = pk_int - hash_int;
             }
-            
+
             if diff < smallest_member {
                 smallest_member = diff;
                 chosen_member = Some(member.clone());
@@ -151,8 +157,13 @@ impl Comitee {
             return Err(format!("Failed to choose round leader out of {} members, hash={}, hash_hex={}, hash_int={}, smallest_member={}", self.members.len(), hash_string, hash_hex, hash_int, smallest_member).into());
         }
         let chosen_member = chosen_member.unwrap();
-        trace!("Chosen {}, closest to {} (int: {})", chosen_member, hash_string, hash_int);
-        
+        trace!(
+            "Chosen {}, closest to {} (int: {})",
+            chosen_member,
+            hash_string,
+            hash_int
+        );
+
         Ok(chosen_member)
     }
 
