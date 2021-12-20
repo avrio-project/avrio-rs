@@ -101,7 +101,8 @@ pub fn launch_handle_client(
     incoming: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = stream.try_clone()?;
-    let ping_every: Duration = Duration::from_millis(1 * 60 * 1000);
+    let ping_every: Duration = Duration::from_millis(5 * 60 * 1000);
+    trace!("Cloned stream, launching thread");
     let _handler: std::thread::JoinHandle<Result<(), &'static str>> = std::thread::spawn(
         move || {
             let mut ping_nonce = 0;
@@ -124,15 +125,19 @@ pub fn launch_handle_client(
                             }
                             std::thread::sleep(std::time::Duration::from_millis(10));
                         }
+                    } else {
+                        // this shouldnt happen so log it
+                        log::error!("Got illegal rx msg {}", msg);
                     }
-                }
+                } 
+                
                 let mut to_process_after_ping: Vec<P2pData> = vec![];
                 if SystemTime::now()
                     .duration_since(last_ping_time)
                     .unwrap_or_default()
                     .as_millis()
                     >= ping_every.as_millis()
-                    && incoming
+                    && !incoming
                 {
                     debug!(
                         "Waited 5 mins, sending ping message with nonce: {}",
@@ -245,6 +250,7 @@ pub fn launch_handle_client(
                         }
                     }
                 }
+                trace!("Peeking"); // todo: remove
                 if let Ok(a) = peek(&mut stream) {
                     if let Ok(msg) = rx.try_recv() {
                         log::debug!("Read msg={}", msg);
@@ -260,6 +266,8 @@ pub fn launch_handle_client(
                                 }
                                 std::thread::sleep(std::time::Duration::from_millis(10));
                             }
+                        } else {
+                            log::error!("illegal rx msg rec={}", msg)
                         }
                     }
                     if a != 0 && !paused {
