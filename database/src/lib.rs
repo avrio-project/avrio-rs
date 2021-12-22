@@ -150,6 +150,11 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
                 String::from_utf8(key.to_vec())?,
                 String::from_utf8(val.to_vec())?,
             );
+        } else  {
+            error!(
+                "Failed to get value from sled database, error={:?}",
+                item.unwrap_err()
+            );
         }
     }
     Ok(return_databases)
