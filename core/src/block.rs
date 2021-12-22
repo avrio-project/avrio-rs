@@ -1079,11 +1079,12 @@ fn enact_send(block: Block) -> Result<(), Box<dyn std::error::Error>> {
         let hash = block.hash.clone();
         let chain_key_copy = block.header.chain_key.to_owned();
         std::thread::spawn(move || {
-            update_chain_digest(
+            let chain_digest = update_chain_digest(
                 &hash,
                 config().db_path + &"/chaindigest".to_owned(),
                 &chain_key_copy,
             );
+            trace!("Calculated chain digest: {} for {}", chain_digest, chain_key_copy);
             form_state_digest(config().db_path + &"/chaindigest".to_owned()).unwrap();
         });
 
