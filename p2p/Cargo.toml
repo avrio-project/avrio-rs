@@ -25,3 +25,4 @@ hex = "0.4.2"
 aes-gcm = "0.8.0"
 serde_json = "1"
 avrio_rpc = { path = "../rpc" }
+bs58 = "~0.4.0"
