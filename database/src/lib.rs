@@ -163,7 +163,7 @@ fn reload_cache(
     if !CACHE_VALUES {
         return Ok(());
     }
-    /*
+    
     debug!("Reloading cache for DBs: {:?}", db_paths);
     let mut new_db_hashmap: HashMap<String, SledDb> = HashMap::new();
     let mut additions = 0;
@@ -176,7 +176,7 @@ fn reload_cache(
         match db_file_lock.keys().len() {
             0 => {
                 // the existing hashmap is empty, open the db from disk
-                db = open()
+                db = open(&path)?;
                 additions += 1;
             }
             _ => {
@@ -188,36 +188,21 @@ fn reload_cache(
                     unchanged += 1;
                 } else {
                     // open the db file, we dont have it already
-                    let mut opts = Options::default();
-                    opts.create_if_missing(true);
-                    opts.set_skip_stats_update_on_db_open(false);
-                    opts.increase_parallelism(((1.0 / 3.0) * num_cpus::get() as f64) as i32);
-                    db = DB::open(&opts, &path)?;
+                    db = open(&path)?;
                     additions += 1;
                 }
             }
         };
         if CACHE_VALUES {
             // now we use the opened db to load all values into values_hashmap
+            let values_hashmap_temp: HashMap<String, String> = open_database(path.to_owned())?;
             let mut values_hashmap: HashMap<String, (String, u16)> = HashMap::new();
 
-            {
-                let db_iter = db.raw_iterator();
-                while db_iter.valid() {
-                    if let Some(key_bytes) = db_iter.key() {
-                        if let Ok(key) = String::from_utf8(Vec::from(key_bytes)) {
-                            // now get the value
-                            if let Some(value_bytes) = db_iter.value() {
-                                if let Ok(value) = String::from_utf8(Vec::from(value_bytes)) {
-                                    trace!("(DB={}) Got key={} for value={}", path, key, value);
-                                    // now put that into a hashmap
-                                    values_hashmap.insert(key, (value, 0));
-                                }
-                            }
-                        }
-                    }
-                }
+            for (k, v) in values_hashmap_temp.iter() {
+                values_hashmap.insert(k.to_owned(), (v.to_owned(), 0));
             }
+            drop(values_hashmap_temp);
+
             // we now add values_hashmap to databases_hashmap
 
             databases_hashmap.insert(path.to_owned(), (values_hashmap, 0));
@@ -242,7 +227,7 @@ fn reload_cache(
             trace!("Moving DB lock file (key={}) to new hashmap", key);
             let moved_db = db_file_lock.remove(&key).unwrap(); // get the DB object by key
             unchanged += 1; // for logging purposes
-            new_db_hashmap.insert(key, moved_db); // insert it into the new ahshmap
+            new_db_hashmap.insert(key, moved_db); // insert it into the new hashmap
         } else {
             error!(
                 "Unexpected error. Key listed in hm.keys() is not contained, key={}. THIS IS A BUG, please open a bug report at github",
@@ -264,8 +249,7 @@ fn reload_cache(
         );
         *(*db_lock) = Some(databases_hashmap);
         trace!("Set db global varible to the database_hashmap");
-    }*/
-    //TODO
+    }
     Ok(())
 }
 

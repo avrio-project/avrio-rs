@@ -155,7 +155,6 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
             log::trace!("Telling handler stream for peer {} to pause", peer);
             tx.send("pause".to_string())?;
             //   std::thread::sleep(std::time::Duration::from_millis(1000)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
-            //  log::trace!("Waited 350ms, proceeding")
         } else {
             return Err("peer has no handler stream".into());
         }
@@ -177,6 +176,7 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
 }
 
 pub fn unlock_peer(peer: TcpStream) -> Result<(), Box<dyn Error>> {
+
     let peer_add: SocketAddr;
     if let Ok(addr) = peer.peer_addr() {
         peer_add = addr;

@@ -16,7 +16,9 @@ use std::net::{SocketAddr, TcpStream};
 use std::thread;
 
 pub fn get_peerlist_from_peer(peer: &SocketAddr) -> Result<Vec<SocketAddr>, Box<dyn Error>> {
+    debug!("Prelocked");
     let mut peer_lock = lock(peer, 1000)?;
+    trace!("Locked");
     send("".to_string(), &mut peer_lock, 0x8f, true, None)?;
     let peerlist_ser = read(&mut peer_lock, Some(20000), None)?; // wait for 20 secs
     let peerlist: Vec<SocketAddr> = serde_json::from_str(&peerlist_ser.message)?;

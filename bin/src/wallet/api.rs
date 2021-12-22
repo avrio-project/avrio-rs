@@ -5,29 +5,31 @@
 
     This file handles the JSON API of the headless wallet.
 */
-
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
-use avrio_blockchain::{
-    check_block, enact_block, enact_send, get_block, get_block_from_raw, save_block, Block, Header,
-    BlockType,
-};
 use avrio_config::config;
-use avrio_core::{account::{get_account, to_atomic}, transaction::Transaction};
+use avrio_core::block::{get_block, get_block_from_raw, save_block, Block, BlockType, Header};
+use avrio_core::{
+    account::{get_account, to_atomic},
+    transaction::Transaction,
+};
 use avrio_database::{get_data, save_data};
 use log::*;
+use rocket::config::{Config, Environment, LoggingLevel};
 use rocket::{routes, Route};
 use std::io::prelude::*;
 extern crate avrio_p2p;
-use lazy_static::*;
-use serde::Deserialize;
-use std::sync::Mutex;
-use reqwest::Client;
-use std::time::{UNIX_EPOCH, SystemTime};
-use std::error::Error;
 use avrio_crypto::Wallet;
+use lazy_static::*;
+use rand::Rng;
+use reqwest::Client;
+use serde::Deserialize;
+use std::error::Error;
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 lazy_static! {
     static ref WALLET_DETAILS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    static ref AUTH_TOKENS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 #[derive(Default, Clone, Deserialize, Debug)]
 struct TxnDetails {
@@ -55,6 +57,16 @@ struct Transactioncount {
     success: bool,
     transaction_count: u64,
 }
+
+fn generate_token() -> String {
+    let mut rng = rand::thread_rng();
+    let token: String = rng
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(32)
+        .collect();
+    token
+}
+
 async fn form_receive_block(blk: &Block, for_chain: &String) -> Result<Block, Box<dyn Error>> {
     if blk.block_type == BlockType::Recieve {
         return Err("Block is recive block already".into());
@@ -143,8 +155,6 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
         txns: vec![txn],
         hash: "".to_owned(),
         signature: "".to_owned(),
-        confimed: false,
-        node_signatures: vec![],
     };
     blk.hash();
     let _ = blk.sign(&wall.private_key);
@@ -215,9 +225,19 @@ fn must_provide_method() -> &'static str {
 #[get("/auth/<key>")]
 pub fn auth(key: String) -> String {
     if key == "1234567890" {
-        // TODO: use a config value
-        return ("{ \"success\": true, \"token\": ".to_owned() + &key + "}").to_string();
-    // TODO: generate a token and use that
+        // TODO: use value passed as cmd line option
+        // generate a token and add to list of valid tokens
+        match AUTH_TOKENS.lock() {
+            Ok(mut auth_tokens) => {
+                let token = generate_token();
+                auth_tokens.push(token.clone());
+                return ("{ \"success\": true, \"token\": ".to_owned() + &token + "}").to_string();
+            }
+            Err(e) => {
+                error!("Failed to lock auth tokens, error={}", e);
+                return not_supported();
+            }
+        }
     } else {
         return ("{ \"success\": false, ".to_owned() + "\"error\": \"Invalid key\"}").to_string();
     }
@@ -225,7 +245,51 @@ pub fn auth(key: String) -> String {
 
 #[get("/openwallet/<walletname>/<password>")]
 pub fn open_wallet(walletname: String, password: String) -> String {
-    return "{ }".to_string();
+    // check if a wallet is open
+    match WALLET_DETAILS.lock() {
+        Ok(mut wallet_details) => {
+            if wallet_details.len() == 0 {
+                // wallet is not open, open one
+                // TODO: use unique nonce
+                // can we just hash the public key with some local data on the computer (maybe mac address)? Or is that insufficent (TODO: find out)
+                let mut padded = password.as_bytes().to_vec();
+                while padded.len() != 32 && padded.len() < 33 {
+                    padded.push(b"n"[0]);
+                }
+                let padded_string = String::from_utf8(padded).unwrap();
+                trace!("key: {}", padded_string);
+                let key = GenericArray::clone_from_slice(padded_string.as_bytes());
+                let aead = Aes256Gcm::new(&key);
+                let mut padded = b"nonce".to_vec();
+                while padded.len() != 12 {
+                    padded.push(b"n"[0]);
+                }
+                let padded_string = String::from_utf8(padded).unwrap();
+                let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
+                trace!("nonce: {}", padded_string);
+                let ciphertext = hex::decode(get_data(
+                    config().db_path + &"/wallets/".to_owned() + &walletname,
+                    &"privkey".to_owned(),
+                ))
+                .expect("failed to parse hex");
+                let privkey = String::from_utf8(
+                    aead.decrypt(nonce, ciphertext.as_ref())
+                        .expect("decryption failure!"),
+                )
+                .expect("failed to parse utf8 (i1)");
+                let wall = Wallet::from_private_key(privkey);
+                *wallet_details = vec![wall.public_key, privkey.clone()];
+                return ("{ \"success\": true, \"wallet\": ".to_owned() + &walletname + "}")
+                    .to_string();
+            } else {
+                return ("{ \"success\": false, \"error\": \"Wallet already open\"}").to_string();
+            }
+        }
+        Err(e) => {
+            error!("Failed to lock wallet details, error={}", e);
+            return not_supported();
+        }
+    }
 }
 
 fn save_wallet(
@@ -242,7 +306,7 @@ fn save_wallet(
     let padded_string = String::from_utf8(padded).unwrap();
     trace!("key: {}", padded_string);
     let key = GenericArray::clone_from_slice(padded_string.as_bytes());
-    let aead = Aes256Gcm::new(key);
+    let aead = Aes256Gcm::new(&key);
     let mut padded = b"nonce".to_vec();
     while padded.len() != 12 {
         padded.push(b"n"[0]);
@@ -393,14 +457,12 @@ pub async fn submit_block_v1(transaction_data: rocket::Data) -> String {
                                 access_key: String::from(""),
                                 unlock_time: 0,
                                 gas_price: 10, // 0.001 AIO
-                                gas: 20,
                                 max_gas: u64::max_value(),
                                 nonce: 0,
                                 timestamp: std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .expect("Time went backwards")
                                     .as_millis() as u64,
-                                signature: String::from(""),
                             };
                             let request_url = format!(
                                 "http://127.0.0.1:8000/api/v1/transactioncount/{}",
@@ -412,7 +474,7 @@ pub async fn submit_block_v1(transaction_data: rocket::Data) -> String {
                                 {
                                     txn.nonce = transactioncount.transaction_count;
                                     txn.hash();
-                                    let _ = txn.sign(&lock[1]);
+                                    let wall: Wallet = Wallet::from_private_key(lock[1].clone());
                                     if let Err(e) = send_transaction(txn, wall.clone()).await {
                                         error!("Failed to send txn, got error={}", e);
                                     }
@@ -426,8 +488,8 @@ pub async fn submit_block_v1(transaction_data: rocket::Data) -> String {
                                 + &lock[0]
                                 + "\" }";
                         } else {
-                        return "{\"success\": false, \"error\": \"Wallet not loaded\" }".into();
-
+                            return "{\"success\": false, \"error\": \"Wallet not loaded\" }"
+                                .into();
                         }
                     }
                     Err(e) => {
@@ -457,11 +519,18 @@ pub async fn submit_block_v1(transaction_data: rocket::Data) -> String {
 }
 
 pub fn get_middleware() -> Vec<Route> {
-    routes![must_provide_method]
+    routes![
+        must_provide_method,
+        submit_block_v1,
+        get_balance_v1,
+        open_wallet,
+        auth,
+        create_wallet
+    ]
 }
 
 pub fn start_server() {
-    let config = Config::build(Environment::Staging)
+    let config = rocket::Config::build(Environment::Staging)
         .log_level(LoggingLevel::Off) // disables logging
         .finalize()
         .unwrap();

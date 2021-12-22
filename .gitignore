@@ -21,3 +21,4 @@ start.sh
 settings.json
 *csv
 *code-workspace
+callgrind*
