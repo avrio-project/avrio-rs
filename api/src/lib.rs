@@ -12,6 +12,7 @@ pub mod v1;
 
 #[macro_use]
 extern crate rocket;
+extern crate avrio_config;
 extern crate avrio_core;
 extern crate avrio_p2p;
 extern crate proc_macro;
@@ -19,7 +20,10 @@ extern crate proc_macro;
 use rocket::config::{Config, Environment, LoggingLevel};
 
 pub fn start_server() {
+    let conf = avrio_config::config();
     let config = Config::build(Environment::Staging)
+        .address(conf.api_address)
+        .port(conf.api_port as u16)
         .log_level(LoggingLevel::Off) // disables logging
         .finalize()
         .unwrap();

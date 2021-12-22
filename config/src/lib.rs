@@ -68,6 +68,7 @@ pub struct ConfigSave {
     pub max_syncing_peers: u64,
     pub first_epoch_time: u64,
     pub god_account: String, // publickey of the 'god account', the first fullnode who starts the first epoch
+    pub api_address: String,
 }
 
 /// This is the entire config - this is what is passed arround in software and what you should use in anything your build
@@ -115,6 +116,7 @@ pub struct Config {
     pub first_epoch_time: u64,
     pub god_account: String,
     pub vrf_lottery_length: u64, 
+    pub api_address: String,
 }
 
 pub fn config_read(path: &str) -> Config {
@@ -176,6 +178,7 @@ impl Default for ConfigSave {
             max_syncing_peers: 8,
             first_epoch_time: 0,
             god_account: String::from(""),
+            api_address: String::from("127.0.0.1")
         }
     }
 }
@@ -227,6 +230,7 @@ impl ConfigSave {
             first_epoch_time: self.first_epoch_time,
             god_account: self.god_account.to_owned(),
             vrf_lottery_length: nconf.vrf_lottery_length,
+            api_address: self.api_address.to_owned()
         }
     }
 }
@@ -292,6 +296,7 @@ impl Config {
             max_syncing_peers: self.max_syncing_peers,
             first_epoch_time: self.first_epoch_time,
             god_account: self.god_account,
+            api_address: self.api_address
         }
     }
 
