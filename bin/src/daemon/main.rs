@@ -258,7 +258,7 @@ fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> 
         let error = new_connection(&peer.to_string());
         match error {
             Ok(_) => {
-                info!("Connected to {:?}::{:?}", peer, 11523);
+                info!("Connected to {:?}::{:?}", peer.ip(), peer.port());
                 conn_count += 1;
                 connected_peers.push(error.unwrap());
             }
