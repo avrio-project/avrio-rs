@@ -1,5 +1,5 @@
 use crate::{
-    account::{get_account, to_atomic, Account, set_account},
+    account::{get_account, set_account, to_atomic, Account},
     block::Block,
     epoch::get_top_epoch,
     validate::Verifiable,
@@ -71,9 +71,9 @@ impl Verifiable for BlockChunk {
         match bs58::decode(&self.aggregated_signature).into_vec() {
             Ok(raw_aggregated) => match Signature::from_bytes(&raw_aggregated) {
                 Ok(aggregated) => {
-                    trace!("Agregated signature={:#?}", aggregated);
                     // now check the signature is valid and has been signed by all the signers
-                    if verify_messages(&aggregated, &[self.hash.as_bytes()], &self.signers) {
+                    let messages = self.to_sign(self.signers.clone());
+                    if verify_messages(&aggregated, &messages.iter().map(|r| &r[..]).collect::<Vec<_>>(), &self.signers) {
                         debug!("Aggregated signature on blockchunk {} valid", self.hash);
                         // now check all the signers are part of the committee, and that the len(self.signers) > 2/3committee_size
                         // first get the committee
@@ -214,7 +214,7 @@ impl Verifiable for BlockChunk {
                 );
 
                 // now the validator reward
-                let validator_reward =  to_atomic(5.0) / (self.signers.len() as u64);
+                let validator_reward = to_atomic(5.0) / (self.signers.len() as u64);
                 debug!(
                     "Validator reward for block chunk {}: {}",
                     self.hash, validator_reward
@@ -458,10 +458,10 @@ impl BlockChunk {
         signatures: &Vec<Signature>,
         signers: Vec<PublicKey>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.signers = signers;
         // aggregate all sigs
         self.aggregated_signature =
             bs58::encode(aggregate(&signatures[..])?.as_bytes()).into_string();
-        self.signers = signers;
         Ok(())
     }
 
@@ -481,7 +481,7 @@ impl BlockChunk {
         }
     }
     pub fn encode(&self) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(bs58::encode(format!(
+        let as_string = format!(
             "{}|{}|{}|{}|{}|{}",
             self.hash,
             self.round,
@@ -489,19 +489,20 @@ impl BlockChunk {
             self.committee,
             self.aggregated_signature,
             serde_json::to_string(&signers_to_string_vec(&self.signers)?)?,
-        ))
-        .into_string())
+        );
+        Ok(bs58::encode(as_string).into_string())
     }
     pub fn decode(raw: String) -> Result<BlockChunk, Box<dyn std::error::Error>> {
-        let decoded = String::from_utf8(bs58::decode(raw).into_vec()?)?;
+        let bs58_vec = bs58::decode(raw).into_vec()?;
+        let decoded = String::from_utf8(bs58_vec)?;
         let split: Vec<&str> = decoded.split("|").collect();
         if split.len() == 6 {
             return Ok(BlockChunk {
                 hash: split[0].to_string(),
                 round: split[1].parse()?,
                 blocks: serde_json::from_str(&split[2])?,
-                aggregated_signature: split[3].to_string(),
-                committee: split[4].parse()?,
+                committee: split[3].parse()?,
+                aggregated_signature: split[4].to_string(),
                 signers: signers_string_to_vec(&serde_json::from_str(&split[5])?)?,
             });
         } else {
