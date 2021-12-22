@@ -168,7 +168,7 @@ impl Default for ConfigSave {
             ],
             ignore_minor_updates: false,
             p2p_port: 56789,
-            api_port: 54321,
+            api_port: 8000,
             allow_cors: 'n',
             node_type: 'n',
             identitiy: hash_id(rand::random::<u64>()),
