@@ -6,7 +6,7 @@ use avrio_core::{
     mempool::get_blocks,
     mempool::{self, add_block, Caller as CallerM},
 };
-use avrio_crypto::{raw_lyra, Hashable};
+use avrio_crypto::{raw_sha, Hashable};
 use avrio_p2p::{
     guid::{self, form_table},
     helper::prop_block_chunk,
@@ -743,7 +743,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                 let new_epoch = Epoch::get(current_epoch.epoch_number + 1).unwrap();
                                 let (shuffle_proof, _) = get_vrf(
                                     lock[5].clone(),
-                                    raw_lyra(
+                                    raw_sha(
                                         &(new_epoch.salt.to_string()
                                             + &new_epoch.epoch_number.to_string()
                                             + &lock[0]),
@@ -848,13 +848,13 @@ pub fn start_vrf_lotto(_null: ()) {
                                 let mut fullnodes: Vec<String> = Vec::from_iter(fullnodes_hashset);
                                 let mut preshuffle_hash = String::from("");
                                 for fullnode in &fullnodes {
-                                    preshuffle_hash = raw_lyra(&(preshuffle_hash + fullnode));
+                                    preshuffle_hash = raw_sha(&(preshuffle_hash + fullnode));
                                 }
 
                                 // now we shuffle the list
                                 let curr_epoch =
                                     Epoch::get(current_epoch.epoch_number + 1).unwrap();
-                                let shuffle_seed = vrf_hash_to_integer(raw_lyra(
+                                let shuffle_seed = vrf_hash_to_integer(raw_sha(
                                     &(curr_epoch.shuffle_bits.to_string()
                                         + &curr_epoch.salt.to_string()
                                         + &curr_epoch.epoch_number.to_string()),
@@ -879,7 +879,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                 let mut postshuffle_hash = String::from("");
                                 for committee in &committees {
                                     postshuffle_hash =
-                                        raw_lyra(&(postshuffle_hash + &committee.hash));
+                                        raw_sha(&(postshuffle_hash + &committee.hash));
                                 }
                                 // set the hashes
                                 delta_list.0 .0 = preshuffle_hash;

@@ -20,7 +20,7 @@ use crate::{
     validate::Verifiable,
 };
 
-use avrio_crypto::{proof_to_hash, raw_lyra, validate_vrf, vrf_hash_to_integer};
+use avrio_crypto::{proof_to_hash, raw_sha, validate_vrf, vrf_hash_to_integer};
 use bigdecimal::{BigDecimal, FromPrimitive};
 use lazy_static::lazy_static;
 use std::{
@@ -600,7 +600,7 @@ impl Verifiable for Transaction {
 
                         let mut message = String::from("genesis");
                         if top_epoch.epoch_number != 0 {
-                            message = raw_lyra(&(top_epoch.epoch_number.to_string() + "epoch"))
+                            message = raw_sha(&(top_epoch.epoch_number.to_string() + "epoch"))
                         }
                         let publickey = salt_seeds.0;
                         let seed = salt_seeds.1;
@@ -685,7 +685,7 @@ impl Verifiable for Transaction {
                         let mut fullnodes: Vec<String> = Vec::from_iter(fullnodes_hashset);
                         let mut preshuffle_hash = String::from("");
                         for fullnode in &fullnodes {
-                            preshuffle_hash = raw_lyra(&(preshuffle_hash + fullnode));
+                            preshuffle_hash = raw_sha(&(preshuffle_hash + fullnode));
                         }
                         if preshuffle_hash != hashes.0 {
                             error!("Preshuffle hash (after delta) does not equal expected, expected={}, got={}", hashes.0, preshuffle_hash);
@@ -693,7 +693,7 @@ impl Verifiable for Transaction {
                         }
                         // now we shuffle the list
                         let curr_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
-                        let shuffle_seed = vrf_hash_to_integer(raw_lyra(
+                        let shuffle_seed = vrf_hash_to_integer(raw_sha(
                             &(curr_epoch.shuffle_bits.to_string()
                                 + &curr_epoch.salt.to_string()
                                 + &curr_epoch.epoch_number.to_string()),
@@ -713,7 +713,7 @@ impl Verifiable for Transaction {
                         );
                         let mut postshuffle_hash = String::from("");
                         for committee in &committees {
-                            postshuffle_hash = raw_lyra(&(postshuffle_hash + &committee.hash));
+                            postshuffle_hash = raw_sha(&(postshuffle_hash + &committee.hash));
                         }
                         if postshuffle_hash != hashes.1 {
                             error!("Post shuffle committee list hash does not equal expected, expected={}, got={}", hashes.1, postshuffle_hash);
@@ -757,7 +757,7 @@ impl Verifiable for Transaction {
                 if !validate_vrf(
                     cert.secp256k1_publickey.clone(),
                     String::from_utf8(bs58::decode(&self.extra).into_vec()?)?,
-                    raw_lyra(message),
+                    raw_sha(message),
                 ) {
                     error!(
                         "Invalid VRF as shufflebits, proof={}, creator={}, message={}",
@@ -1202,7 +1202,7 @@ impl Verifiable for Transaction {
 
                     // now we shuffle the list
                     let mut curr_epoch = Epoch::get(top_epoch.epoch_number + 1)?;
-                    let shuffle_seed = vrf_hash_to_integer(raw_lyra(
+                    let shuffle_seed = vrf_hash_to_integer(raw_sha(
                         &(curr_epoch.shuffle_bits.to_string()
                             + &curr_epoch.salt.to_string()
                             + &curr_epoch.epoch_number.to_string()),

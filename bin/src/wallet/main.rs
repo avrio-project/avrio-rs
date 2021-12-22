@@ -9,7 +9,7 @@
 */
 #[macro_use]
 extern crate rocket;
-pub mod api;
+//pub mod api;
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use avrio_config::config;
@@ -24,7 +24,7 @@ use avrio_rpc::{launch_client, Announcement, Caller};
 use clap::{App, Arg};
 use fern::colors::{Color, ColoredLevelConfig};
 use lazy_static::*;
-use log::*;
+use log::{info, warn, error, trace, debug};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json;
@@ -498,7 +498,7 @@ async fn main() {
     }
     if matches.is_present("apiservice") {
         info!("Starting as api server");
-        api::start_server();
+        //api::start_server();
     } else {
         info!("Welcome to the avrio wallet, please choose an option");
         let wallet = match get_choice() {

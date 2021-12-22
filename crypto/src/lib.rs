@@ -1,6 +1,3 @@
-// Lyra2
-extern crate lyra2;
-use lyra2::lyra2rev3::sum;
 use secp256k1::bitcoin_hashes::sha256;
 use secp256k1::{rand::rngs::OsRng, Signature};
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
@@ -47,20 +44,13 @@ pub fn generate_keypair() -> Keypair {
     }
 }
 
-pub fn raw_lyra(s: &str) -> String {
-    bs58::encode(sum(s.as_bytes().to_vec())).into_string()
-}
-
 pub fn raw_hash(s: &str) -> String {
     // First we calculate the bytes of the string being passed to us
     let bytes = s.as_bytes().to_vec();
 
-    // Lyra round 1/2 on the bytes
-    let lyra2res = sum(bytes.clone());
-
     // sha256 round 1/3
     let mut hasher = Sha256::new();
-    hasher.input(lyra2res);
+    hasher.input(bytes.clone());
     let sharesult = hasher.result();
 
     // sha256 round 3/3
@@ -86,19 +76,15 @@ pub fn raw_hash(s: &str) -> String {
     let mut blakeresult_two = [0; 32];
     blake::hash(256, &blakeresult, &mut blakeresult_two).unwrap();
 
-    // Lyra2 round 2/2 on the BLAKE result + salt
     let mut sk: u64 = 0;
     for byte in bytes.iter() {
         sk += *byte as u64;
     }
     let salt = sk.to_string();
-    let lyra2res_two = sum((bs58::encode(blakeresult_two).into_string() + &salt)
-        .as_bytes()
-        .to_vec());
 
-    // A final sha256 round on the lyra res
+    // A final sha256 round on the balkeresult + salt
     let mut hasher = Sha256::new();
-    hasher.input(lyra2res_two);
+    hasher.input(bs58::encode(blakeresult_two).into_string() + &salt);
     let sharesult = hasher.result();
 
     // Finally we base 58 encode the result
@@ -110,15 +96,12 @@ pub trait Hashable {
     fn bytes(&self) -> Vec<u8>;
 
     fn hash_item(&self) -> String {
-        // First we calculate the bytes of the object being passed to us
+        // First we calculate the bytes of the string being passed to us
         let bytes = self.bytes();
-
-        // Lyra round 1/2 on the bytes
-        let lyra2res = sum(bytes.clone());
 
         // sha256 round 1/3
         let mut hasher = Sha256::new();
-        hasher.input(lyra2res);
+        hasher.input(bytes.clone());
         let sharesult = hasher.result();
 
         // sha256 round 3/3
@@ -144,19 +127,15 @@ pub trait Hashable {
         let mut blakeresult_two = [0; 32];
         blake::hash(256, &blakeresult, &mut blakeresult_two).unwrap();
 
-        // Lyra2 round 2/2 on the BLAKE result + salt
         let mut sk: u64 = 0;
         for byte in bytes.iter() {
             sk += *byte as u64;
         }
         let salt = sk.to_string();
-        let lyra2res_two = sum((bs58::encode(blakeresult_two).into_string() + &salt)
-            .as_bytes()
-            .to_vec());
 
-        // A final sha256 round on the lyra res
+        // A final sha256 round on the balkeresult + salt
         let mut hasher = Sha256::new();
-        hasher.input(lyra2res_two);
+        hasher.input(bs58::encode(blakeresult_two).into_string() + &salt);
         let sharesult = hasher.result();
 
         // Finally we base 58 encode the result
@@ -438,6 +417,14 @@ impl Wallet {
         }
     }
 }
+
+pub fn raw_sha(s: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.input(s);
+    let sharesult = hasher.result();
+    bs58::encode(sharesult).into_string() // TODO: FIX INTO NEW FAST HASH ALGO
+}
+
 pub fn public_key_to_address(public_key: &str) -> String {
     let mut unencoded: Vec<u8> = vec![];
     unencoded.extend(vec![0].iter());
@@ -536,43 +523,5 @@ mod tests {
         Ok(())
     }
 }
-#[test]
-fn test_hashrate() {
-    use std::time::SystemTime;
-    let start = SystemTime::now();
-    let amount = 10000;
-    for n in 0..amount {
-        raw_hash(&n.to_string());
-    }
-    let _time_took = SystemTime::now()
-        .duration_since(start)
-        .expect("negative time")
-        .as_millis();
-    let time_took = SystemTime::now()
-        .duration_since(start)
-        .expect("negative time")
-        .as_millis();
-    let start_lyra = SystemTime::now();
-    let amount = 10000;
-    for n in 0..amount {
-        raw_lyra(&n.to_string());
-    }
 
-    println!(
-        "Raw_hash: Hashed {}k hashes in {} ms, {} h/s",
-        amount / 1000,
-        time_took,
-        1000 / (time_took / amount)
-    );
-    let time_took = SystemTime::now()
-        .duration_since(start_lyra)
-        .expect("negative time")
-        .as_millis();
-    println!(
-        "Raw_lyra: Hashed {}k hashes in {} ms, {} h/s",
-        amount / 1000,
-        time_took,
-        1000 / (time_took + 1 / amount + 1)
-    );
-}
 mod vrf_test;

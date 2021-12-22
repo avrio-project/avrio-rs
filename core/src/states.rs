@@ -7,10 +7,10 @@ pub fn update_chain_digest(new_blk_hash: &str, cd_db: String, chain: &str) -> St
     let root: String;
     if &curr == "-1" {
         trace!("chain digest not set");
-        root = avrio_crypto::raw_lyra(new_blk_hash);
+        root = avrio_crypto::raw_sha(new_blk_hash);
     } else {
         trace!("Updating set chain digest. Curr: {}", curr);
-        root = avrio_crypto::raw_lyra(&(curr + new_blk_hash));
+        root = avrio_crypto::raw_sha(&(curr + new_blk_hash));
     }
     let _ = save_data(&root, &cd_db, chain.to_owned());
     trace!("Chain digest for chain={} updated to {}", chain, root);
@@ -30,7 +30,7 @@ pub fn form_chain_digest(
         // get the genesis block
         let genesis = get_block(&chain, 0);
         // hash the hash
-        let mut temp_leaf = avrio_crypto::raw_lyra(&avrio_crypto::raw_lyra(&genesis.hash));
+        let mut temp_leaf = avrio_crypto::raw_sha(&avrio_crypto::raw_sha(&genesis.hash));
         // set curr_height to 1
         let mut curr_height: u64 = 1;
         loop {
@@ -40,7 +40,7 @@ pub fn form_chain_digest(
             if temp_block.is_default() {
                 break; // we have exceeded the last block, break/return from loop
             } else {
-                temp_leaf = avrio_crypto::raw_lyra(&format!("{}{}", temp_leaf, temp_block.hash));
+                temp_leaf = avrio_crypto::raw_sha(&format!("{}{}", temp_leaf, temp_block.hash));
                 trace!(
                     "Chain digest: chain={}, block={}, height={}, new temp_leaf={}",
                     chain,
@@ -115,9 +115,9 @@ pub fn form_state_digest(cd_db: String) -> std::result::Result<String, Box<dyn s
     let mut temp_leaf: String;
     // create the first leaf
     if _roots.len() == 1 {
-        temp_leaf = avrio_crypto::raw_lyra(&_roots[0].1.to_owned());
+        temp_leaf = avrio_crypto::raw_sha(&_roots[0].1.to_owned());
     } else if !_roots.is_empty() {
-        temp_leaf = avrio_crypto::raw_lyra(&(_roots[0].1.to_owned() + &_roots[1].1)); // Hash the first two chain digests together to make the first leaf
+        temp_leaf = avrio_crypto::raw_sha(&(_roots[0].1.to_owned() + &_roots[1].1)); // Hash the first two chain digests together to make the first leaf
         let cd_one = &_roots[0].1;
         let cd_two = &_roots[1].1;
         for (chain_string, digest_string) in _roots.clone() {
@@ -132,12 +132,12 @@ pub fn form_state_digest(cd_db: String) -> std::result::Result<String, Box<dyn s
                     digest_string,
                     temp_leaf
                 );
-                temp_leaf = avrio_crypto::raw_lyra(&(digest_string + &temp_leaf));
+                temp_leaf = avrio_crypto::raw_sha(&(digest_string + &temp_leaf));
             }
         }
         // we have gone through every digest and hashed them together, now we save to disk
     } else {
-        temp_leaf = avrio_crypto::raw_lyra(&"".to_owned());
+        temp_leaf = avrio_crypto::raw_sha(&"".to_owned());
     }
     log::debug!(
         "Finished state digest calculation, old={}, new={}, time_to_complete={}",

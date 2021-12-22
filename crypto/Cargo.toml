@@ -9,7 +9,6 @@ edition = "2018"
 license = "MIT"
 
 [dependencies]
-lyra2 = "0.2.1"
 bs58 = "0.3.0"
 scrypt = "0.2.0"
 blake = "2.0.0"
@@ -25,3 +24,13 @@ log = "0.4.14"
 secp256k1 = {version = "0.20.2", features = ["rand-std", "bitcoin_hashes"]}
 rand = "0.8.3"
 hex = "0.4.3"
+[dependencies.openssl]
+optional = true
+[features]
+
+# If compiling on a system without OpenSSL installed, or cross-compiling for a different
+# architecture, enable this feature to compile OpenSSL as part of the build.
+# See https://docs.rs/openssl/#vendored for more.
+static_ssl = ['openssl/vendored']
+
+
