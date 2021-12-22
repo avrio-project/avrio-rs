@@ -100,9 +100,12 @@ pub fn mark_as_valid(block_hash: &String) -> Result<(), Box<dyn std::error::Erro
     if !map.contains_key(block_hash) {
         Err("block not in mempool".into())
     } else {
-        if let Some((block, _, _)) = map.remove(block_hash) {
+        if let Some((block, _, callback)) = map.remove(block_hash) {
             block.save()?;
             block.enact()?;
+            if let Some(callback) = callback {
+                callback.call(block);
+            }
             Ok(())
         } else {
             error!(
