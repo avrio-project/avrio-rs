@@ -2,18 +2,18 @@ use crate::block::get_block;
 use avrio_database::{get_data, open_database, save_data};
 
 pub fn update_chain_digest(new_blk_hash: &str, cd_db: String, chain: &str) -> String {
-    trace!(target: "blockchain::chain_digest","Updating chain digest for chain={}, hash={}", chain, new_blk_hash);
+    trace!("Updating chain digest for chain={}, hash={}", chain, new_blk_hash);
     let curr = get_data(cd_db.to_owned(), chain);
     let root: String;
     if &curr == "-1" {
-        trace!(target: "blockchain::chain_digest","chain digest not set");
+        trace!("chain digest not set");
         root = avrio_crypto::raw_lyra(new_blk_hash);
     } else {
-        trace!(target: "blockchain::chain_digest","Updating set chain digest. Curr: {}", curr);
+        trace!("Updating set chain digest. Curr: {}", curr);
         root = avrio_crypto::raw_lyra(&(curr + new_blk_hash));
     }
     let _ = save_data(&root, &cd_db, chain.to_owned());
-    trace!(target: "blockchain::chain_digest","Chain digest for chain={} updated to {}", chain, root);
+    trace!("Chain digest for chain={} updated to {}", chain, root);
     root
 }
 
