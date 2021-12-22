@@ -103,8 +103,12 @@ pub fn launch_handle_client(
     let mut stream = stream.try_clone()?;
     let ping_every: Duration = Duration::from_millis(5 * 60 * 1000);
     trace!("Cloned stream, launching thread");
-    let _handler: std::thread::JoinHandle<Result<(), &'static str>> = std::thread::spawn(
+    let builder = thread::Builder::new().name("peer_handler".into()).stack_size(10 * 1000000);
+
+    let _handler = builder.spawn(
+        // thread code
         move || {
+            trace!("Thread spawned");
             let mut ping_nonce = 0;
             let mut paused = false;
             let mut last_ping_time = SystemTime::now();
@@ -287,7 +291,9 @@ pub fn launch_handle_client(
                 std::thread::sleep(Duration::from_millis(50));
             }
         },
-    );
+    )
+    .unwrap()
+    ;
     Ok(())
 }
 
