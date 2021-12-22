@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+readonly TARGET_HOST=pi@192.168.1.212
+readonly TARGET_PATH=/home/pi/
+readonly TARGET_ARCH=armv7-unknown-linux-gnueabihf
+readonly SOURCE_PATH=./target/${TARGET_ARCH}/release
+cargo +nightly build --release --target=${TARGET_ARCH} 
+echo "BUILT"
+
+rsync ${SOURCE_PATH}/avrio-daemon ${TARGET_HOST}:${TARGET_PATH}/avrio-daemon
+rsync ${SOURCE_PATH}/avrio-wallet ${TARGET_HOST}:${TARGET_PATH}/avrio-wallet
+
+ssh -t ${TARGET_HOST} #${TARGET_PATH} --no-sync -v 4 seednode
