@@ -31,8 +31,28 @@ pub fn get_peers() -> Result<Vec<TcpStream>, Box<dyn Error>> {
     for peer in iter {
         peers.push(peer.try_clone()?)
     }
-
+    log::trace!("{:#?}", peers);
     Ok(peers)
+}
+
+pub fn get_peer(addr: SocketAddr) -> Result<TcpStream, Box<dyn Error>> {
+    let val = INCOMING.lock()?;
+    let iter = val.iter();
+
+    for peer in iter {
+        if peer.peer_addr()? == addr {
+            return Ok(peer.try_clone()?);
+        }
+    }
+    let val = OUTGOING.lock()?;
+    let iter = val.iter();
+
+    for peer in iter {
+        if peer.peer_addr()? == addr {
+            return Ok(peer.try_clone()?);
+        }
+    }
+    Err("Not found".into())
 }
 
 /// Returns a result, vector of the SocketAddrs of the peers we are connected to
@@ -159,16 +179,10 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
         } else {
             return Err("peer has no handler stream".into());
         }
-        for p in get_peers()? {
-            if strip_port(
-                &p.peer_addr()
-                    .unwrap_or_else(|_| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)),
-            ) == strip_port(peer)
-            {
-                std::thread::sleep(std::time::Duration::from_millis(350)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
-                log::trace!("Waited 350ms, proceeding");
-                return Ok(p);
-            }
+        if let Ok(p) = get_peer(*peer) {
+            std::thread::sleep(std::time::Duration::from_millis(350)); // wait 350ms for the handler thread to see our message and stop. TODO: wait for a response from the thread instead
+            log::trace!("Waited 350ms, proceeding");
+            return Ok(p);
         }
         Err("cant find peer".into())
     } else {
