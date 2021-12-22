@@ -236,6 +236,10 @@ pub fn propose_premade_chunk(
             }
             // we have enough signatures, add them to the block chunk
             block_chunk.add_signatures(&bc_sigs, bc_signers).unwrap();
+            if let Err(e) = block_chunk.valid() {
+                error!("Invalid block chunk, error {}", e);
+                return Err(e.into());
+            }
             // now we have a block chunk with enough signatures, we can propagate it
             trace!("Propagating block chunk={:#?}", block_chunk);
             prop_block_chunk(&block_chunk).unwrap();
