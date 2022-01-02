@@ -14,8 +14,12 @@ jobs:
   debug-win-build:
     docker:
       - image: cimg/rust:1.57.0
+    
     steps:
       - checkout # this pulls code down from GitHub
+      - setup_remote_docker:
+          version: 19.03.13
+          docker_layer_caching: true
       - run: cargo install cross
       - run: cross build --target x86_64-pc-windows-gnu
   release-unix-build:
@@ -29,8 +33,11 @@ jobs:
       - image: cimg/rust:1.57.0
     steps:
       - checkout # this pulls code down from GitHub
+      - setup_remote_docker:
+          version: 19.03.13
+          docker_layer_caching: true
       - run: cargo install cross
-      - run: cross build --target x86_64-pc-windows-gnu --release
+      - run: cross build --target x86_64-pc-windows-gnu
 
   
 
