@@ -48,6 +48,7 @@ jobs:
           arguments: |
             --acl public-read \
             --cache-control "max-age=86400"
+          aws-secret-access-key: AWS_ACCESS_KEY
           from: build
           to: 's3://avrio-deploy-bucket'
           overwrite: true 
@@ -62,4 +63,3 @@ workflows:
       - deploy-to-s3:
           requires:
             - linux-debug
-            - windows-debug
