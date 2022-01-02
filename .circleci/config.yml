@@ -3,6 +3,7 @@
 version: 2.1
 orbs: 
   rust: circleci/rust@1.6.0
+  aws-s3: circleci/aws-s3@1.0.15
 
 jobs:
   linux-debug:
@@ -14,6 +15,10 @@ jobs:
       - rust/install:
           version: nightly
       - rust/build
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - project/build
   windows-debug:
     docker:
       # replace with your preferred image
@@ -27,6 +32,25 @@ jobs:
           version: nightly
       - run: cargo install cross
       - run: cross build --target x86_64-pc-windows-gnu
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - project/build
+
+  deploy-to-s3:
+    machine:
+      image: circleci/classic:latest
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/
+      - aws-s3/sync:
+          arguments: |
+            --acl public-read \
+            --cache-control "max-age=86400"
+          from: build
+          to: 's3://avrio-deploy-bucket'
+          overwrite: true 
 
         
 
@@ -35,3 +59,7 @@ workflows:
     jobs:
       - linux-debug
       - windows-debug
+      - deploy-to-s3:
+          requires:
+            - linux-debug
+            - windows-debug
