@@ -31,3 +31,4 @@ workflows:
   example-workflow:
     jobs:
       - linux-debug
+      - windows-debug
