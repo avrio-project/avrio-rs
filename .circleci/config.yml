@@ -20,6 +20,9 @@ jobs:
       - image: cimg/base:stable
     steps:
       - checkout
+      - setup_remote_docker:
+          version: 19.03.13
+          docker_layer_caching: true
       - rust/install:
           version: nightly
       - run: cargo install cross
