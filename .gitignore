@@ -22,3 +22,4 @@ settings.json
 *csv
 *code-workspace
 callgrind*
+.idea/**
