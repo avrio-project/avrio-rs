@@ -5,7 +5,12 @@ use crate::{
     utils::*,
 };
 use avrio_config::config;
-use avrio_core::{block::{from_compact, get_block_from_raw, save_block, Block}, chunk::BlockChunk, states::form_state_digest, validate::Verifiable};
+use avrio_core::{
+    block::{from_compact, get_block_from_raw, save_block, Block},
+    chunk::BlockChunk,
+    states::form_state_digest,
+    validate::Verifiable,
+};
 use avrio_database::get_data;
 
 //use bson;
@@ -826,7 +831,10 @@ pub fn send_block_struct(block: &Block, peer: &mut TcpStream) -> Result<(), Box<
     }
 }
 
-pub fn send_block_chunk_struct(bc: &BlockChunk, peer: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+pub fn send_block_chunk_struct(
+    bc: &BlockChunk,
+    peer: &mut TcpStream,
+) -> Result<(), Box<dyn Error>> {
     if bc.hash == String::default() {
         Err("tried to send default block chunk".into())
     } else {
@@ -987,6 +995,5 @@ pub struct GetBlocks {
 // -- End sync assist functions and structures-- //
 
 // -- Fullnode assist functions and structures -- //
-
 
 // -- End fullnode assist functions and structures -- //

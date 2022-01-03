@@ -21,7 +21,7 @@ lazy_static! {
     static ref COMMITEE_INDEX: Mutex<u64> = Mutex::new(1025);
     static ref VALIDATED_CHUNKS: Mutex<Vec<String>> = Mutex::new(vec![]); // holds a vector of strings of all of the chunks that we validated this epoch
     static ref PROPOSED_CHUNKS: Mutex<Vec<String>> = Mutex::new(vec![]); // holds a vector of strings of all of the chunks that we proposed this epoch
-    pub (crate) static ref RUNNING: Mutex<bool> = Mutex::new(false); 
+    pub (crate) static ref RUNNING: Mutex<bool> = Mutex::new(false);
 }
 
 pub fn mark_validated(chunk: &str) {

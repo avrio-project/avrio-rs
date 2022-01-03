@@ -38,15 +38,15 @@ pub fn cache_database(
 ) -> Result<bool, Box<dyn std::error::Error>> {
     // check this DB is not already cached
 
-    if database_cache_lock.contains_key(&path) {
-        return Ok(false); // this db is already cached
+    return if database_cache_lock.contains_key(&path) {
+        Ok(false) // this db is already cached
     } else {
         // open this DB and add to the cache
         let db_lock = sled::open(config().db_path + &path)?;
         // add to the db lock to the hashmap
         database_cache_lock.insert(path, db_lock);
-        return Ok(true);
-    }
+        Ok(true)
+    };
 }
 
 pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
@@ -128,7 +128,7 @@ pub fn init_cache(max_size: usize) -> Result<(), Box<dyn std::error::Error>> {
 pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
     trace!("SD: {} : {} -> {}", key, serialized, path);
     //  gain a lock on the DATABASES lazy_sataic
-    if let Ok(mut database_lock) = DATABASE_LOCKS.lock() {
+    return if let Ok(mut database_lock) = DATABASE_LOCKS.lock() {
         // it does; now check if the databases hashmap contains our path (eg is this db cached)
         if database_lock.contains_key(path) {
             //  we have this database cached, read from it
@@ -147,7 +147,7 @@ pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
                 key,
                 serialized
             );
-            return 1;
+            1
         } else {
             match cache_database(path.to_string(), &mut *database_lock) {
                 Ok(_) => {
@@ -167,18 +167,18 @@ pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
                         key,
                         serialized
                     );
-                    return 1;
+                    1
                 }
                 Err(e) => {
                     error!("Failed to cache database, error={}", e);
-                    return 0;
+                    0
                 }
             }
         }
     } else {
         error!("Failed to get a lock on DATABASE CACHE");
-        return 0;
-    }
+        0
+    };
 }
 
 pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
@@ -236,14 +236,31 @@ pub fn get_data(path: String, key: &str) -> String {
             // safe to get the value
             let db = database_lock[&path].clone();
             // write to our local copy of the lazy_static
-            if let Ok(read_bytes) = db.get(key.to_string().as_bytes()) {
-                if let Some(unwrapped_bytes) = read_bytes {
-                    data = String::from_utf8(unwrapped_bytes.to_vec()).unwrap_or(String::from("-1"));
-                } else {
-                    data = String::from("-1");
+            match db.get(key.to_string().as_bytes()) {
+                Ok(read_bytes) => match read_bytes {
+                    Some(unwrapped_bytes) => {
+                        trace!("Some bytes (len={})", unwrapped_bytes.len());
+                        let bytes_vec = unwrapped_bytes.to_vec();
+                        match String::from_utf8(bytes_vec) {
+                            Ok(data_) => data = data_,
+                            Err(e) => {
+                                error!(
+                                    "Failed to decode bytes, gave error={}",
+                                    e
+                                );
+                                data = String::from("-3")
+                            }
+                        }
+                    }
+                    None => {
+                        trace!("No bytes");
+                        data = String::from("-1");
+                    }
+                },
+                Err(e) => {
+                    error!("Error reading bytes, error={}", e);
+                    data = String::from("-2");
                 }
-            } else {
-                data = String::from("-1");
             }
             trace!(
                 "Read from DB cache, path={}, key={}, data={}",
@@ -257,15 +274,32 @@ pub fn get_data(path: String, key: &str) -> String {
                     //  we have this database cached, read from it
                     // safe to get the value
                     let db = database_lock[&path].clone();
-                    // write to our local copy of the lazy_static
-                    if let Ok(read_bytes) = db.get(key.to_string().as_bytes()) {
-                        if let Some(unwrapped_bytes) = read_bytes {
-                            data = String::from_utf8(unwrapped_bytes.to_vec()).unwrap_or(String::from("-1"));
-                        } else {
-                            data = String::from("-1");
+                    // read from our local copy of the lazy_static
+                    match db.get(key.to_string().as_bytes()) {
+                        Ok(read_bytes) => match read_bytes {
+                            Some(unwrapped_bytes) => {
+                                trace!("Some bytes (len={})", unwrapped_bytes.len());
+                                let bytes_vec = unwrapped_bytes.to_vec();
+                                match String::from_utf8(bytes_vec) {
+                                    Ok(data_) => data = data_,
+                                    Err(e) => {
+                                        error!(
+                                            "Failed to decode bytes, gave error={}",
+                                             e
+                                        );
+                                        data = String::from("-3");
+                                    }
+                                }
+                            }
+                            None => {
+                                trace!("No bytes");
+                                data = String::from("-1");
+                            }
+                        },
+                        Err(e) => {
+                            error!("Error reading bytes, error={}", e);
+                            data = String::from("-2");
                         }
-                    } else {
-                        data = String::from("-1");
                     }
                     trace!(
                         "Read from new DB cache, path={}, key={}, data={}",
@@ -286,3 +320,4 @@ pub fn get_data(path: String, key: &str) -> String {
     }
     data
 }
+

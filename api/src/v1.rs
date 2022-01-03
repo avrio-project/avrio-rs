@@ -175,7 +175,10 @@ pub fn chainlist() -> String {
             return "{ \"success\": false, \"chain\": \"\" }".to_string();
         }
     } else {
-        error!("Could not open chainslist db, error: {}", open_attempt.unwrap_err());
+        error!(
+            "Could not open chainslist db, error: {}",
+            open_attempt.unwrap_err()
+        );
         return "{ \"success\": false, \"list\": \"\" }".to_string();
     }
 }

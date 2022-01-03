@@ -1,10 +1,15 @@
-use crate::{block::{save_block, Block, BlockType}, certificate, chunk::BlockChunk, epoch::get_top_epoch};
+use crate::{
+    block::{save_block, Block, BlockType},
+    certificate,
+    chunk::BlockChunk,
+    epoch::get_top_epoch,
+};
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, time::Duration};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 use std::time::SystemTime;
+use std::{collections::HashMap, time::Duration};
 use std::{net::SocketAddr, sync::Mutex};
 extern crate avrio_config;
 use crate::validate::Verifiable;
@@ -316,7 +321,9 @@ impl Mempool {
                     blocks_to_check.insert(v.0.hash.to_owned(), ());
                 }
             }
-            if now.duration_since(v.1).unwrap_or_default().as_millis() as u64 >= MEMPOOL_ENTRY_EXPIREY_TIME {
+            if now.duration_since(v.1).unwrap_or_default().as_millis() as u64
+                >= MEMPOOL_ENTRY_EXPIREY_TIME
+            {
                 to_remove.push((k.clone(), "timed out".to_owned()));
             }
         }

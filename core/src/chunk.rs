@@ -73,7 +73,11 @@ impl Verifiable for BlockChunk {
                 Ok(aggregated) => {
                     // now check the signature is valid and has been signed by all the signers
                     let messages = self.to_sign(self.signers.clone());
-                    if verify_messages(&aggregated, &messages.iter().map(|r| &r[..]).collect::<Vec<_>>(), &self.signers) {
+                    if verify_messages(
+                        &aggregated,
+                        &messages.iter().map(|r| &r[..]).collect::<Vec<_>>(),
+                        &self.signers,
+                    ) {
                         debug!("Aggregated signature on blockchunk {} valid", self.hash);
                         // now check all the signers are part of the committee, and that the len(self.signers) > 2/3committee_size
                         // first get the committee

@@ -24,7 +24,7 @@ use avrio_rpc::{launch_client, Announcement, Caller};
 use clap::{App, Arg};
 use fern::colors::{Color, ColoredLevelConfig};
 use lazy_static::*;
-use log::{info, warn, error, trace, debug};
+use log::{debug, error, info, trace, warn};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json;

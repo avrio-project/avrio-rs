@@ -103,7 +103,9 @@ pub fn launch_handle_client(
     let mut stream = stream.try_clone()?;
     let ping_every: Duration = Duration::from_millis(5 * 60 * 1000);
     trace!("Cloned stream, launching thread");
-    let builder = thread::Builder::new().name("peer_handler".into()).stack_size(10 * 1000000);
+    let builder = thread::Builder::new()
+        .name("peer_handler".into())
+        .stack_size(10 * 1000000);
 
     let _handler = builder.spawn(
         // thread code

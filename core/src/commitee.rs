@@ -118,17 +118,14 @@ impl Comitee {
             *BlockChunk::get_by_round(round, epoch.epoch_number, self.index).unwrap_or_default();
         let proposer: String;
 
-        if block_chunk.signers.len() == 0{
+        if block_chunk.signers.len() == 0 {
             proposer = String::from("genesis");
         } else {
             proposer = block_chunk.proposer()?;
         }
         let hash_string = raw_hash(&format!(
             "{}{}{}{}",
-            round,
-            block_chunk.hash,
-            proposer,
-            epoch.epoch_number
+            round, block_chunk.hash, proposer, epoch.epoch_number
         ));
         let hash_hex = hex::encode(bs58::decode(&hash_string).into_vec()?);
         let hash_int = vrf_hash_to_u64(hash_hex.clone())?;

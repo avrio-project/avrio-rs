@@ -190,7 +190,6 @@ pub fn lock(peer: &SocketAddr, timeout: u64) -> Result<TcpStream, Box<dyn Error>
 }
 
 pub fn unlock_peer(peer: TcpStream) -> Result<(), Box<dyn Error>> {
-
     let peer_add: SocketAddr;
     if let Ok(addr) = peer.peer_addr() {
         peer_add = addr;

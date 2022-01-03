@@ -14,6 +14,7 @@ use std::sync::RwLock;
 lazy_static! {
     static ref CONFIG_STACK: RwLock<Config> = RwLock::new(config_read("node.conf"));
 }
+use dirs::home_dir;
 
 /* use std::net::{IpAddr, Ipv4Addr, Ipv6Addr}; */
 /// This is the struct that holds the built in network params that are set by the core devs and the same for everyone
@@ -43,7 +44,7 @@ pub struct NetworkConfig {
     pub min_suported_version: Vec<u8>,
     pub max_supported_version: Vec<u8>,
     pub target_committee_count: u64, // the ideal number of committes to have,if there is not enough fullnodes this will not be reached
-    pub vrf_lottery_length: u64, // The length of the VRF lottery period
+    pub vrf_lottery_length: u64,     // The length of the VRF lottery period
 }
 
 /// This is what is saved in a file, the stuff the user can change and edit to fit their needs
@@ -115,7 +116,7 @@ pub struct Config {
     pub max_syncing_peers: u64,
     pub first_epoch_time: u64,
     pub god_account: String,
-    pub vrf_lottery_length: u64, 
+    pub vrf_lottery_length: u64,
     pub api_address: String,
 }
 
@@ -154,9 +155,16 @@ fn hash_id(id: u64) -> String {
 impl Default for ConfigSave {
     fn default() -> ConfigSave {
         let dir = home_dir().unwrap();
-        let dir_str = dir.to_str().unwrap();
+        let mut dir_str = dir.to_str().unwrap();
+        let mut path: String = dir_str.to_string();
+        if cfg!(target_os = "windows") {
+            log::debug!("Detected a windows system, using {}", path);
+            path = path + "\\.avrio-datadir";
+        } else {
+            path = path + "/.avrio-datadir";
+        }
         ConfigSave {
-            db_path: dir_str.to_string() + &"/.avrio-datadir".to_string(),
+            db_path: path,
             max_connections: 50,
             max_threads: 4,
             chain_key: "".to_string(),
@@ -178,7 +186,7 @@ impl Default for ConfigSave {
             max_syncing_peers: 8,
             first_epoch_time: 0,
             god_account: String::from(""),
-            api_address: String::from("127.0.0.1")
+            api_address: String::from("127.0.0.1"),
         }
     }
 }
@@ -230,7 +238,7 @@ impl ConfigSave {
             first_epoch_time: self.first_epoch_time,
             god_account: self.god_account.to_owned(),
             vrf_lottery_length: nconf.vrf_lottery_length,
-            api_address: self.api_address.to_owned()
+            api_address: self.api_address.to_owned(),
         }
     }
 }
@@ -296,7 +304,7 @@ impl Config {
             max_syncing_peers: self.max_syncing_peers,
             first_epoch_time: self.first_epoch_time,
             god_account: self.god_account,
-            api_address: self.api_address
+            api_address: self.api_address,
         }
     }
 
