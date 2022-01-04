@@ -97,6 +97,7 @@ fn validator_loop(commitee: Comitee) -> Result<(u64, u64), Box<dyn std::error::E
                         debug!("Collected no blocks for chunk, retrying");
                         sleep(Duration::from_millis(5000))
                     } else {
+                        // TODO: limmit block chunk size
                         info!(
                             "Forming block chunk with {} blocks, for round {}",
                             bc_blocks.len(),
