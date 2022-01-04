@@ -69,19 +69,18 @@ pub fn open_database(path: String) -> Result<HashMap<String, String>, Box<dyn st
 
     let mut return_database: HashMap<String, String> = HashMap::new();
 
-    let export = db.export();
-    for (_, _, collection_iter) in export {
-        trace!(
-            "OD: collection_iter={:?}",
-            collection_iter.collect::<Vec<Vec<Vec<u8>>>>()
-        );
-        /*for mut kv in collection_iter {
-            let v = kv.pop().expect("failed to get value from tree export");
-            let k = kv.pop().expect("failed to get key from tree export");
-            return_database
-                .insert(String::from_utf8(k)?, String::from_utf8(v)?)
-                .expect("failed to insert value during tree import");
-        }*/
+    let iter = db.iter();
+    for item in iter {
+        match item {
+            Ok((key_bytes, value_bytes)) => {
+                let key = String::from_utf8(key_bytes.to_vec())?;
+                let value = String::from_utf8(value_bytes.to_vec())?;
+                return_database.insert(key, value);
+            }
+            Err(e) => {
+                error!("Error reading database: {}", e);
+            }
+        }
     }
 
     trace!("Read all {} values from db {}", return_database.len(), path);
@@ -159,7 +158,7 @@ pub fn save_data(serialized: &str, path: &str, key: String) -> u8 {
                         db.insert(key.to_string().as_bytes(), serialized.to_owned().as_bytes())
                     {
                         error!("Failed to write to database, error={}", e);
-                        return 01;
+                        return 0;
                     }
                     trace!(
                         "Set data (new lock), path={}, key={}, serialized={}",
@@ -244,10 +243,7 @@ pub fn get_data(path: String, key: &str) -> String {
                         match String::from_utf8(bytes_vec) {
                             Ok(data_) => data = data_,
                             Err(e) => {
-                                error!(
-                                    "Failed to decode bytes, gave error={}",
-                                    e
-                                );
+                                error!("Failed to decode bytes, gave error={}", e);
                                 data = String::from("-3")
                             }
                         }
@@ -283,10 +279,7 @@ pub fn get_data(path: String, key: &str) -> String {
                                 match String::from_utf8(bytes_vec) {
                                     Ok(data_) => data = data_,
                                     Err(e) => {
-                                        error!(
-                                            "Failed to decode bytes, gave error={}",
-                                             e
-                                        );
+                                        error!("Failed to decode bytes, gave error={}", e);
                                         data = String::from("-3");
                                     }
                                 }
@@ -320,4 +313,3 @@ pub fn get_data(path: String, key: &str) -> String {
     }
     data
 }
-
