@@ -24,6 +24,8 @@ fn get_message_types() -> HashMap<u16, &'static str> {
     message_types.insert(0xa1, "Handshake Init Response");
     message_types.insert(0xa2, "Handshake Test Key");
     message_types.insert(0xa3, "Handshake Confirm Key Test");
+    message_types.insert(0xa4, "Get prechunk block hashes");
+    message_types.insert(0xa5, "Prechunk block hashes");
     message_types.insert(0x1b, "Send Chain Digest (ask)"); // - why are there two? Backward combatability?
     message_types.insert(0x1c, "Send Chain Digest (ask)"); // TODO: remove one
     message_types.insert(0xcd, "Send Chain Digest (response)");

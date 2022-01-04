@@ -517,6 +517,17 @@ pub fn process_handle_msg(
                 error!("Failed to get lock on HANDLE CHUNK CALLBACK mutex");
             }
         }
+        0xa4 => {
+            debug!("Peer asked for our prechunk block list");
+            let mut list = get_data(config().db_path + "/sync", "prechunk-blocks");
+            if list == "-1" {
+                list = String::from("[]");
+            }
+            let _ = send(list, stream, 0xa5, true, None);
+        }
+        0xa5 => {
+            error!("P2p handler loop recieved a prechunk block list, this probably means a function has leaked its lock. Please contact the avrio developers if you encounter futher issues");
+        }
         0x50 => {
             // we just got a block chunk, validate it and ask for any blocks we dont have yet
             // If the chunk is valid & has enough signatures enact it and all included blocks
@@ -531,7 +542,7 @@ pub fn process_handle_msg(
                     debug!("Recieved block chunk {}, valid", chunk.hash);
                     // check we have all blocks
                     let mut to_get: Vec<&String> = vec![];
-                    let mut got_blocks: Vec<(bool, Block)> = vec![];
+                    let mut got_blocks: Vec<Block> = vec![];
 
                     for block_hash in &chunk.blocks {
                         trace!("Checking if we have {} in mempool", block_hash);
@@ -541,7 +552,6 @@ pub fn process_handle_msg(
                             to_get.push(block_hash);
                         } else  {
                             trace!("{} found in mempool", block_hash);
-                            got_blocks.push((true, mempool_block.unwrap()));
                         }
                     }
                     debug!("Have to get {} blocks for chunk {}", to_get.len(), chunk.hash);
@@ -563,44 +573,24 @@ pub fn process_handle_msg(
                             } else {
                                 let blk = blk.unwrap();
                                 debug!("Got block {} from peer {:?}", blk.hash, stream.peer_addr());
-                                got_blocks.push((false, blk));
+                                got_blocks.push( blk);
                             }
                         }
                     }
                     debug!("Got {} blocks (expected={}) for chunk {}", got_blocks.len(), to_get.len(), chunk.hash);
-                    // now we enact the chunk (not blocks yet)
+                    // now add all the blocks we had to get to the mempool#
+                    for block in &got_blocks {
+                        
+                            debug!("Adding block {} to mempool", block.hash);
+                            add_block(block, Caller::blank());
+                    
+                    }
+                    // now we enact the chunk
                     if let Err(chunk_enacting_error) = chunk.enact() {
                         error!("Failed to enact valid block chunk {} (recieved over p2p), error={}", chunk.hash, chunk_enacting_error);
                         error!("Chunk: {:?}", chunk);
                     } else {
-                        debug!("Enacted chunk {}", chunk.hash);
-                        // now we go through and enact the blocks validated by the chunk
-                        for (mp, block) in &got_blocks {
-                            if !mp {
-                                if let Err(save_error) = block.save() {
-                                    error!("Failed to save block {} from peer {:?}, error: {}", block.hash, stream.peer_addr(), save_error);
-
-                                    continue
-                                } else {
-                                    debug!("Saved block {} from peer {:?}", block.hash, stream.peer_addr());
-                                }
-                                if let Err(block_enacting_error) = block.enact() {
-                                    error!("Failed to enact non-mempool valid block {} contained in chunk {} (recieved over p2p), error={}", block.hash, chunk.hash, block_enacting_error);
-                                    error!("Block: {:?}", block);
-                                } else {
-                                    trace!("Enacted non-mempool block {} contained in chunk {}", block.hash, chunk.hash);
-                                }
-                            } else {
-                                
-                                if let Err(block_enacting_error) = avrio_core::mempool::mark_as_valid(&block.hash) {
-                                    error!("Failed to mark mempool block as valid {} contained in chunk {} (from mempool), error={}", block.hash, chunk.hash, block_enacting_error);
-                                    error!("Block: {:?}", block);
-                                } else {
-                                    trace!("Enacted mempool block {} contained in chunk {}", block.hash, chunk.hash);
-                                }
-                            }
-                        }
-                        debug!("Enacted all {} blocks for chunk {}; done", got_blocks.len(), chunk.hash);
+                        debug!("Enacted chunk {}", chunk.hash);                        
                         let _ = send(String::from("ns"), stream, 0x54, true, None);
                         return None;
                     }
