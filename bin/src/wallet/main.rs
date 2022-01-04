@@ -467,7 +467,7 @@ async fn main() {
         .arg(
             Arg::with_name("apiservice")
                 .long("api-service")
-                .short("api")
+                .short("s")
                 .takes_value(false)
                 .help("Should we run as an api server"),
         )
@@ -711,7 +711,7 @@ async fn main() {
                             let read: String = trim_newline(&mut read!("{}\n"));
                             trace!("{:?}", read);
                             let read_split: Vec<&str> = read.split(' ').collect();
-                            if read_split[0] == "send_txn" {
+                            if read_split[0] == "send" {
                                 let mut amount: f64 = 0.0;
                                 let mut extra_data: String = String::from("");
                                 let mut addr: String = String::from("");
@@ -853,10 +853,26 @@ async fn main() {
                                 }
                             } else if read == *"address" {
                                 info!("Our address: {}", wall.address());
-                            } else if read == *"claim" {
-                                info!("Please enter the amount");
-                                let amount: f64 =
-                                    trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
+                            } else if read_split[0] == "claim" {
+                                let mut amount: f64 = 0.0;
+                                match read_split.len() {
+                                    2 => {
+                                        if let Ok(amount_parsed) = read_split[1].parse::<f64>() {
+                                            amount = amount_parsed;
+                                        } else {
+                                            info!("Please enter the amount");
+                                            amount = trim_newline(&mut read!("{}\n"))
+                                                .parse::<f64>()
+                                                .unwrap();
+                                        }
+                                    }
+                                    _ => {
+                                        info!("Please enter the amount");
+                                        amount = trim_newline(&mut read!("{}\n"))
+                                            .parse::<f64>()
+                                            .unwrap();
+                                    }
+                                }
                                 let mut txn = Transaction {
                                     hash: String::from(""),
                                     amount: to_atomic(amount),
@@ -1106,14 +1122,14 @@ async fn main() {
                                 info!(
                                     "get_address : Gets the address assosciated with this wallet"
                                 );
-                                info!("send_txn : Sends a transaction");
+                                info!("send : Sends a transaction");
                                 info!("generate : Allows you to generate lots of blocks with lots of transactions in for stress testing. Please dont abuse");
                                 info!("send_txn_advanced : allows you to send a transaction with advanced options");
                                 info!("burn : allows you to burn funds");
                                 info!("exit : Safely shutsdown thr program. PLEASE use instead of ctrl + c");
                                 info!("help : shows this help");
                             } else if read_split[0] == "generate" {
-                                /*if read_split.len() == 3 {
+                                if read_split.len() == 3 {
                                     let amount: u64 = read_split[1].parse().unwrap_or(1);
                                     let txn_per_block: u64 = read_split[2].parse().unwrap_or(1);
                                     let mut blocks: Vec<Block> = vec![];
@@ -1124,7 +1140,8 @@ async fn main() {
                                             SERVER_ADDR.lock().unwrap().to_string(),
                                             wall.public_key
                                         );
-                                        if let Ok(response_undec) = reqwest::get(&request_url).await {
+                                        if let Ok(response_undec) = reqwest::get(&request_url).await
+                                        {
                                             if let Ok(response) =
                                                 response_undec.json::<Balances>().await
                                             {
@@ -1133,275 +1150,38 @@ async fn main() {
                                                 {
                                                     error!("Insufficent balance");
                                                 } else {
-                                                    let mut height_delta = 0;
-                                                    let mut top_block_hash: String;
-                                                    let request_url = format!(
-                                                        "{}/api/v1/blockcount/{}",
-                                                        SERVER_ADDR.lock().unwrap().to_owned(),
-                                                        wall.public_key.clone()
-                                                    );
-                                                    if let Ok(response) =
-                                                        reqwest::get(&request_url).await
+                                                    info!("Beginning generation");
+                                                    if let Ok(blocks) = generate_blocks(
+                                                        amount,
+                                                        txn_per_block,
+                                                        wall.clone(),
+                                                    )
+                                                    .await
                                                     {
-                                                        if let Ok(response_decoded) =
-                                                            response.json::<Blockcount>().await
-                                                        {
-                                                            let height = response_decoded.blockcount
-                                                                + height_delta;
-                                                            let request_url = format!(
-                                                                "{}/api/v1/hash_at_height/{}/{}",
-                                                                SERVER_ADDR.lock().unwrap().to_owned(),
-                                                                wall.public_key.clone(),
-                                                                height - 1
-                                                            );
-                                                            if let Ok(response) =
-                                                                reqwest::get(&request_url).await
+                                                        info!("Generation complete");
+                                                        for block in blocks {
+                                                            /*if let Err(e) =
+                                                                send_block(block, wall.clone())
+                                                                    .await
                                                             {
-                                                                if let Ok(response_decoded) = response
-                                                                    .json::<HashAtHeight>()
-                                                                    .await
-                                                                {
-                                                                    top_block_hash =
-                                                                        response_decoded.hash;
-
-                                                                    for number in 0..amount {
-                                                                        // make a new block
-                                                                        let mut txns: Vec<Transaction> =
-                                                                            vec![];
-                                                                        // create the transactions
-                                                                        for _ in 0..number {
-                                                                            let mut txn = Transaction {
-                                                                hash: String::from(""),
-                                                                amount: 1,
-                                                                extra: String::from(""),
-                                                                flag: 'n',
-                                                                sender_key: wall.public_key.clone(),
-                                                                receive_key: wall.public_key.clone(),
-                                                                access_key: String::from(""),
-                                                                unlock_time: 0,
-                                                                gas_price: 10, // 0.001 AIO
-                                                                gas: 20,
-                                                                max_gas: u64::max_value(),
-                                                                nonce: 0,
-                                                                timestamp: SystemTime::now()
-                                                                    .duration_since(UNIX_EPOCH)
-                                                                    .expect("Time went backwards")
-                                                                    .as_millis()
-                                                                    as u64,
-                                                                signature: String::from(""),
-                                                            };
-
-                                                                            let request_url = format!(
-                                                                "{}/api/v1/transactioncount/{}",
-                                                                SERVER_ADDR.lock().unwrap().to_string(),
-                                                                wall.public_key
-                                                            );
-                                                                            if let Ok(response) =
-                                                                                reqwest::get(
-                                                                                    &request_url,
-                                                                                )
-                                                                                .await
-                                                                            {
-                                                                                if let Ok(transactioncount) = response
-                                                                    .json::<Transactioncount>()
-                                                                    .await
-                                                                {
-                                                                    txn.nonce = transactioncount
-                                                                        .transaction_count
-                                                                        + (txn_per_block
-                                                                            * (height_delta/2));
-                                                                    txn.hash();
-                                                                    let _ = txn.sign(&wall.private_key);
-                                                                    txns.push(txn);
-                                                                } else {
-                                                                    error!("Failed to decode recieved response into transactioncount struct");
-                                                                }
-                                                                            } else {
-                                                                                error!(
-                                                                    "Failed to send request={}",
-                                                                    request_url
+                                                                error!(
+                                                                    "Failed to send block, got error={}",
+                                                                    e
                                                                 );
-                                                                            }
-                                                                        }
-                                                                        let request_url = format!(
-                                                                            "{}/api/v1/blockcount/{}",
-                                                                            SERVER_ADDR
-                                                                                .lock()
-                                                                                .unwrap()
-                                                                                .to_owned(),
-                                                                            wall.public_key.clone()
-                                                                        );
-                                                                        if let Ok(response) =
-                                                                            reqwest::get(&request_url)
-                                                                                .await
-                                                                        {
-                                                                            if let Ok(
-                                                                                response_decoded,
-                                                                            ) = response
-                                                                                .json::<Blockcount>()
-                                                                                .await
-                                                                            {
-                                                                                let height =
-                                                                                    response_decoded
-                                                                                        .blockcount
-                                                                                        + height_delta;
-                                                                                let prev_block_hash =
-                                                                                    top_block_hash
-                                                                                        .clone();
-                                                                                let mut blk = Block {
-                                                                    header: Header {
-                                                                        version_major: 0,
-                                                                        version_breaking: 0,
-                                                                        version_minor: 0,
-                                                                        chain_key: wall
-                                                                            .public_key
-                                                                            .clone(),
-                                                                        prev_hash: prev_block_hash,
-                                                                        height,
-                                                                        timestamp: SystemTime::now()
-                                                                            .duration_since(UNIX_EPOCH)
-                                                                            .expect(
-                                                                                "Time went backwards",
-                                                                            )
-                                                                            .as_millis()
-                                                                            as u64,
-                                                                        network: vec![
-                                                                            97, 118, 114, 105, 111, 32,
-                                                                            110, 111, 111, 100, 108,
-                                                                            101,
-                                                                        ],
-                                                                    },
-                                                                    block_type: BlockType::Send,
-                                                                    send_block: None,
-                                                                    txns,
-                                                                    hash: "".to_owned(),
-                                                                    signature: "".to_owned(),
-                                                                    confimed: false,
-                                                                    node_signatures: vec![],
-                                                                };
-                                                                                blk.hash();
-                                                                                let _ = blk.sign(
-                                                                                    &wall.private_key,
-                                                                                );
-                                                                                blocks
-                                                                                    .push(blk.clone());
-                                                                                // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
-                                                                                let mut proccessed_accs: Vec<String> =
-                                                                    vec![];
-                                                                                top_block_hash =
-                                                                                    blk.hash.clone();
-                                                                                for txn in &blk.txns {
-                                                                                    if !proccessed_accs
-                                                                                    .contains(
-                                                                                    &txn.receive_key,
-                                                                                ) {
-                                                                                    let try_rec_block =
-                                                                            form_receive_block(
-                                                                                &blk,
-                                                                                &txn.receive_key
-                                                                                    .to_owned(),
-                                                                            )
-                                                                            .await;
-                                                                                    if let Ok(rec_blk) =
-                                                                                        try_rec_block
-                                                                                    {
-                                                                                        trace!(
-                                                                            "Created rec block={:#?}",
-                                                                            rec_blk
-                                                                        );
-
-                                                                                        proccessed_accs.push(
-                                                                                txn.receive_key.clone(),
-                                                                            );
-
-                                                                                        blocks.push(
-                                                                                            rec_blk
-                                                                                                .clone(
-                                                                                                ),
-                                                                                        );
-                                                                                        top_block_hash =
-                                                                                rec_blk.hash;
-                                                                                    } else {
-                                                                                        error!(
-                                                                                        "Failed to form rec block, gave error={}",
-                                                                                        try_rec_block.unwrap_err()
-                                                                                    );
-                                                                                        break;
-                                                                                    }
-                                                                                }
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                        info!(
-                                                            "Created (send) block {}/{} (containing {} txns)",
-                                                            height_delta/2, amount, txn_per_block
-                                                        );
-                                                                        height_delta += 2;
-                                                                    }
-                                                                    // now send all blocks
-                                                                    if !failed {
-                                                                        // now transmit all blocks to node
-                                                                        for block in &blocks {
-                                                                            let try_to_string =
-                                                                                serde_json::to_string(
-                                                                                    block,
-                                                                                );
-                                                                            if let Ok(block_json) =
-                                                                                try_to_string
-                                                                            {
-                                                                                let request_url = SERVER_ADDR
-                                                                    .lock()
-                                                                    .unwrap()
-                                                                    .to_owned()
-                                                                    + "/api/v1/submit_block";
-                                                                                if let Ok(response) =
-                                                                                    Client::new()
-                                                                                        .post(
-                                                                                            request_url,
-                                                                                        )
-                                                                                        .json(
-                                                                                            &block_json,
-                                                                                        )
-                                                                                        .send()
-                                                                                        .await
-                                                                                {
-                                                                                    if let Ok(
-                                                                                        response_string,
-                                                                                    ) = response
-                                                                                        .text()
-                                                                                        .await
-                                                                                    {
-                                                                                        if response_string
-                                                                                        .contains(
-                                                                                            "error",
-                                                                                        )
-                                                                                    {
-                                                                                        error!("Failed to submit block, response={}", response_string);
-                                                                                    } else {
-                                                                                        debug!(
-                                                                                "Submit response={}",
-                                                                                response_string
-                                                                            );
-                                                                                    }
-                                                                                    }
-                                                                                }
-                                                                            } else {
-                                                                                error!("Failed to turn block to json, gave error: {}", try_to_string.unwrap_err());
-                                                                            }
-                                                                        }
-                                                                        info!(
-                                                                            "Sent all blocks to node"
-                                                                        );
-                                                                    }
-                                                                }
-                                                            }
+                                                                failed = true;
+                                                            }*/
                                                         }
+                                                        if failed {
+                                                            error!("Failed to send all blocks");
+                                                        }
+                                                    } else {
+                                                        error!("Failed to generate blocks");
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                }*/
+                                }
                             } else if read_split[0] == "lock" {
                                 info!("Enter amount:");
                                 let amount: String = trim_newline(&mut read!());
@@ -1502,6 +1282,111 @@ async fn main() {
             std::process::exit(0);
         }
     }
+}
+
+pub async fn generate_blocks(
+    amount: u64,
+    txn_per_block: u64,
+    wallet: Wallet,
+) -> Result<Vec<Block>, Box<dyn std::error::Error>> {
+    let mut blocks = vec![];
+    let mut last_hash = String::from("");
+    // get top block hash from the api
+    let mut height = 0;
+    let mut account_nonce: u64 = 0;
+    let request_url = format!(
+        "{}/api/v1/transactioncount/{}",
+        SERVER_ADDR.lock().unwrap().to_string(),
+        wallet.public_key
+    );
+    if let Ok(response) = reqwest::get(&request_url).await {
+        if let Ok(transactioncount) = response.json::<Transactioncount>().await {
+            account_nonce = transactioncount.transaction_count;
+        } else {
+            error!("Failed to decode recieved response into transactioncount struct");
+            return Err("Failed to decode recieved response into transactioncount struct".into());
+        }
+    } else {
+        error!("Failed to send request={}", request_url);
+        return Err("Failed to send request".into());
+    }
+    let request_url = format!(
+        "{}/api/v1/blockcount/{}",
+        SERVER_ADDR.lock().unwrap().to_owned(),
+        wallet.public_key.clone()
+    );
+    if let Ok(response) = reqwest::get(&request_url).await {
+        if let Ok(response_decoded) = response.json::<Blockcount>().await {
+            height = response_decoded.blockcount;
+            let request_url = format!(
+                "{}/api/v1/hash_at_height/{}/{}",
+                SERVER_ADDR.lock().unwrap().to_owned(),
+                wallet.public_key.clone(),
+                height - 1
+            );
+            if let Ok(response) = reqwest::get(&request_url).await {
+                if let Ok(response_decoded) = response.json::<HashAtHeight>().await {
+                    last_hash = response_decoded.hash;
+                }
+            }
+        }
+    }
+    if last_hash == "" {
+        error!("Failed to get last hash");
+        return Err("Failed to get last hash".into());
+    }
+    for block_height in height..(height + amount) {
+        // generate txns
+        let time_now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_millis() as u64;
+        let mut txns: Vec<Transaction> = vec![];
+        for _ in 0..=txn_per_block {
+            let mut txn = Transaction {
+                hash: String::default(),
+                amount: 0,
+                extra: String::default(),
+                flag: 'n',
+                sender_key: wallet.public_key.clone(),
+                receive_key: wallet.public_key.clone(),
+                access_key: String::default(),
+                unlock_time: 0,
+                gas_price: 10,
+                max_gas: u64::MAX,
+                nonce: account_nonce + (txn_per_block * (block_height - height)),
+                timestamp: time_now,
+            };
+            txn.hash();
+            txns.push(txn);
+        }
+        // generate a block
+        let mut block = Block {
+            header: Header {
+                version_major: config().version_major,
+                version_breaking: config().version_breaking,
+                version_minor: config().version_minor,
+                chain_key: wallet.public_key.clone(),
+                prev_hash: last_hash.clone(),
+                height: block_height,
+                timestamp: time_now,
+                network: config().network_id,
+            },
+            block_type: BlockType::Send,
+            send_block: None,
+            txns,
+            hash: String::default(),
+            signature: String::default(),
+        };
+        block.hash();
+        if let Err(sign_error) = block.sign(&wallet.private_key) {
+            error!("Failed to sign block, error={}", sign_error);
+            return Err(format!("Failed to sign block, error={}", sign_error).into());
+        }
+        last_hash = block.hash.clone();
+        blocks.push(block);
+    }
+    Ok(blocks)
 }
 
 pub fn create_wallet() -> Result<Wallet, Box<dyn Error>> {
