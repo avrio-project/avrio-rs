@@ -12,11 +12,6 @@ use bls_signatures::{
 };
 use lazy_static::lazy_static;
 use std::{convert::TryInto, sync::Mutex, time::SystemTime};
-
-lazy_static! {
-    pub static ref ENACT_BLOCK_CALLBACK: Mutex<Option<Box<dyn Fn(&String) -> Result<(), Box<dyn std::error::Error>> + Send>>> =
-        Mutex::new(None);
-}
 #[derive(Debug, Clone, Default)]
 pub struct BlockChunk {
     pub hash: String,
@@ -183,19 +178,12 @@ impl Verifiable for BlockChunk {
             ) == 1
             {
                 // set the blocks to be enacted
-                let callback_lock = ENACT_BLOCK_CALLBACK.lock()?;
-                if let Some(callback) = callback_lock.as_ref() {
-                    for block in self.blocks.iter() {
-                        if let Err(e) = callback(block) {
-                            error!("Failed to enact contained block {}, error: {}", block, e);
-                        }
+                for block in self.blocks.iter() {
+                    if let Err(e) = crate::mempool::mark_as_valid(block) {
+                        error!("Failed to enact contained block {}, error: {}", block, e);
                     }
-                } else {
-                    error!(
-                        "Mempool mark as enacted callback unset, cannot enact blocks in chunk {}",
-                        self.hash
-                    );
                 }
+
                 // Now we calculate the reward for the validators and the proposer:
                 // Proposer reward: txn_fees + (base_reward *  (signers_count / commitee size))
                 // Validator reward: 5 / signers_count

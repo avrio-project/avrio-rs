@@ -3,7 +3,6 @@ use avrio_core::{
     account::to_dec,
     block::{genesis::genesis_blocks, *},
     certificate::{generate_certificate, get_fullnode_count},
-    chunk::ENACT_BLOCK_CALLBACK,
     epoch::{get_top_epoch, Epoch},
     invite::{generate_invite, new_invite},
     mempool::Mempool,
@@ -262,8 +261,8 @@ fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> 
                 connected_peers.push(error.unwrap());
             }
             _ => warn!(
-                "Failed to connect to {:?}:: {:?}, returned error {:?}",
-                peer, 11523, error
+                "Failed to connect to {:?}::{:?}, returned error {:?}",
+                peer.ip(), peer.port(), error
             ),
         };
     }
@@ -306,7 +305,7 @@ fn main() {
                 ),
         )
         .get_matches();
-    match matches.value_of("loglev").unwrap_or(&"2") {
+    match matches.value_of("loglev").unwrap_or("2") {
         "0" => setup_logging(0).unwrap(),
         "1" => setup_logging(1).unwrap(),
         "2" => setup_logging(2).unwrap(),
@@ -351,15 +350,6 @@ fn main() {
     }
     let conf = config();
     conf.create().unwrap();
-    match ENACT_BLOCK_CALLBACK.lock() {
-        Ok(mut lock) => {
-            *lock = Some(Box::new(avrio_core::mempool::mark_as_valid));
-        }
-        Err(_) => {
-            error!("Failed to lock ENACT_BLOCK_CALLBACK");
-            std::process::exit(1);
-        }
-    }
     if config().node_type == 'c' || config().node_type == 'f' {
         info!("Running as candidate, loading keys");
         let keys = open_keypair();
