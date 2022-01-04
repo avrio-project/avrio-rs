@@ -14,6 +14,7 @@ use std::{net::SocketAddr, sync::Mutex};
 extern crate avrio_config;
 use crate::validate::Verifiable;
 use avrio_config::config;
+use avrio_database::{get_data, save_data};
 use lazy_static::*;
 use std::fs::File;
 use std::io::prelude::*;
@@ -345,6 +346,16 @@ impl Mempool {
                             "Failed to save validated block from mempool. Gave error: {}",
                             e_res.unwrap_err()
                         );
+                    }
+                    if bypass_chunks {
+                        let mut existing = get_data(config().db_path + "/sync", "prechunk-blocks");
+                        if existing == "-1" {
+                            existing = String::from("[]")
+                        }
+                        let mut hashes: Vec<String> = serde_json::from_str(&existing)?;
+                        hashes.push(block.hash.clone());
+                        let hashes_str = serde_json::to_string(&hashes)?;
+                        save_data(&(config().db_path + "/sync"), "prechunk-blocks", hashes_str);
                     }
                     to_remove.push((k.clone(), "enacted".to_owned()));
                     if let Some(callback) = &map[k].2 {
