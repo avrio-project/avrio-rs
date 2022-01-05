@@ -17,6 +17,14 @@ path = "src/daemon/main.rs"
 name = "avrio-wallet"
 path = "src/wallet/main.rs"
 
+[[bin]]
+name = "avrio-wallet-service"
+path = "src/wallet-service/main.rs"
+
+[lib]
+name = "common"
+path = "src/lib.rs"
+
 [dependencies]
 log = "0.4"
 avrio_core = { path = "../core" }
@@ -38,10 +46,10 @@ chrono = "0.4"
 ctrlc = "3.1.8"
 avrio_rpc = { path = "../rpc" }
 lazy_static = "1.4.0"
-reqwest = { version = "0.11", features = ["json", "native-tls-vendored"] }
+reqwest = { version = "0.11", features = ["json", "native-tls-vendored", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 rpassword = "5.0"
-rocket = { version = "0.5.0-rc.1", default-features = true }
+rocket = { version = "0.4.10", default-features = true }
 bs58 = "0.4.0"
 bls-signatures = "0.10.0"
 rand = "0.7"

@@ -55,8 +55,8 @@ use avrio_crypto::{
     vrf_hash_to_integer, Wallet,
 };
 use bigdecimal::BigDecimal;
-use fern::colors::{Color, ColoredLevelConfig};
 
+use common::setup_logging;
 use lazy_static::lazy_static;
 use text_io::read;
 
@@ -87,121 +87,6 @@ fn trim_newline(s: &mut String) -> String {
     s.clone()
 }
 
-fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
-    let mut base_config = fern::Dispatch::new();
-    base_config = match verbosity {
-        0 => {
-            // Let's say we depend on something which whose "info" level messages are too
-            // verbose to include in end-user output. If we don't need them,
-            // let's not include them.
-            base_config
-                .level(log::LevelFilter::Error)
-                .level_for("avrio_database", log::LevelFilter::Error)
-                .level_for("avrio_config", log::LevelFilter::Error)
-                .level_for("avrio_daemon", log::LevelFilter::Error)
-                .level_for("avrio_core", log::LevelFilter::Error)
-                .level_for("avrio_crypto", log::LevelFilter::Error)
-                .level_for("avrio_rpc", log::LevelFilter::Error)
-                .level_for("avrio_api", log::LevelFilter::Error)
-                .level_for("avrio_p2p", log::LevelFilter::Error)
-                .level_for("avrio_node", log::LevelFilter::Error)
-        }
-        1 => base_config
-            .level(log::LevelFilter::Warn)
-            .level(log::LevelFilter::Error)
-            .level_for("avrio_database", log::LevelFilter::Warn)
-            .level_for("avrio_config", log::LevelFilter::Warn)
-            .level_for("seednode", log::LevelFilter::Warn)
-            .level_for("avrio_core", log::LevelFilter::Warn)
-            .level_for("avrio_crypto", log::LevelFilter::Warn)
-            .level_for("avrio_daemon", log::LevelFilter::Warn)
-            .level_for("avrio_p2p", log::LevelFilter::Warn)
-            .level_for("avrio_rpc", log::LevelFilter::Warn)
-            .level_for("avrio_api", log::LevelFilter::Warn)
-            .level_for("avrio_node", log::LevelFilter::Warn),
-        2 => base_config
-            .level(log::LevelFilter::Warn)
-            .level_for("avrio_database", log::LevelFilter::Info)
-            .level_for("avrio_config", log::LevelFilter::Info)
-            .level_for("seednode", log::LevelFilter::Info)
-            .level_for("avrio_core", log::LevelFilter::Info)
-            .level_for("avrio_crypto", log::LevelFilter::Info)
-            .level_for("avrio_p2p", log::LevelFilter::Info)
-            .level_for("avrio_daemon", log::LevelFilter::Info)
-            .level_for("avrio_rpc", log::LevelFilter::Info)
-            .level_for("avrio_api", log::LevelFilter::Info)
-            .level_for("avrio_node", log::LevelFilter::Info),
-        3 => base_config
-            .level(log::LevelFilter::Warn)
-            .level_for("avrio_database", log::LevelFilter::Debug)
-            .level_for("avrio_config", log::LevelFilter::Debug)
-            .level_for("seednode", log::LevelFilter::Debug)
-            .level_for("avrio_core", log::LevelFilter::Debug)
-            .level_for("avrio_crypto", log::LevelFilter::Debug)
-            .level_for("avrio_p2p", log::LevelFilter::Debug)
-            .level_for("avrio_daemon", log::LevelFilter::Debug)
-            .level_for("avrio_api", log::LevelFilter::Debug)
-            .level_for("avrio_node", log::LevelFilter::Debug),
-        _ => base_config
-            .level(log::LevelFilter::Warn)
-            .level_for("avrio_database", log::LevelFilter::Trace)
-            .level_for("avrio_config", log::LevelFilter::Trace)
-            .level_for("seednode", log::LevelFilter::Trace)
-            .level_for("avrio_core", log::LevelFilter::Trace)
-            .level_for("avrio_daemon", log::LevelFilter::Trace)
-            .level_for("avrio_p2p", log::LevelFilter::Trace)
-            .level_for("avrio_crypto", log::LevelFilter::Trace)
-            .level_for("avrio_rpc", log::LevelFilter::Trace)
-            .level_for("avrio_api", log::LevelFilter::Trace)
-            .level_for("avrio_node", log::LevelFilter::Trace),
-    };
-
-    // Separate file config so we can include year, month and day in file logs
-    let file_config = fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .chain(fern::log_file("avrio-daemon.log")?);
-
-    let stdout_config = fern::Dispatch::new()
-        .format(|out, message, record| {
-            let colors = ColoredLevelConfig::default()
-                .info(Color::Green)
-                .debug(Color::Magenta);
-            // special format for debug messages coming from our own crate.
-            if record.level() > log::LevelFilter::Info && record.target() == "cmd_program" {
-                out.finish(format_args!(
-                    "---\nDEBUG: {}: {}\n---",
-                    chrono::Local::now().format("%H:%M:%S"),
-                    message
-                ))
-            } else {
-                out.finish(format_args!(
-                    "{}[{}][{}] {}",
-                    chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                    record.target(),
-                    colors.color(record.level()),
-                    message
-                ))
-            }
-        })
-        .chain(io::stdout());
-
-    base_config
-        .chain(file_config)
-        .chain(stdout_config)
-        .apply()?;
-    panic::set_hook(Box::new(|pan| {
-        error!("FATAL: {}", pan);
-    }));
-    Ok(())
-}
 fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
     for block in genesis_blocks() {
         info!(
@@ -262,7 +147,9 @@ fn connect(seednodes: Vec<SocketAddr>, connected_peers: &mut Vec<TcpStream>) -> 
             }
             _ => warn!(
                 "Failed to connect to {:?}::{:?}, returned error {:?}",
-                peer.ip(), peer.port(), error
+                peer.ip(),
+                peer.port(),
+                error
             ),
         };
     }

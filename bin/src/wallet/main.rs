@@ -7,9 +7,8 @@
     This is the first attempt at a Avrio CLI wallet.
     It uses the JSON API v1 provided by the Avrio Daemon.
 */
-#[macro_use]
 extern crate rocket;
-//pub mod api;
+
 use aead::{generic_array::GenericArray, Aead, NewAead};
 use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
 use avrio_config::config;
@@ -22,7 +21,7 @@ use avrio_crypto::Wallet;
 use avrio_database::*;
 use avrio_rpc::{launch_client, Announcement, Caller};
 use clap::{App, Arg};
-use fern::colors::{Color, ColoredLevelConfig};
+use common::*;
 use lazy_static::*;
 use log::{debug, error, info, trace, warn};
 use reqwest::Client;
@@ -47,36 +46,7 @@ struct WalletDetails {
     username: String,
     proccessed_anns: Vec<String>,
 }
-#[derive(Clone, Deserialize, Debug)]
-struct Blockcount {
-    success: bool,
-    blockcount: u64,
-}
-#[derive(Clone, Deserialize, Debug)]
-struct Transactioncount {
-    success: bool,
-    transaction_count: u64,
-}
 
-#[derive(Clone, Deserialize, Debug)]
-struct HashAtHeight {
-    success: bool,
-    hash: String,
-}
-
-#[derive(Clone, Deserialize, Debug)]
-struct PublickeyForUsername {
-    success: bool,
-    publickey: String,
-}
-
-#[derive(Clone, Deserialize, Debug)]
-struct Balances {
-    success: bool,
-    chainkey: String,
-    balance: u64,
-    locked: u64,
-}
 lazy_static! {
     static ref WALLET_DETAILS: Mutex<WalletDetails> = Mutex::new(WalletDetails::default());
     static ref SERVER_ADDR: Mutex<String> = Mutex::new(String::from("http://127.0.0.1:8000"));
@@ -89,110 +59,6 @@ fn trim_newline(s: &mut String) -> String {
         }
     }
     s.clone()
-}
-
-fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
-    let mut base_config = fern::Dispatch::new();
-    base_config = match verbosity {
-        0 => {
-            // Let's say we depend on something which whose "info" level messages are too
-            // verbose to include in end-user output. If we don't need them,
-            // let's not include them.
-            base_config
-                .level(log::LevelFilter::Error)
-                .level_for("avrio_database", log::LevelFilter::Error)
-                .level_for("avrio_config", log::LevelFilter::Error)
-                .level_for("avrio_wallet", log::LevelFilter::Error)
-                .level_for("avrio_core", log::LevelFilter::Error)
-                .level_for("avrio_crypto", log::LevelFilter::Error)
-                .level_for("avrio_rpc", log::LevelFilter::Error)
-                .level_for("avrio_p2p", log::LevelFilter::Error)
-        }
-        1 => base_config
-            .level(log::LevelFilter::Warn)
-            .level(log::LevelFilter::Error)
-            .level_for("avrio_database", log::LevelFilter::Warn)
-            .level_for("avrio_config", log::LevelFilter::Warn)
-            .level_for("seednode", log::LevelFilter::Warn)
-            .level_for("avrio_core", log::LevelFilter::Warn)
-            .level_for("avrio_crypto", log::LevelFilter::Warn)
-            .level_for("avrio_wallet", log::LevelFilter::Warn)
-            .level_for("avrio_p2p", log::LevelFilter::Warn)
-            .level_for("avrio_rpc", log::LevelFilter::Warn),
-        2 => base_config
-            .level(log::LevelFilter::Warn)
-            .level_for("avrio_database", log::LevelFilter::Info)
-            .level_for("avrio_config", log::LevelFilter::Info)
-            .level_for("seednode", log::LevelFilter::Info)
-            .level_for("avrio_core", log::LevelFilter::Info)
-            .level_for("avrio_crypto", log::LevelFilter::Info)
-            .level_for("avrio_p2p", log::LevelFilter::Info)
-            .level_for("avrio_wallet", log::LevelFilter::Info)
-            .level_for("avrio_rpc", log::LevelFilter::Info),
-        3 => base_config
-            .level(log::LevelFilter::Warn)
-            .level_for("avrio_database", log::LevelFilter::Debug)
-            .level_for("avrio_config", log::LevelFilter::Debug)
-            .level_for("seednode", log::LevelFilter::Debug)
-            .level_for("avrio_core", log::LevelFilter::Debug)
-            .level_for("avrio_crypto", log::LevelFilter::Debug)
-            .level_for("avrio_p2p", log::LevelFilter::Debug)
-            .level_for("avrio_wallet", log::LevelFilter::Debug)
-            .level_for("avrio_rpc", log::LevelFilter::Debug),
-        _ => base_config
-            .level(log::LevelFilter::Warn)
-            .level_for("avrio_database", log::LevelFilter::Trace)
-            .level_for("avrio_config", log::LevelFilter::Trace)
-            .level_for("seednode", log::LevelFilter::Trace)
-            .level_for("avrio_core", log::LevelFilter::Trace)
-            .level_for("avrio_wallet", log::LevelFilter::Trace)
-            .level_for("avrio_p2p", log::LevelFilter::Trace)
-            .level_for("avrio_crypto", log::LevelFilter::Trace)
-            .level_for("avrio_rpc", log::LevelFilter::Trace),
-    };
-
-    // Separate file config so we can include year, month and day in file logs
-    let file_config = fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .chain(fern::log_file("avrio-wallet.log")?);
-
-    let stdout_config = fern::Dispatch::new()
-        .format(|out, message, record| {
-            let colors = ColoredLevelConfig::default()
-                .info(Color::Green)
-                .debug(Color::Magenta);
-            // special format for debug messages coming from our own crate.
-            if record.level() > log::LevelFilter::Info && record.target() == "cmd_program" {
-                out.finish(format_args!(
-                    "---\nDEBUG: {}: {}\n---",
-                    chrono::Local::now().format("%H:%M:%S"),
-                    message
-                ))
-            } else {
-                out.finish(format_args!(
-                    "{}[{}][{}] {}",
-                    chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                    record.target(),
-                    colors.color(record.level()),
-                    message
-                ))
-            }
-        })
-        .chain(io::stdout());
-
-    base_config
-        .chain(file_config)
-        .chain(stdout_config)
-        .apply()?;
-    Ok(())
 }
 
 async fn form_receive_block(blk: &Block, for_chain: &String) -> Result<Block, Box<dyn Error>> {
@@ -464,13 +330,6 @@ async fn main() {
                 .takes_value(true)
                 .help("Sets the rpc server addr (INCLUDES PORT)"),
         )
-        .arg(
-            Arg::with_name("apiservice")
-                .long("api-service")
-                .short("s")
-                .takes_value(false)
-                .help("Should we run as an api server"),
-        )
         .get_matches();
     //println!("{}", matches.occurrences_of("loglev"));
     let art = "
@@ -496,140 +355,134 @@ async fn main() {
     if let Some(addr) = matches.value_of("apiaddr") {
         *(SERVER_ADDR.lock().unwrap()) = format!("http://{}", addr);
     }
-    if matches.is_present("apiservice") {
-        info!("Starting as api server");
-        //api::start_server();
-    } else {
-        info!("Welcome to the avrio wallet, please choose an option");
-        let wallet = match get_choice() {
-            1 => open_wallet_gather(),
-            2 => create_wallet(),
-            3 => import_wallet(),
-            _ => {
-                error!("Please choose a number beetween 1 and 3!");
-                Err("invalid number".into())
-            }
+
+    info!("Welcome to the avrio wallet, please choose an option");
+    let wallet = match get_choice() {
+        1 => open_wallet_gather(),
+        2 => create_wallet(),
+        3 => import_wallet(),
+        _ => {
+            error!("Please choose a number beetween 1 and 3!");
+            Err("invalid number".into())
+        }
+    };
+    if let Ok(wall) = wallet {
+        info!("Using wallet with publickey={}", wall.public_key);
+        debug!("Creating caller struct");
+        let caller = Caller {
+            callback: Box::new(new_ann),
         };
-        if let Ok(wall) = wallet {
-            info!("Using wallet with publickey={}", wall.public_key);
-            debug!("Creating caller struct");
-            let caller = Caller {
-                callback: Box::new(new_ann),
+        if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
+            *locked_ls = WalletDetails {
+                wallet: Some(wall.clone()),
+                balance: 0,
+                locked: 0,
+                top_block_hash: "".to_string(),
+                username: "".to_string(),
+                proccessed_anns: vec![],
             };
-            if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
-                *locked_ls = WalletDetails {
-                    wallet: Some(wall.clone()),
-                    balance: 0,
-                    locked: 0,
-                    top_block_hash: "".to_string(),
-                    username: "".to_string(),
-                    proccessed_anns: vec![],
-                };
-                drop(locked_ls);
-                let request_url = format!(
-                    "{}/api/v1/blockcount/{}",
-                    SERVER_ADDR.lock().unwrap().to_string(),
-                    wall.public_key
-                );
-                let try_get_response = reqwest::get(&request_url).await;
-                if let Ok(response) = try_get_response {
-                    let try_decode_json = response.json::<Blockcount>().await;
-                    if let Ok(response) = try_decode_json {
-                        let blockcount = response.blockcount;
-                        if blockcount == 0 {
-                            info!("No existing blocks for chain, creating genesis blocks");
-                            // TODO: Create genesis blocks, send to node
-                            let mut genesis_block = get_genesis_block(&wall.public_key);
-                            if let Err(e) = genesis_block {
-                                if e == GenesisBlockErrors::BlockNotFound {
-                                    info!(
-                                        "No genesis block found for chain: {}, generating",
-                                        wall.address()
-                                    );
-                                    genesis_block = generate_genesis_block(
-                                        wall.clone().public_key,
-                                        wall.private_key.clone(),
-                                    );
-                                } else {
-                                    error!(
+            drop(locked_ls);
+            let request_url = format!(
+                "{}/api/v1/blockcount/{}",
+                SERVER_ADDR.lock().unwrap().to_string(),
+                wall.public_key
+            );
+            let try_get_response = reqwest::get(&request_url).await;
+            if let Ok(response) = try_get_response {
+                let try_decode_json = response.json::<Blockcount>().await;
+                if let Ok(response) = try_decode_json {
+                    let blockcount = response.blockcount;
+                    if blockcount == 0 {
+                        info!("No existing blocks for chain, creating genesis blocks");
+                        // Create genesis blocks, send to node
+                        let mut genesis_block = get_genesis_block(&wall.public_key);
+                        if let Err(e) = genesis_block {
+                            if e == GenesisBlockErrors::BlockNotFound {
+                                info!(
+                                    "No genesis block found for chain: {}, generating",
+                                    wall.address()
+                                );
+                                genesis_block = generate_genesis_block(
+                                    wall.clone().public_key,
+                                    wall.private_key.clone(),
+                                );
+                            } else {
+                                error!(
                                 "Database error occoured when trying to get genesisblock for chain: {}. (Fatal)",
                                 wall.address()
                             );
-                                    process::exit(1);
-                                }
+                                process::exit(1);
                             }
-                            let genesis_block = genesis_block.unwrap();
-                            let genesis_block_clone = genesis_block.clone();
-                            // Now encode block as json and send to daemon
-                            if let Ok(block_json) = serde_json::to_string(&genesis_block_clone) {
-                                // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+                        }
+                        let genesis_block = genesis_block.unwrap();
+                        let genesis_block_clone = genesis_block.clone();
+                        // Now encode block as json and send to daemon
+                        if let Ok(block_json) = serde_json::to_string(&genesis_block_clone) {
+                            // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
 
-                                let mut rec_blk = genesis_block_clone
-                                    .form_receive_block(Some(
-                                        genesis_block_clone.header.chain_key.to_owned(),
-                                    ))
-                                    .unwrap();
-                                rec_blk.header.height = 1;
-                                rec_blk.header.prev_hash = genesis_block_clone.hash.clone();
-                                rec_blk.signature = "".to_string();
-                                rec_blk.hash();
-                                if let Ok(rec_block_json) = serde_json::to_string(&rec_blk) {
-                                    info!(
-                                        "Sending genesis blocks to node, hashes=({}, {})",
-                                        genesis_block_clone.hash, rec_blk.hash
-                                    );
-                                    debug!(
-                                        "Genesis blocks encoded: {}, {}",
-                                        block_json, rec_block_json
-                                    );
-                                    let request_url = SERVER_ADDR.lock().unwrap().to_owned()
-                                        + "/api/v1/submit_block";
-                                    if let Ok(response) = Client::new()
-                                        .post(request_url)
-                                        .json(&block_json)
-                                        .send()
-                                        .await
-                                    {
-                                        if let Ok(response_string) = response.text().await {
-                                            if response_string.contains("error") {
-                                                error!(
+                            let mut rec_blk = genesis_block_clone
+                                .form_receive_block(Some(
+                                    genesis_block_clone.header.chain_key.to_owned(),
+                                ))
+                                .unwrap();
+                            rec_blk.header.height = 1;
+                            rec_blk.header.prev_hash = genesis_block_clone.hash.clone();
+                            rec_blk.signature = "".to_string();
+                            rec_blk.hash();
+                            if let Ok(rec_block_json) = serde_json::to_string(&rec_blk) {
+                                info!(
+                                    "Sending genesis blocks to node, hashes=({}, {})",
+                                    genesis_block_clone.hash, rec_blk.hash
+                                );
+                                debug!(
+                                    "Genesis blocks encoded: {}, {}",
+                                    block_json, rec_block_json
+                                );
+                                let request_url =
+                                    SERVER_ADDR.lock().unwrap().to_owned() + "/api/v1/submit_block";
+                                if let Ok(response) = Client::new()
+                                    .post(request_url)
+                                    .json(&block_json)
+                                    .send()
+                                    .await
+                                {
+                                    if let Ok(response_string) = response.text().await {
+                                        if response_string.contains("error") {
+                                            error!(
                                                 "Failed to submit genesis send block, response={}",
                                                 response_string
                                             );
-                                                process::exit(1);
-                                            } else {
-                                                info!("Submitted genesis send block to node");
-                                                debug!(
-                                                    "Genesis send block response={}",
-                                                    response_string
-                                                );
-                                                let request_url =
-                                                    SERVER_ADDR.lock().unwrap().to_string()
-                                                        + "/api/v1/submit_block";
-                                                if let Ok(response) = Client::new()
-                                                    .post(request_url)
-                                                    .json(&rec_block_json)
-                                                    .send()
-                                                    .await
-                                                {
-                                                    if let Ok(response_string) =
-                                                        response.text().await
-                                                    {
-                                                        if response_string.contains("error") {
-                                                            error!(
+                                            process::exit(1);
+                                        } else {
+                                            info!("Submitted genesis send block to node");
+                                            debug!(
+                                                "Genesis send block response={}",
+                                                response_string
+                                            );
+                                            let request_url =
+                                                SERVER_ADDR.lock().unwrap().to_string()
+                                                    + "/api/v1/submit_block";
+                                            if let Ok(response) = Client::new()
+                                                .post(request_url)
+                                                .json(&rec_block_json)
+                                                .send()
+                                                .await
+                                            {
+                                                if let Ok(response_string) = response.text().await {
+                                                    if response_string.contains("error") {
+                                                        error!(
                                                             "Failed to submit genesis rec block, response={}",
                                                             response_string
                                                         );
-                                                            process::exit(1);
-                                                        } else {
-                                                            info!(
+                                                        process::exit(1);
+                                                    } else {
+                                                        info!(
                                                             "Submitted genesis rec block to node"
                                                         );
-                                                            debug!(
-                                                                "Genesis rec block response={}",
-                                                                response_string
-                                                            );
-                                                        }
+                                                        debug!(
+                                                            "Genesis rec block response={}",
+                                                            response_string
+                                                        );
                                                     }
                                                 }
                                             }
@@ -637,439 +490,134 @@ async fn main() {
                                     }
                                 }
                             }
-                        } else {
+                        }
+                    } else {
+                        info!(
+                            "Node has {} blocks for our chain, getting details",
+                            blockcount
+                        );
+                    }
+                    let request_url = format!(
+                        "{}/api/v1/balances/{}",
+                        SERVER_ADDR.lock().unwrap().to_string(),
+                        wall.public_key
+                    );
+                    if let Ok(response_undec) = reqwest::get(&request_url).await {
+                        if let Ok(response) = response_undec.json::<Balances>().await {
                             info!(
-                                "Node has {} blocks for our chain, getting details",
-                                blockcount
+                                "Balance: {}, Locked: {}",
+                                to_dec(response.balance),
+                                to_dec(response.locked)
+                            );
+                            if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
+                                let mut wallet_details = (*locked_ls).clone();
+                                wallet_details.balance = response.balance;
+                                wallet_details.locked = response.locked;
+                                *locked_ls = wallet_details;
+                                drop(locked_ls);
+                            } else {
+                                error!("Failed to lock WALLET_DETAILS mutex");
+                            }
+                        } else {
+                            error!("Failed to decode recieved 'balances' json");
+                        }
+                    } else {
+                        error!("Failed to request {}", request_url);
+                    }
+                    let request_url = format!(
+                        "{}/api/v1/transactioncount/{}",
+                        SERVER_ADDR.lock().unwrap().to_string(),
+                        wall.public_key
+                    );
+                    if let Ok(response) = reqwest::get(&request_url).await {
+                        if let Ok(transactioncount) = response.json::<Transactioncount>().await {
+                            info!(
+                                "Transaction count for our chain: {}",
+                                transactioncount.transaction_count,
                             );
                         }
-                        let request_url = format!(
-                            "{}/api/v1/balances/{}",
-                            SERVER_ADDR.lock().unwrap().to_string(),
-                            wall.public_key
-                        );
-                        if let Ok(response_undec) = reqwest::get(&request_url).await {
-                            if let Ok(response) = response_undec.json::<Balances>().await {
-                                info!(
-                                    "Balance: {}, Locked: {}",
-                                    to_dec(response.balance),
-                                    to_dec(response.locked)
-                                );
-                                if let Ok(mut locked_ls) = WALLET_DETAILS.lock() {
-                                    let mut wallet_details = (*locked_ls).clone();
-                                    wallet_details.balance = response.balance;
-                                    wallet_details.locked = response.locked;
-                                    *locked_ls = wallet_details;
-                                    drop(locked_ls);
-                                } else {
-                                    error!("Failed to lock WALLET_DETAILS mutex");
-                                }
-                            } else {
-                                error!("Failed to decode recieved 'balances' json");
-                            }
-                        } else {
-                            error!("Failed to request {}", request_url);
-                        }
-                        let request_url = format!(
-                            "{}/api/v1/transactioncount/{}",
-                            SERVER_ADDR.lock().unwrap().to_string(),
-                            wall.public_key
-                        );
-                        if let Ok(response) = reqwest::get(&request_url).await {
-                            if let Ok(transactioncount) = response.json::<Transactioncount>().await
-                            {
-                                info!(
-                                    "Transaction count for our chain: {}",
-                                    transactioncount.transaction_count,
-                                );
-                            }
-                        }
+                    }
 
-                        if let Ok(walletdetails) = WALLET_DETAILS.lock() {
-                            info!("Our balance: {}", to_dec(walletdetails.balance));
-                        }
-                        let mut rpcaddr = "127.0.0.1:17785";
-                        if let Some(addr) = matches.value_of("rpcaddr") {
-                            rpcaddr = addr;
-                        }
-                        let rpcaddr_split: Vec<&str> = rpcaddr.split(':').collect();
-                        if let Ok(_) = launch_client(
-                            rpcaddr_split[0].to_string(),
-                            rpcaddr_split[1].parse().unwrap_or(17785),
-                            vec![],
-                            caller,
-                        ) {
-                            debug!("Launched RPC listener");
-                        } else {
-                            error!("Failed to connect to RPC server, please check it is running on the specified (or default) port");
-                            error!("Note: when using --rpcaddr make sure to use both the ip and port (eg --rpcaddr 127.0.0.1:1231) ");
-                            process::exit(1);
-                        }
-                        loop {
-                            // Now we loop until shutdown
-                            let _ = io::stdout().flush();
-                            let read: String = trim_newline(&mut read!("{}\n"));
-                            trace!("{:?}", read);
-                            let read_split: Vec<&str> = read.split(' ').collect();
-                            if read_split[0] == "send" {
-                                let mut amount: f64 = 0.0;
-                                let mut extra_data: String = String::from("");
-                                let mut addr: String = String::from("");
-                                match read_split.len() {
-                                    3 => {
-                                        if let Ok(amount_parsed) = read_split[1].parse::<f64>() {
-                                            if let Ok(receiver_parsed) =
-                                                read_split[2].parse::<String>()
+                    if let Ok(walletdetails) = WALLET_DETAILS.lock() {
+                        info!("Our balance: {}", to_dec(walletdetails.balance));
+                    }
+                    let mut rpcaddr = "127.0.0.1:17785";
+                    if let Some(addr) = matches.value_of("rpcaddr") {
+                        rpcaddr = addr;
+                    }
+                    let rpcaddr_split: Vec<&str> = rpcaddr.split(':').collect();
+                    if let Ok(_) = launch_client(
+                        rpcaddr_split[0].to_string(),
+                        rpcaddr_split[1].parse().unwrap_or(17785),
+                        vec![],
+                        caller,
+                    ) {
+                        debug!("Launched RPC listener");
+                    } else {
+                        error!("Failed to connect to RPC server, please check it is running on the specified (or default) port");
+                        error!("Note: when using --rpcaddr make sure to use both the ip and port (eg --rpcaddr 127.0.0.1:1231) ");
+                        process::exit(1);
+                    }
+                    loop {
+                        // Now we loop until shutdown
+                        let _ = io::stdout().flush();
+                        let read: String = trim_newline(&mut read!("{}\n"));
+                        trace!("{:?}", read);
+                        let read_split: Vec<&str> = read.split(' ').collect();
+                        if read_split[0] == "send" {
+                            let mut amount: f64 = 0.0;
+                            let mut extra_data: String = String::from("");
+                            let mut addr: String = String::from("");
+                            match read_split.len() {
+                                3 => {
+                                    if let Ok(amount_parsed) = read_split[1].parse::<f64>() {
+                                        if let Ok(receiver_parsed) = read_split[2].parse::<String>()
+                                        {
+                                            amount = amount_parsed;
+                                            addr = receiver_parsed;
+                                        }
+                                    }
+                                }
+                                4 => {
+                                    if let Ok(amount_parsed) = read_split[2].parse::<f64>() {
+                                        if let Ok(receiver_parsed) = read_split[1].parse::<String>()
+                                        {
+                                            if let Ok(extra_parsed) =
+                                                read_split[3].parse::<String>()
                                             {
                                                 amount = amount_parsed;
                                                 addr = receiver_parsed;
+                                                extra_data = extra_parsed;
                                             }
-                                        }
-                                    }
-                                    4 => {
-                                        if let Ok(amount_parsed) = read_split[2].parse::<f64>() {
-                                            if let Ok(receiver_parsed) =
-                                                read_split[1].parse::<String>()
-                                            {
-                                                if let Ok(extra_parsed) =
-                                                    read_split[3].parse::<String>()
-                                                {
-                                                    amount = amount_parsed;
-                                                    addr = receiver_parsed;
-                                                    extra_data = extra_parsed;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        info!("Please enter the amount");
-                                        amount = trim_newline(&mut read!("{}\n"))
-                                            .parse::<f64>()
-                                            .unwrap();
-                                        info!("Please enter the reciever address or username:");
-                                        addr = trim_newline(&mut read!());
-                                        info!("Enter extra data (must be at most 100 chars long");
-                                        extra_data = trim_newline(&mut read!("{}\n"));
-                                        if extra_data.len() > 100 {
-                                            error!(
-                                                "Extra data must be under or equal to 100 bytes"
-                                            );
                                         }
                                     }
                                 }
-                                if amount == 0.0 {
-                                } else {
-                                    let mut txn = Transaction {
-                                        hash: String::from(""),
-                                        amount: to_atomic(amount),
-                                        extra: extra_data.clone(),
-                                        flag: 'n',
-                                        sender_key: wall.public_key.clone(),
-                                        receive_key: String::from(""),
-                                        access_key: String::from(""),
-                                        unlock_time: 0,
-                                        gas_price: 10, // 0.001 AIO
+                                _ => {
+                                    info!("Please enter the amount");
+                                    amount =
+                                        trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
+                                    info!("Please enter the reciever address or username:");
+                                    addr = trim_newline(&mut read!());
+                                    info!("Enter extra data (must be at most 100 chars long");
+                                    extra_data = trim_newline(&mut read!("{}\n"));
+                                    if extra_data.len() > 100 {
+                                        error!("Extra data must be under or equal to 100 bytes");
+                                    }
+                                }
+                            }
+                            if amount == 0.0 {
+                            } else {
+                                let mut txn = Transaction {
+                                    hash: String::from(""),
+                                    amount: to_atomic(amount),
+                                    extra: extra_data.clone(),
+                                    flag: 'n',
+                                    sender_key: wall.public_key.clone(),
+                                    receive_key: String::from(""),
+                                    access_key: String::from(""),
+                                    unlock_time: 0,
+                                    gas_price: 10, // 0.001 AIO
 
-                                        max_gas: u64::max_value(),
-                                        nonce: 0,
-                                        timestamp: SystemTime::now()
-                                            .duration_since(UNIX_EPOCH)
-                                            .expect("Time went backwards")
-                                            .as_millis()
-                                            as u64,
-                                    };
-                                    let request_url = format!(
-                                        "{}/api/v1/balances/{}",
-                                        SERVER_ADDR.lock().unwrap().to_string(),
-                                        wall.public_key
-                                    );
-                                    if let Ok(response_undec) = reqwest::get(&request_url).await {
-                                        if let Ok(response) =
-                                            response_undec.json::<Balances>().await
-                                        {
-                                            if txn.amount + txn.fee() > response.balance {
-                                                error!("Insufficent balance");
-                                            } else {
-                                                if avrio_crypto::valid_address(&addr) {
-                                                    let rec_wall = Wallet::from_address(addr);
-                                                    txn.receive_key = rec_wall.public_key;
-                                                } else {
-                                                    debug!(
-                                        "Could not find acc with addr={}, trying as username",
-                                        addr
-                                    );
-                                                    let request_url = format!(
-                                                        "{}/api/v1/publickey_for_username/{}",
-                                                        SERVER_ADDR.lock().unwrap().to_string(),
-                                                        addr
-                                                    );
-                                                    if let Ok(response) =
-                                                        reqwest::get(&request_url).await
-                                                    {
-                                                        if let Ok(publickey_for_username) = response
-                                                            .json::<PublickeyForUsername>()
-                                                            .await
-                                                        {
-                                                            txn.receive_key =
-                                                                publickey_for_username.publickey;
-                                                        }
-                                                    }
-                                                }
-                                                let request_url = format!(
-                                                    "{}/api/v1/transactioncount/{}",
-                                                    SERVER_ADDR.lock().unwrap().to_string(),
-                                                    wall.public_key
-                                                );
-                                                if let Ok(response) =
-                                                    reqwest::get(&request_url).await
-                                                {
-                                                    if let Ok(transactioncount) =
-                                                        response.json::<Transactioncount>().await
-                                                    {
-                                                        txn.nonce =
-                                                            transactioncount.transaction_count;
-                                                        txn.hash();
-                                                        if let Err(e) =
-                                                            send_transaction(txn, wall.clone())
-                                                                .await
-                                                        {
-                                                            error!(
-                                                                "Failed to send txn, got error={}",
-                                                                e
-                                                            );
-                                                        }
-                                                    } else {
-                                                        error!("Failed to decode recieved response into transactioncount struct");
-                                                    }
-                                                } else {
-                                                    error!(
-                                                        "Failed to send request={}",
-                                                        request_url
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else if read == *"address" {
-                                info!("Our address: {}", wall.address());
-                            } else if read_split[0] == "claim" {
-                                let mut amount: f64 = 0.0;
-                                match read_split.len() {
-                                    2 => {
-                                        if let Ok(amount_parsed) = read_split[1].parse::<f64>() {
-                                            amount = amount_parsed;
-                                        } else {
-                                            info!("Please enter the amount");
-                                            amount = trim_newline(&mut read!("{}\n"))
-                                                .parse::<f64>()
-                                                .unwrap();
-                                        }
-                                    }
-                                    _ => {
-                                        info!("Please enter the amount");
-                                        amount = trim_newline(&mut read!("{}\n"))
-                                            .parse::<f64>()
-                                            .unwrap();
-                                    }
-                                }
-                                let mut txn = Transaction {
-                                    hash: String::from(""),
-                                    amount: to_atomic(amount),
-                                    extra: String::from(""),
-                                    flag: 'c',
-                                    sender_key: wall.public_key.clone(),
-                                    receive_key: wall.public_key.clone(),
-                                    access_key: String::from(""),
-                                    unlock_time: 0,
-                                    gas_price: 10, // 0.001 AIO
-                                    max_gas: u64::max_value(),
-                                    nonce: 0,
-                                    timestamp: SystemTime::now()
-                                        .duration_since(UNIX_EPOCH)
-                                        .expect("Time went backwards")
-                                        .as_millis()
-                                        as u64,
-                                };
-                                let request_url = format!(
-                                    "{}/api/v1/transactioncount/{}",
-                                    SERVER_ADDR.lock().unwrap().to_string(),
-                                    wall.public_key
-                                );
-                                if let Ok(response) = reqwest::get(&request_url).await {
-                                    if let Ok(transactioncount) =
-                                        response.json::<Transactioncount>().await
-                                    {
-                                        txn.nonce = transactioncount.transaction_count;
-                                        txn.hash();
-                                        if let Err(e) = send_transaction(txn, wall.clone()).await {
-                                            error!("Failed to send txn, got error={}", e);
-                                        }
-                                    } else {
-                                        error!("Failed to decode recieved response into transactioncount struct");
-                                    }
-                                } else {
-                                    error!("Failed to send request={}", request_url);
-                                }
-                            } else if read == *"address"
-                                || read == *"get_address"
-                                || read == *"get_addr"
-                            {
-                                info!("Our address: {}", wall.address());
-                            } else if read == *"balance" || read == *"get_balance" || read == *"bal"
-                            {
-                                if let Ok(lock) = WALLET_DETAILS.lock() {
-                                    info!("Our balance: {}", to_dec(lock.balance));
-                                } else {
-                                    error!(
-                                        "Failed to get lock on WALLET_DETAILS muxtex (try again)"
-                                    );
-                                }
-                            } else if read == *"register_username" {
-                                if let Ok(lock) = WALLET_DETAILS.lock() {
-                                    if lock.username == "" {
-                                        info!("Enter desired_username:");
-                                        let desired_username: String = trim_newline(&mut read!());
-                                        if !desired_username.chars().all(char::is_alphanumeric) {
-                                            error!(
-                                                "Username may only contain alphanumeric charactors"
-                                            );
-                                        } else {
-                                            let request_url = format!(
-                                                "{}/api/v1/publickey_for_username/{}",
-                                                SERVER_ADDR.lock().unwrap().to_string(),
-                                                desired_username
-                                            );
-                                            if let Ok(response) = reqwest::get(&request_url).await {
-                                                if let Ok(publickey_for_username) =
-                                                    response.json::<PublickeyForUsername>().await
-                                                {
-                                                    if publickey_for_username.publickey != "" {
-                                                        error!("Username {} is taken, try another (rerun register_username)", desired_username);
-                                                    } else {
-                                                        let mut txn = Transaction {
-                                                            hash: String::from(""),
-                                                            amount: to_atomic(0.50),
-                                                            extra: desired_username.clone(),
-                                                            flag: 'u',
-                                                            sender_key: wall.public_key.clone(),
-                                                            receive_key: wall.public_key.clone(),
-                                                            access_key: String::from(""),
-                                                            unlock_time: 0,
-                                                            gas_price: 10, // 0.001 AIO
-                                                            max_gas: u64::max_value(),
-                                                            nonce: 0,
-                                                            timestamp: SystemTime::now()
-                                                                .duration_since(UNIX_EPOCH)
-                                                                .expect("Time went backwards")
-                                                                .as_millis()
-                                                                as u64,
-                                                        };
-                                                        let request_url = format!(
-                                                            "{}/api/v1/balances/{}",
-                                                            SERVER_ADDR.lock().unwrap().to_string(),
-                                                            wall.public_key
-                                                        );
-                                                        if let Ok(response_undec) =
-                                                            reqwest::get(&request_url).await
-                                                        {
-                                                            if let Ok(response) = response_undec
-                                                                .json::<Balances>()
-                                                                .await
-                                                            {
-                                                                if txn.amount + txn.fee()
-                                                                    > response.balance
-                                                                {
-                                                                    error!("Insufficent balance");
-                                                                } else {
-                                                                    let request_url = format!(
-                                                                    "{}/api/v1/transactioncount/{}",
-                                                                    SERVER_ADDR
-                                                                        .lock()
-                                                                        .unwrap()
-                                                                        .to_string(),
-                                                                    wall.public_key
-                                                                );
-                                                                    if let Ok(response) =
-                                                                        reqwest::get(&request_url)
-                                                                            .await
-                                                                    {
-                                                                        if let Ok(transactioncount) =
-                                                                    response
-                                                                        .json::<Transactioncount>()
-                                                                        .await
-                                                                {
-                                                                    txn.nonce = transactioncount
-                                                                        .transaction_count;
-                                                                    txn.hash();
-                                                                    if let Err(e) =
-                                                                        send_transaction(
-                                                                            txn,
-                                                                            wall.clone(),
-                                                                        )
-                                                                        .await
-                                                                    {
-                                                                        error!(
-                                                                "Failed to send txn, got error={}",
-                                                                e
-                                                            );
-                                                                    }
-                                                                } else {
-                                                                    error!("Failed to decode recieved response into transactioncount struct");
-                                                                }
-                                                                    } else {
-                                                                        error!(
-                                                                        "Failed to send request={}",
-                                                                        request_url
-                                                                    );
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        error!(
-                                            "You already have a username, username={}",
-                                            lock.username
-                                        );
-                                        error!("Username deregistering is currently disabled, please create a new wallet to register this username");
-                                    }
-                                } else {
-                                    error!(
-                                        "Failed to get lock on WALLET_DETAILS muxtex (try again)"
-                                    );
-                                }
-                            } else if read == *"get_keypair" {
-                                warn!("WARNING: You are about to be given the private key to your account. This string allows ANYONE (with the key) to send a transaction from your account");
-                                warn!("If someone is telling you to give them this key, you are probably being scammed. The avrio team will never ask your for your private key. ");
-                                warn!("The only time you should enter your private key, is into a wallet to use your funds. HOWEVER, we do not reccomened doing this. Instead create a new wallet, and send the funds to it from here");
-                                warn!("Please remeber the avrio team is not liable for any funds lost");
-                                error!("You can safley ignore this message as testnet coins have no value, but dont go loosing your coins :D");
-                                info!("If you understand these risks please enter: confirm");
-                                let confirm: String = trim_newline(&mut read!());
-                                if confirm.to_uppercase() != "CONFIRM" {
-                                    error!("Did not enter confirm, aborting (got {})", confirm);
-                                } else {
-                                    println!("Your publickey is: {}", wall.public_key); // println! to prevent it being saved in the logs
-                                    println!("Your private key is: {}", wall.private_key);
-                                }
-                            } else if read == *"burn" {
-                                info!("Please enter the amount");
-                                let amount: f64 =
-                                    trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
-                                let mut txn = Transaction {
-                                    hash: String::from(""),
-                                    amount: to_atomic(amount),
-                                    extra: String::from(""),
-                                    flag: 'b',
-                                    sender_key: wall.public_key.clone(),
-                                    receive_key: wall.public_key.clone(),
-                                    access_key: String::from(""),
-                                    unlock_time: 0,
-                                    gas_price: 10, // 0.001 AIO
                                     max_gas: u64::max_value(),
                                     nonce: 0,
                                     timestamp: SystemTime::now()
@@ -1088,6 +636,31 @@ async fn main() {
                                         if txn.amount + txn.fee() > response.balance {
                                             error!("Insufficent balance");
                                         } else {
+                                            if avrio_crypto::valid_address(&addr) {
+                                                let rec_wall = Wallet::from_address(addr);
+                                                txn.receive_key = rec_wall.public_key;
+                                            } else {
+                                                debug!(
+                                        "Could not find acc with addr={}, trying as username",
+                                        addr
+                                    );
+                                                let request_url = format!(
+                                                    "{}/api/v1/publickey_for_username/{}",
+                                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                                    addr
+                                                );
+                                                if let Ok(response) =
+                                                    reqwest::get(&request_url).await
+                                                {
+                                                    if let Ok(publickey_for_username) = response
+                                                        .json::<PublickeyForUsername>()
+                                                        .await
+                                                    {
+                                                        txn.receive_key =
+                                                            publickey_for_username.publickey;
+                                                    }
+                                                }
+                                            }
                                             let request_url = format!(
                                                 "{}/api/v1/transactioncount/{}",
                                                 SERVER_ADDR.lock().unwrap().to_string(),
@@ -1116,25 +689,353 @@ async fn main() {
                                         }
                                     }
                                 }
-                            } else if read == "help" {
-                                info!("Commands:");
-                                info!("balance : Gets the balance of the currently loaded wallet");
-                                info!(
-                                    "get_address : Gets the address assosciated with this wallet"
+                            }
+                        } else if read == *"address" {
+                            info!("Our address: {}", wall.address());
+                        } else if read_split[0] == "claim" {
+                            let mut amount: f64 = 0.0;
+                            match read_split.len() {
+                                2 => {
+                                    if let Ok(amount_parsed) = read_split[1].parse::<f64>() {
+                                        amount = amount_parsed;
+                                    } else {
+                                        info!("Please enter the amount");
+                                        amount = trim_newline(&mut read!("{}\n"))
+                                            .parse::<f64>()
+                                            .unwrap();
+                                    }
+                                }
+                                _ => {
+                                    info!("Please enter the amount");
+                                    amount =
+                                        trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
+                                }
+                            }
+                            let mut txn = Transaction {
+                                hash: String::from(""),
+                                amount: to_atomic(amount),
+                                extra: String::from(""),
+                                flag: 'c',
+                                sender_key: wall.public_key.clone(),
+                                receive_key: wall.public_key.clone(),
+                                access_key: String::from(""),
+                                unlock_time: 0,
+                                gas_price: 10, // 0.001 AIO
+                                max_gas: u64::max_value(),
+                                nonce: 0,
+                                timestamp: SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .expect("Time went backwards")
+                                    .as_millis() as u64,
+                            };
+                            let request_url = format!(
+                                "{}/api/v1/transactioncount/{}",
+                                SERVER_ADDR.lock().unwrap().to_string(),
+                                wall.public_key
+                            );
+                            if let Ok(response) = reqwest::get(&request_url).await {
+                                if let Ok(transactioncount) =
+                                    response.json::<Transactioncount>().await
+                                {
+                                    txn.nonce = transactioncount.transaction_count;
+                                    txn.hash();
+                                    if let Err(e) = send_transaction(txn, wall.clone()).await {
+                                        error!("Failed to send txn, got error={}", e);
+                                    }
+                                } else {
+                                    error!("Failed to decode recieved response into transactioncount struct");
+                                }
+                            } else {
+                                error!("Failed to send request={}", request_url);
+                            }
+                        } else if read == *"address"
+                            || read == *"get_address"
+                            || read == *"get_addr"
+                        {
+                            info!("Our address: {}", wall.address());
+                        } else if read == *"balance" || read == *"get_balance" || read == *"bal" {
+                            if let Ok(lock) = WALLET_DETAILS.lock() {
+                                info!("Our balance: {}", to_dec(lock.balance));
+                            } else {
+                                error!("Failed to get lock on WALLET_DETAILS muxtex (try again)");
+                            }
+                        } else if read == *"register_username" {
+                            if let Ok(lock) = WALLET_DETAILS.lock() {
+                                if lock.username == "" {
+                                    info!("Enter desired_username:");
+                                    let desired_username: String = trim_newline(&mut read!());
+                                    if !desired_username.chars().all(char::is_alphanumeric) {
+                                        error!("Username may only contain alphanumeric charactors");
+                                    } else {
+                                        let request_url = format!(
+                                            "{}/api/v1/publickey_for_username/{}",
+                                            SERVER_ADDR.lock().unwrap().to_string(),
+                                            desired_username
+                                        );
+                                        if let Ok(response) = reqwest::get(&request_url).await {
+                                            if let Ok(publickey_for_username) =
+                                                response.json::<PublickeyForUsername>().await
+                                            {
+                                                if publickey_for_username.publickey != "" {
+                                                    error!("Username {} is taken, try another (rerun register_username)", desired_username);
+                                                } else {
+                                                    let mut txn = Transaction {
+                                                        hash: String::from(""),
+                                                        amount: to_atomic(0.50),
+                                                        extra: desired_username.clone(),
+                                                        flag: 'u',
+                                                        sender_key: wall.public_key.clone(),
+                                                        receive_key: wall.public_key.clone(),
+                                                        access_key: String::from(""),
+                                                        unlock_time: 0,
+                                                        gas_price: 10, // 0.001 AIO
+                                                        max_gas: u64::max_value(),
+                                                        nonce: 0,
+                                                        timestamp: SystemTime::now()
+                                                            .duration_since(UNIX_EPOCH)
+                                                            .expect("Time went backwards")
+                                                            .as_millis()
+                                                            as u64,
+                                                    };
+                                                    let request_url = format!(
+                                                        "{}/api/v1/balances/{}",
+                                                        SERVER_ADDR.lock().unwrap().to_string(),
+                                                        wall.public_key
+                                                    );
+                                                    if let Ok(response_undec) =
+                                                        reqwest::get(&request_url).await
+                                                    {
+                                                        if let Ok(response) =
+                                                            response_undec.json::<Balances>().await
+                                                        {
+                                                            if txn.amount + txn.fee()
+                                                                > response.balance
+                                                            {
+                                                                error!("Insufficent balance");
+                                                            } else {
+                                                                let request_url = format!(
+                                                                    "{}/api/v1/transactioncount/{}",
+                                                                    SERVER_ADDR
+                                                                        .lock()
+                                                                        .unwrap()
+                                                                        .to_string(),
+                                                                    wall.public_key
+                                                                );
+                                                                if let Ok(response) =
+                                                                    reqwest::get(&request_url).await
+                                                                {
+                                                                    if let Ok(transactioncount) =
+                                                                    response
+                                                                        .json::<Transactioncount>()
+                                                                        .await
+                                                                {
+                                                                    txn.nonce = transactioncount
+                                                                        .transaction_count;
+                                                                    txn.hash();
+                                                                    if let Err(e) =
+                                                                        send_transaction(
+                                                                            txn,
+                                                                            wall.clone(),
+                                                                        )
+                                                                        .await
+                                                                    {
+                                                                        error!(
+                                                                "Failed to send txn, got error={}",
+                                                                e
+                                                            );
+                                                                    }
+                                                                } else {
+                                                                    error!("Failed to decode recieved response into transactioncount struct");
+                                                                }
+                                                                } else {
+                                                                    error!(
+                                                                        "Failed to send request={}",
+                                                                        request_url
+                                                                    );
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    error!(
+                                        "You already have a username, username={}",
+                                        lock.username
+                                    );
+                                    error!("Username deregistering is currently disabled, please create a new wallet to register this username");
+                                }
+                            } else {
+                                error!("Failed to get lock on WALLET_DETAILS muxtex (try again)");
+                            }
+                        } else if read == *"get_keypair" {
+                            warn!("WARNING: You are about to be given the private key to your account. This string allows ANYONE (with the key) to send a transaction from your account");
+                            warn!("If someone is telling you to give them this key, you are probably being scammed. The avrio team will never ask your for your private key. ");
+                            warn!("The only time you should enter your private key, is into a wallet to use your funds. HOWEVER, we do not reccomened doing this. Instead create a new wallet, and send the funds to it from here");
+                            warn!("Please remeber the avrio team is not liable for any funds lost");
+                            error!("You can safley ignore this message as testnet coins have no value, but dont go loosing your coins :D");
+                            info!("If you understand these risks please enter: confirm");
+                            let confirm: String = trim_newline(&mut read!());
+                            if confirm.to_uppercase() != "CONFIRM" {
+                                error!("Did not enter confirm, aborting (got {})", confirm);
+                            } else {
+                                println!("Your publickey is: {}", wall.public_key); // println! to prevent it being saved in the logs
+                                println!("Your private key is: {}", wall.private_key);
+                            }
+                        } else if read == *"burn" {
+                            info!("Please enter the amount");
+                            let amount: f64 =
+                                trim_newline(&mut read!("{}\n")).parse::<f64>().unwrap();
+                            let mut txn = Transaction {
+                                hash: String::from(""),
+                                amount: to_atomic(amount),
+                                extra: String::from(""),
+                                flag: 'b',
+                                sender_key: wall.public_key.clone(),
+                                receive_key: wall.public_key.clone(),
+                                access_key: String::from(""),
+                                unlock_time: 0,
+                                gas_price: 10, // 0.001 AIO
+                                max_gas: u64::max_value(),
+                                nonce: 0,
+                                timestamp: SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .expect("Time went backwards")
+                                    .as_millis() as u64,
+                            };
+                            let request_url = format!(
+                                "{}/api/v1/balances/{}",
+                                SERVER_ADDR.lock().unwrap().to_string(),
+                                wall.public_key
+                            );
+                            if let Ok(response_undec) = reqwest::get(&request_url).await {
+                                if let Ok(response) = response_undec.json::<Balances>().await {
+                                    if txn.amount + txn.fee() > response.balance {
+                                        error!("Insufficent balance");
+                                    } else {
+                                        let request_url = format!(
+                                            "{}/api/v1/transactioncount/{}",
+                                            SERVER_ADDR.lock().unwrap().to_string(),
+                                            wall.public_key
+                                        );
+                                        if let Ok(response) = reqwest::get(&request_url).await {
+                                            if let Ok(transactioncount) =
+                                                response.json::<Transactioncount>().await
+                                            {
+                                                txn.nonce = transactioncount.transaction_count;
+                                                txn.hash();
+                                                if let Err(e) =
+                                                    send_transaction(txn, wall.clone()).await
+                                                {
+                                                    error!("Failed to send txn, got error={}", e);
+                                                }
+                                            } else {
+                                                error!("Failed to decode recieved response into transactioncount struct");
+                                            }
+                                        } else {
+                                            error!("Failed to send request={}", request_url);
+                                        }
+                                    }
+                                }
+                            }
+                        } else if read == "help" {
+                            info!("Commands:");
+                            info!("balance : Gets the balance of the currently loaded wallet");
+                            info!("get_address : Gets the address assosciated with this wallet");
+                            info!("send : Sends a transaction");
+                            info!("generate : Allows you to generate lots of blocks with lots of transactions in for stress testing. Please dont abuse");
+                            info!("send_txn_advanced : allows you to send a transaction with advanced options");
+                            info!("burn : allows you to burn funds");
+                            info!("exit : Safely shutsdown thr program. PLEASE use instead of ctrl + c");
+                            info!("help : shows this help");
+                        } else if read_split[0] == "generate" {
+                            if read_split.len() == 3 {
+                                let amount: u64 = read_split[1].parse().unwrap_or(1);
+                                let txn_per_block: u64 = read_split[2].parse().unwrap_or(1);
+                                let mut blocks: Vec<Block> = vec![];
+                                if txn_per_block <= 10 && amount < 200 {
+                                    let mut failed = false;
+                                    let request_url = format!(
+                                        "{}/api/v1/balances/{}",
+                                        SERVER_ADDR.lock().unwrap().to_string(),
+                                        wall.public_key
+                                    );
+                                    if let Ok(response_undec) = reqwest::get(&request_url).await {
+                                        if let Ok(response) =
+                                            response_undec.json::<Balances>().await
+                                        {
+                                            if amount * (txn_per_block * 200) + amount
+                                                > response.balance
+                                            {
+                                                error!("Insufficent balance");
+                                            } else {
+                                                info!("Beginning generation");
+                                                if let Ok(blocks) = generate_blocks(
+                                                    amount,
+                                                    txn_per_block,
+                                                    wall.clone(),
+                                                )
+                                                .await
+                                                {
+                                                    info!("Generation complete");
+                                                    for block in blocks {
+                                                        /*if let Err(e) =
+                                                            send_block(block, wall.clone())
+                                                                .await
+                                                        {
+                                                            error!(
+                                                                "Failed to send block, got error={}",
+                                                                e
+                                                            );
+                                                            failed = true;
+                                                        }*/
+                                                    }
+                                                    if failed {
+                                                        error!("Failed to send all blocks");
+                                                    }
+                                                } else {
+                                                    error!("Failed to generate blocks");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else if read_split[0] == "lock" {
+                            info!("Enter amount:");
+                            let amount: String = trim_newline(&mut read!());
+                            if let Ok(amount_int) = amount.parse::<f64>() {
+                                let mut txn = Transaction {
+                                    hash: String::from(""),
+                                    amount: to_atomic(amount_int),
+                                    extra: String::from(""),
+                                    flag: 'l',
+                                    sender_key: wall.public_key.clone(),
+                                    receive_key: wall.public_key.clone(),
+                                    access_key: String::from(""),
+                                    unlock_time: 0,
+                                    gas_price: 20,
+                                    max_gas: u64::MAX,
+                                    nonce: 0,
+                                    timestamp: SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .expect("time went backwards ono")
+                                        .as_millis()
+                                        as u64,
+                                };
+                                let request_url = format!(
+                                    "{}/api/v1/transactioncount/{}",
+                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                    wall.public_key
                                 );
-                                info!("send : Sends a transaction");
-                                info!("generate : Allows you to generate lots of blocks with lots of transactions in for stress testing. Please dont abuse");
-                                info!("send_txn_advanced : allows you to send a transaction with advanced options");
-                                info!("burn : allows you to burn funds");
-                                info!("exit : Safely shutsdown thr program. PLEASE use instead of ctrl + c");
-                                info!("help : shows this help");
-                            } else if read_split[0] == "generate" {
-                                if read_split.len() == 3 {
-                                    let amount: u64 = read_split[1].parse().unwrap_or(1);
-                                    let txn_per_block: u64 = read_split[2].parse().unwrap_or(1);
-                                    let mut blocks: Vec<Block> = vec![];
-                                    if txn_per_block <= 10 && amount < 200 {
-                                        let mut failed = false;
+                                if let Ok(response) = reqwest::get(&request_url).await {
+                                    if let Ok(transactioncount) =
+                                        response.json::<Transactioncount>().await
+                                    {
+                                        txn.nonce = transactioncount.transaction_count;
+
                                         let request_url = format!(
                                             "{}/api/v1/balances/{}",
                                             SERVER_ADDR.lock().unwrap().to_string(),
@@ -1145,142 +1046,59 @@ async fn main() {
                                             if let Ok(response) =
                                                 response_undec.json::<Balances>().await
                                             {
-                                                if amount * (txn_per_block * 200) + amount
-                                                    > response.balance
-                                                {
-                                                    error!("Insufficent balance");
-                                                } else {
-                                                    info!("Beginning generation");
-                                                    if let Ok(blocks) = generate_blocks(
-                                                        amount,
-                                                        txn_per_block,
-                                                        wall.clone(),
-                                                    )
-                                                    .await
+                                                if txn.amount + txn.fee() < response.balance {
+                                                    txn.hash();
+
+                                                    match send_transaction(txn, wall.clone()).await
                                                     {
-                                                        info!("Generation complete");
-                                                        for block in blocks {
-                                                            /*if let Err(e) =
-                                                                send_block(block, wall.clone())
-                                                                    .await
-                                                            {
-                                                                error!(
-                                                                    "Failed to send block, got error={}",
-                                                                    e
-                                                                );
-                                                                failed = true;
-                                                            }*/
+                                                        Ok(_) => {
+                                                            info!("Locked {} AIO", amount_int);
                                                         }
-                                                        if failed {
-                                                            error!("Failed to send all blocks");
+                                                        Err(e) => {
+                                                            error!("Failed to send txn: {}", e);
                                                         }
-                                                    } else {
-                                                        error!("Failed to generate blocks");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else if read_split[0] == "lock" {
-                                info!("Enter amount:");
-                                let amount: String = trim_newline(&mut read!());
-                                if let Ok(amount_int) = amount.parse::<f64>() {
-                                    let mut txn = Transaction {
-                                        hash: String::from(""),
-                                        amount: to_atomic(amount_int),
-                                        extra: String::from(""),
-                                        flag: 'l',
-                                        sender_key: wall.public_key.clone(),
-                                        receive_key: wall.public_key.clone(),
-                                        access_key: String::from(""),
-                                        unlock_time: 0,
-                                        gas_price: 20,
-                                        max_gas: u64::MAX,
-                                        nonce: 0,
-                                        timestamp: SystemTime::now()
-                                            .duration_since(UNIX_EPOCH)
-                                            .expect("time went backwards ono")
-                                            .as_millis()
-                                            as u64,
-                                    };
-                                    let request_url = format!(
-                                        "{}/api/v1/transactioncount/{}",
-                                        SERVER_ADDR.lock().unwrap().to_string(),
-                                        wall.public_key
-                                    );
-                                    if let Ok(response) = reqwest::get(&request_url).await {
-                                        if let Ok(transactioncount) =
-                                            response.json::<Transactioncount>().await
-                                        {
-                                            txn.nonce = transactioncount.transaction_count;
-
-                                            let request_url = format!(
-                                                "{}/api/v1/balances/{}",
-                                                SERVER_ADDR.lock().unwrap().to_string(),
-                                                wall.public_key
-                                            );
-                                            if let Ok(response_undec) =
-                                                reqwest::get(&request_url).await
-                                            {
-                                                if let Ok(response) =
-                                                    response_undec.json::<Balances>().await
-                                                {
-                                                    if txn.amount + txn.fee() < response.balance {
-                                                        txn.hash();
-
-                                                        match send_transaction(txn, wall.clone())
-                                                            .await
-                                                        {
-                                                            Ok(_) => {
-                                                                info!("Locked {} AIO", amount_int);
-                                                            }
-                                                            Err(e) => {
-                                                                error!("Failed to send txn: {}", e);
-                                                            }
-                                                        }
-                                                    } else {
-                                                        error!(
-                                                            "Insufficent balance, have={}, need={}",
-                                                            response.balance,
-                                                            txn.amount + txn.fee()
-                                                        )
                                                     }
                                                 } else {
-                                                    error!("Failed to parse balance")
+                                                    error!(
+                                                        "Insufficent balance, have={}, need={}",
+                                                        response.balance,
+                                                        txn.amount + txn.fee()
+                                                    )
                                                 }
                                             } else {
-                                                error!("Failed to get balance")
+                                                error!("Failed to parse balance")
                                             }
                                         } else {
-                                            error!("Failed to parse txn count");
+                                            error!("Failed to get balance")
                                         }
                                     } else {
-                                        error!("Failed tog et txn count for chain");
+                                        error!("Failed to parse txn count");
                                     }
                                 } else {
-                                    error!("{} is not a valid number", amount);
+                                    error!("Failed tog et txn count for chain");
                                 }
                             } else {
-                                error!("Unknown command: {}", read);
+                                error!("{} is not a valid number", amount);
                             }
+                        } else {
+                            error!("Unknown command: {}", read);
                         }
-                    } else {
-                        error!("Failed to decode json, gave error={:?}", try_decode_json);
                     }
                 } else {
-                    error!(
-                        "Failed to get blockcount for our chain, error={}",
-                        try_get_response.unwrap_err()
-                    );
+                    error!("Failed to decode json, gave error={:?}", try_decode_json);
                 }
             } else {
-                error!("Failed to gain lock on wallet details LS");
+                error!(
+                    "Failed to get blockcount for our chain, error={}",
+                    try_get_response.unwrap_err()
+                );
             }
         } else {
-            error!("Failed to get wallet");
-            std::process::exit(0);
+            error!("Failed to gain lock on wallet details LS");
         }
+    } else {
+        error!("Failed to get wallet");
+        std::process::exit(0);
     }
 }
 
