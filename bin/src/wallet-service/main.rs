@@ -200,6 +200,7 @@ impl OpenedWallet {
 
         match USERS.lock() {
             Ok(mut users_lock) => {
+                trace!("Got lock on USERS mutex");
                 let users_hashmap = &mut *users_lock;
                 if users_hashmap.contains_key(&user) {
                     let mut wallets_vec = users_hashmap[&user].clone();
@@ -313,13 +314,14 @@ impl OpenedWallet {
         if let Ok(response) = reqwest::blocking::get(&request_url) {
             if let Ok(transactioncount) = response.json::<Transactioncount>() {
                 if let Ok(mut locked_ls) = OPEN_WALLETS.lock() {
-                    let mut wallet_details =
-                        (*locked_ls).get(&raw_hash(&self.path)).unwrap_or(&self).clone();
-                    wallet_details.meta.account_nonce =
-                        transactioncount.transaction_count;
+                    let mut wallet_details = (*locked_ls)
+                        .get(&raw_hash(&self.path))
+                        .unwrap_or(&self)
+                        .clone();
+                    wallet_details.meta.account_nonce = transactioncount.transaction_count;
 
                     (*locked_ls).insert(self.path.clone(), wallet_details);
-                    return Ok(())
+                    return Ok(());
                 } else {
                     error!("Failed to lock OPENED_WALLETS mutex");
                     return Err("Failed to lock OPENED_WALLETS mutex".into());
@@ -338,119 +340,117 @@ impl OpenedWallet {
     /// Sets up the OpenedWallet struct by polling the node
     /// You should have already created the OpenedWallet struct using open or create_wallet first
     pub fn init_wallet(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Ok(mut locked_ls) = OPEN_WALLETS.lock() {
-            let wallet: OpenedWallet = locked_ls.get(&raw_hash(&self.path)).unwrap_or(&self).clone();
-            drop(locked_ls);
-
-            let request_url = format!(
-                "{}/api/v1/blockcount/{}",
-                CONFIG.lock().unwrap().as_ref().unwrap().node_address,
-                wallet.wallet.public_key
-            );
-            let try_get_response = reqwest::blocking::get(&request_url);
-            if let Ok(response) = try_get_response {
-                let try_decode_json = response.json::<Blockcount>();
-                if let Ok(response) = try_decode_json {
-                    let blockcount = response.blockcount;
-                    if blockcount == 0 {
-                        info!("No existing blocks for chain, creating genesis blocks");
-                        // Create genesis blocks, send to node
-                        let mut genesis_block = get_genesis_block(&wallet.wallet.public_key);
-                        if let Err(e) = genesis_block {
-                            if e == GenesisBlockErrors::BlockNotFound {
-                                info!(
-                                    "No genesis block found for chain: {}, generating",
-                                    wallet.wallet.address()
-                                );
-                                genesis_block = generate_genesis_block(
-                                    wallet.wallet.clone().public_key,
-                                    wallet.wallet.private_key.clone(),
-                                );
-                            } else {
-                                error!(
+        let wallet: OpenedWallet;
+        if let Ok(locked_ls) = OPEN_WALLETS.lock() {
+            trace!("got lock on OPEN_WALLETS mutex");
+            wallet = locked_ls
+                .get(&raw_hash(&self.path))
+                .unwrap_or(&self)
+                .clone();
+        } else {
+            error!("Failed to get lock on OPEN_WALLETS mutex");
+            return Err("Failed to get lock on open_wallets mutex".into());
+        }
+        let request_url = format!(
+            "{}/api/v1/blockcount/{}",
+            CONFIG.lock().unwrap().as_ref().unwrap().node_address,
+            wallet.wallet.public_key
+        );
+        let try_get_response = reqwest::blocking::get(&request_url);
+        if let Ok(response) = try_get_response {
+            let try_decode_json = response.json::<Blockcount>();
+            if let Ok(response) = try_decode_json {
+                let blockcount = response.blockcount;
+                if blockcount == 0 {
+                    info!("No existing blocks for chain, creating genesis blocks");
+                    // Create genesis blocks, send to node
+                    let mut genesis_block = get_genesis_block(&wallet.wallet.public_key);
+                    if let Err(e) = genesis_block {
+                        if e == GenesisBlockErrors::BlockNotFound {
+                            info!(
+                                "No genesis block found for chain: {}, generating",
+                                wallet.wallet.address()
+                            );
+                            genesis_block = generate_genesis_block(
+                                wallet.wallet.clone().public_key,
+                                wallet.wallet.private_key.clone(),
+                            );
+                        } else {
+                            error!(
                                 "Database error occoured when trying to get genesisblock for chain: {}. (Fatal)",
                                 wallet.wallet.address()
                             );
-                                std::process::exit(1);
-                            }
+                            std::process::exit(1);
                         }
-                        let genesis_block = genesis_block.unwrap();
-                        let genesis_block_clone = genesis_block.clone();
-                        // Now encode block as json and send to daemon
-                        if let Ok(block_json) = serde_json::to_string(&genesis_block_clone) {
-                            // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
+                    }
+                    let genesis_block = genesis_block.unwrap();
+                    let genesis_block_clone = genesis_block.clone();
+                    // Now encode block as json and send to daemon
+                    if let Ok(block_json) = serde_json::to_string(&genesis_block_clone) {
+                        // now for each txn to a unique reciver form the rec block of the block we just formed and prob + enact that
 
-                            let mut rec_blk = genesis_block_clone
-                                .form_receive_block(Some(
-                                    genesis_block_clone.header.chain_key.to_owned(),
-                                ))
-                                .unwrap();
-                            rec_blk.header.height = 1;
-                            rec_blk.header.prev_hash = genesis_block_clone.hash.clone();
-                            rec_blk.signature = "".to_string();
-                            rec_blk.hash();
-                            if let Ok(rec_block_json) = serde_json::to_string(&rec_blk) {
-                                info!(
-                                    "Sending genesis blocks to node, hashes=({}, {})",
-                                    genesis_block_clone.hash, rec_blk.hash
-                                );
-                                debug!(
-                                    "Genesis blocks encoded: {}, {}",
-                                    block_json, rec_block_json
-                                );
-                                let request_url = CONFIG
-                                    .lock()
-                                    .unwrap()
-                                    .as_ref()
-                                    .unwrap()
-                                    .node_address
-                                    .clone()
-                                    + "/api/v1/submit_block";
-                                if let Ok(response) =
-                                    Client::new().post(request_url).json(&block_json).send()
-                                {
-                                    if let Ok(response_string) = response.text() {
-                                        if response_string.contains("error") {
-                                            error!(
-                                                "Failed to submit genesis send block, response={}",
-                                                response_string
-                                            );
-                                            process::exit(1);
-                                        } else {
-                                            info!("Submitted genesis send block to node");
-                                            debug!(
-                                                "Genesis send block response={}",
-                                                response_string
-                                            );
-                                            let request_url = CONFIG
-                                                .lock()
-                                                .unwrap()
-                                                .as_ref()
-                                                .unwrap()
-                                                .node_address
-                                                .to_owned()
-                                                + "/api/v1/submit_block";
-                                            if let Ok(response) = Client::new()
-                                                .post(request_url)
-                                                .json(&rec_block_json)
-                                                .send()
-                                            {
-                                                if let Ok(response_string) = response.text() {
-                                                    if response_string.contains("error") {
-                                                        error!(
+                        let mut rec_blk = genesis_block_clone
+                            .form_receive_block(Some(
+                                genesis_block_clone.header.chain_key.to_owned(),
+                            ))
+                            .unwrap();
+                        rec_blk.header.height = 1;
+                        rec_blk.header.prev_hash = genesis_block_clone.hash.clone();
+                        rec_blk.signature = "".to_string();
+                        rec_blk.hash();
+                        if let Ok(rec_block_json) = serde_json::to_string(&rec_blk) {
+                            info!(
+                                "Sending genesis blocks to node, hashes=({}, {})",
+                                genesis_block_clone.hash, rec_blk.hash
+                            );
+                            debug!("Genesis blocks encoded: {}, {}", block_json, rec_block_json);
+                            let request_url = CONFIG
+                                .lock()
+                                .unwrap()
+                                .as_ref()
+                                .unwrap()
+                                .node_address
+                                .clone()
+                                + "/api/v1/submit_block";
+                            if let Ok(response) =
+                                Client::new().post(request_url).json(&block_json).send()
+                            {
+                                if let Ok(response_string) = response.text() {
+                                    if response_string.contains("error") {
+                                        error!(
+                                            "Failed to submit genesis send block, response={}",
+                                            response_string
+                                        );
+                                        process::exit(1);
+                                    } else {
+                                        info!("Submitted genesis send block to node");
+                                        debug!("Genesis send block response={}", response_string);
+                                        let request_url = CONFIG
+                                            .lock()
+                                            .unwrap()
+                                            .as_ref()
+                                            .unwrap()
+                                            .node_address
+                                            .to_owned()
+                                            + "/api/v1/submit_block";
+                                        if let Ok(response) = Client::new()
+                                            .post(request_url)
+                                            .json(&rec_block_json)
+                                            .send()
+                                        {
+                                            if let Ok(response_string) = response.text() {
+                                                if response_string.contains("error") {
+                                                    error!(
                                                             "Failed to submit genesis rec block, response={}",
                                                             response_string
                                                         );
-                                                        process::exit(1);
-                                                    } else {
-                                                        info!(
-                                                            "Submitted genesis rec block to node"
-                                                        );
-                                                        debug!(
-                                                            "Genesis rec block response={}",
-                                                            response_string
-                                                        );
-                                                    }
+                                                    process::exit(1);
+                                                } else {
+                                                    info!("Submitted genesis rec block to node");
+                                                    debug!(
+                                                        "Genesis rec block response={}",
+                                                        response_string
+                                                    );
                                                 }
                                             }
                                         }
@@ -458,58 +458,69 @@ impl OpenedWallet {
                                 }
                             }
                         }
-                    } else {
-                        info!("Found existing blocks for chain, skipping genesis block creation");
                     }
-                    let request_url = format!(
-                        "{}/api/v1/balances/{}",
-                        CONFIG.lock().unwrap().as_ref().unwrap().node_address,
-                        wallet.wallet.public_key
-                    );
-                    if let Ok(response_undec) = reqwest::blocking::get(&request_url) {
-                        if let Ok(response) = response_undec.json::<Balances>() {
-                            info!(
-                                "Balance: {}, Locked: {}",
-                                to_dec(response.balance),
-                                to_dec(response.locked)
-                            );
-                            if let Ok(mut locked_ls) = OPEN_WALLETS.lock() {
-                                let mut wallet_details =
-                                    (*locked_ls).get(&raw_hash(&self.path)).unwrap_or(&self).clone();
-                                wallet_details.meta.balance = response.balance;
-                                wallet_details.meta.locked = response.locked;
-                                (*locked_ls).insert(self.path.clone(), wallet_details);
-                                drop(locked_ls);
-                            } else {
-                                error!("Failed to lock OPENED_WALLETS mutex");
-                            }
+                } else {
+                    info!("Found existing blocks for chain, skipping genesis block creation");
+                }
+                let request_url = format!(
+                    "{}/api/v1/balances/{}",
+                    CONFIG.lock().unwrap().as_ref().unwrap().node_address,
+                    wallet.wallet.public_key
+                );
+                if let Ok(response_undec) = reqwest::blocking::get(&request_url) {
+                    if let Ok(response) = response_undec.json::<Balances>() {
+                        info!(
+                            "Balance: {}, Locked: {}",
+                            to_dec(response.balance),
+                            to_dec(response.locked)
+                        );
+                        if let Ok(mut locked_ls) = OPEN_WALLETS.lock() {
+                            let mut wallet_details = (*locked_ls)
+                                .get(&raw_hash(&self.path))
+                                .unwrap_or(&self)
+                                .clone();
+                            wallet_details.meta.balance = response.balance;
+                            wallet_details.meta.locked = response.locked;
+                            (*locked_ls).insert(self.path.clone(), wallet_details);
+                            drop(locked_ls);
                         } else {
-                            error!("Failed to decode recieved 'balances' json");
+                            error!("Failed to lock OPENED_WALLETS mutex");
+                            return Err("Failed to lock OPENED_WALLETS mutex".into());
                         }
                     } else {
-                        error!("Failed to request {}", request_url);
+                        error!("Failed to decode recieved 'balances' json");
+                        return Err("Failed to decode recieved 'balances' json".into());
                     }
-                    let request_url = format!(
-                        "{}/api/v1/transactioncount/{}",
-                        CONFIG.lock().unwrap().as_ref().unwrap().node_address,
-                        wallet.wallet.public_key
-                    );
-                    if let Ok(response) = reqwest::blocking::get(&request_url) {
-                        if let Ok(transactioncount) = response.json::<Transactioncount>() {
-                            if let Ok(mut locked_ls) = OPEN_WALLETS.lock() {
-                                let mut wallet_details =
-                                    (*locked_ls).get(&raw_hash(&self.path)).unwrap_or(&self).clone();
-                                wallet_details.meta.account_nonce =
-                                    transactioncount.transaction_count;
+                } else {
+                    error!("Failed to request {}", request_url);
+                    return Err("Failed to request".into());
+                }
+                let request_url = format!(
+                    "{}/api/v1/transactioncount/{}",
+                    CONFIG.lock().unwrap().as_ref().unwrap().node_address,
+                    wallet.wallet.public_key
+                );
+                if let Ok(response) = reqwest::blocking::get(&request_url) {
+                    let json_res = response.json::<Transactioncount>();
+                    if let Ok(transactioncount) = json_res {
+                        if let Ok(mut locked_ls) = OPEN_WALLETS.lock() {
+                            trace!("Got lock on OPEN_WALLETS");
+                            let mut wallet_details = (*locked_ls)
+                                .get(&raw_hash(&self.path))
+                                .unwrap_or(&self)
+                                .clone();
+                            wallet_details.meta.account_nonce = transactioncount.transaction_count;
 
-                                (*locked_ls).insert(self.path.clone(), wallet_details);
-                                drop(locked_ls);
-                            } else {
-                                error!("Failed to lock OPENED_WALLETS mutex");
-                            }
+                            (*locked_ls).insert(self.path.clone(), wallet_details);
+                            drop(locked_ls);
+
                         } else {
-                            error!("Failed to decode recieved 'transactioncount' json");
+                            error!("Failed to lock OPENED_WALLETS mutex");
+                            return Err("Failed to lock OPENED_WALLETS mutex".into());
                         }
+                    } else {
+                        error!("Failed to decode recieved 'transactioncount' json, error={}", json_res.unwrap_err());
+                        return Err("Failed to decode recieved 'transactioncount' json".into());
                     }
                 }
             }
@@ -709,16 +720,22 @@ fn main() {
     let refresher_thread = std::thread::spawn(move || {
         info!("Starting wallet update service");
         loop {
+            let  mut wallets_clone: HashMap<String, OpenedWallet> = HashMap::new();
             match OPEN_WALLETS.lock() {
                 Ok(mut wallets) => {
+                    trace!("Got lock on OPEN_WALLETS mutex");
                     for wallet in wallets.values_mut() {
-                        let _ = wallet.refresh();
-                        let _ = wallet.disk_flush(true);
+                        wallets_clone.insert(wallet.path.clone(), wallet.clone());
                     }
                 }
                 Err(e) => {
                     error!("Failed to lock wallet list: {}", e);
                 }
+            }
+            for wallet in wallets_clone.values_mut() {
+                debug!("Refreshing {}", wallet.wallet.address());
+                let _ = wallet.refresh();
+                let _ = wallet.disk_flush(true);
             }
             std::thread::sleep(Duration::from_secs(api_config.refresh_interval));
         }
