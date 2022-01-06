@@ -287,8 +287,6 @@ pub fn create_wallet(walletname: String, password: String, authkey: String) -> S
             .to_string();
     } else {
         let wallet = wall.unwrap();
-        // add the wallet to the users auth list
-        wallet.add_to_locks(&authkey).unwrap();
         return ("{ \"success\": true, \"public_key\": ".to_owned()
             + &wallet.wallet.public_key
             + &"}")
