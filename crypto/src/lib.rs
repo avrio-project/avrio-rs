@@ -367,10 +367,7 @@ impl Wallet {
         }
         let checked_bytes = decoded[length - 1] as usize;
         let without_prefix = &decoded[1..=((length - checked_bytes) - 2)];
-        let checked: String = StringHash {
-            s: String::from_utf8((*without_prefix).to_vec()).unwrap_or_default(),
-        }
-        .hash_item();
+        let checked: String = raw_sha (String::from_utf8((*without_prefix).to_vec()).unwrap_or_default());
         if decoded[((length - 1) - checked_bytes)..=length - 2]
             != *(checked[0..checked_bytes].as_bytes())
         {
@@ -397,7 +394,7 @@ impl Wallet {
         let mut unencoded: Vec<u8> = vec![];
         unencoded.extend(vec![0].iter());
         unencoded.extend(self.public_key.bytes());
-        let checked: String = self.public_key.hash_item();
+        let checked: String = raw_sha(self.public_key);
         let mut i: usize = 0;
         while unencoded.len() != 49 {
             i += 1;
@@ -429,7 +426,7 @@ pub fn public_key_to_address(public_key: &str) -> String {
     let mut unencoded: Vec<u8> = vec![];
     unencoded.extend(vec![0].iter());
     unencoded.extend(public_key.bytes());
-    let checked: String = public_key.to_string().hash_item();
+    let checked: String = raw_sha(public_key.to_string());
     let mut i: usize = 0;
     while unencoded.len() != 49 {
         i += 1;
