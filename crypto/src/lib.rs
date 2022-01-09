@@ -337,10 +337,12 @@ pub fn valid_address(address: &str) -> bool {
     }
     let checked_bytes = decoded[length - 1] as usize;
     let without_prefix = &decoded[1..=((length - checked_bytes) - 2)];
-    let checked: String =raw_sha(&String::from_utf8((*without_prefix).to_vec()).unwrap_or_default());
-    if decoded[((length - 1) - checked_bytes)..=length - 2]
-        != *(checked[0..checked_bytes].as_bytes())
-    {
+    let checked = bs58::decode(raw_sha(
+        &String::from_utf8((*without_prefix).to_vec()).unwrap_or_default(),
+    ))
+    .into_vec()
+    .unwrap();
+    if decoded[((length - 1) - checked_bytes)..=length - 2] != checked[0..checked_bytes] {
         return false;
     }
     true
@@ -364,10 +366,12 @@ impl Wallet {
         }
         let checked_bytes = decoded[length - 1] as usize;
         let without_prefix = &decoded[1..=((length - checked_bytes) - 2)];
-        let checked: String = raw_sha(&String::from_utf8((*without_prefix).to_vec()).unwrap_or_default());
-        if decoded[((length - 1) - checked_bytes)..=length - 2]
-            != *(checked[0..checked_bytes].as_bytes())
-        {
+        let checked = bs58::decode(raw_sha(
+            &String::from_utf8((*without_prefix).to_vec()).unwrap_or_default(),
+        ))
+        .into_vec()
+        .unwrap();
+        if decoded[((length - 1) - checked_bytes)..=length - 2] != checked[0..checked_bytes] {
             return Wallet {
                 private_key: "".into(),
                 public_key: "".into(),
@@ -388,17 +392,7 @@ impl Wallet {
         }
     }
     pub fn address(&self) -> String {
-        let mut unencoded: Vec<u8> = vec![];
-        unencoded.extend(vec![0].iter());
-        unencoded.extend(self.public_key.bytes());
-        let checked: String = raw_sha(&self.public_key);
-        let mut i: usize = 0;
-        while unencoded.len() != 49 {
-            i += 1;
-            unencoded.extend(checked[i - 1..i].bytes());
-        }
-        unencoded.push(i as u8);
-        return bs58::encode(unencoded).into_string();
+        public_key_to_address(&self.public_key)
     }
     pub fn gen() -> Wallet {
         let rngc = randc::SystemRandom::new();
@@ -423,13 +417,16 @@ pub fn public_key_to_address(public_key: &str) -> String {
     let mut unencoded: Vec<u8> = vec![];
     unencoded.extend(vec![0].iter());
     unencoded.extend(public_key.bytes());
-    let checked: String = raw_sha(&public_key.to_string());
+    trace!("unencoded={:?}", unencoded);
+    let checked = bs58::decode(raw_sha(public_key)).into_vec().unwrap();
+    trace!("checked={:?}", checked);
     let mut i: usize = 0;
     while unencoded.len() != 49 {
         i += 1;
-        unencoded.extend(checked[i - 1..i].bytes());
+        unencoded.push(checked[i - 1..i][0]);
     }
     unencoded.push(i as u8);
+    trace!("unencoded={:?}", unencoded);
     return bs58::encode(unencoded).into_string();
 }
 
