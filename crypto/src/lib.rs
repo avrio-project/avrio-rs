@@ -337,10 +337,7 @@ pub fn valid_address(address: &str) -> bool {
     }
     let checked_bytes = decoded[length - 1] as usize;
     let without_prefix = &decoded[1..=((length - checked_bytes) - 2)];
-    let checked: String = StringHash {
-        s: String::from_utf8((*without_prefix).to_vec()).unwrap_or_default(),
-    }
-    .hash_item();
+    let checked: String =raw_sha(String::from_utf8((*without_prefix).to_vec()).unwrap_or_default());
     if decoded[((length - 1) - checked_bytes)..=length - 2]
         != *(checked[0..checked_bytes].as_bytes())
     {
