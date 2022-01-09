@@ -513,13 +513,15 @@ impl OpenedWallet {
 
                             (*locked_ls).insert(self.path.clone(), wallet_details);
                             drop(locked_ls);
-
                         } else {
                             error!("Failed to lock OPENED_WALLETS mutex");
                             return Err("Failed to lock OPENED_WALLETS mutex".into());
                         }
                     } else {
-                        error!("Failed to decode recieved 'transactioncount' json, error={}", json_res.unwrap_err());
+                        error!(
+                            "Failed to decode recieved 'transactioncount' json, error={}",
+                            json_res.unwrap_err()
+                        );
                         return Err("Failed to decode recieved 'transactioncount' json".into());
                     }
                 }
@@ -720,7 +722,7 @@ fn main() {
     let refresher_thread = std::thread::spawn(move || {
         info!("Starting wallet update service");
         loop {
-            let  mut wallets_clone: HashMap<String, OpenedWallet> = HashMap::new();
+            let mut wallets_clone: HashMap<String, OpenedWallet> = HashMap::new();
             match OPEN_WALLETS.lock() {
                 Ok(mut wallets) => {
                     trace!("Got lock on OPEN_WALLETS mutex");

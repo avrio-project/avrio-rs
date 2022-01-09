@@ -234,7 +234,8 @@ pub fn auth(key: String) -> String {
                 let token = generate_token();
                 users.insert(token.clone(), vec![]);
                 log::info!("New user authenticated, provided key: {}", token);
-                return ("{ \"success\": true, \"token\": \"".to_owned() + &token + "\"}").to_string();
+                return ("{ \"success\": true, \"token\": \"".to_owned() + &token + "\"}")
+                    .to_string();
             }
             Err(e) => {
                 error!("Failed to lock user hashmap, error={}", e);
