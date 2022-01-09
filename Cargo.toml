@@ -8,5 +8,6 @@ members = [
   "api",
   "crypto",
   "bin",
-  "rpc"
+  "rpc",
+  "sync",
 ]

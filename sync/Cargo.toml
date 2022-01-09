@@ -1,0 +1,22 @@
+[package]
+name = "avrio_sync"
+version = "0.1.0"
+authors = [
+    "Leo Cornelius <leocornelius019@gmail.com>",
+]
+edition = "2018"
+
+[dependencies]
+avrio_config = { path = "../config/" }
+avrio_database = { path = "../database" }
+avrio_core = { path = "../core" }
+avrio_crypto = { path = "../crypto" }
+avrio_p2p = { path = "../p2p" }
+log = "~0.4"
+rand = "~0.7.3"
+serde = "~1.0.82"
+serde_derive = "1.0.104"
+unwrap = "~1.2.1"
+lazy_static = "1.4"
+hex = "0.4.2"
+bs58 = "~0.4.0"
