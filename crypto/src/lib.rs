@@ -423,7 +423,7 @@ pub fn public_key_to_address(public_key: &str) -> String {
     let mut unencoded: Vec<u8> = vec![];
     unencoded.extend(vec![0].iter());
     unencoded.extend(public_key.bytes());
-    let checked: String = raw_sha(public_key.to_string());
+    let checked: String = raw_sha(&public_key.to_string());
     let mut i: usize = 0;
     while unencoded.len() != 49 {
         i += 1;
