@@ -1,4 +1,4 @@
-use std::{sync::mpsc, thread::JoinHandle};
+use std::{sync::mpsc, thread::JoinHandle, net::TcpStream};
 
 use crate::{
     downloader::{DownloadCommand, DownloadManager, DownloadManagerMeta, Download, DownloadType},
@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub struct SyncManager {
+    pub started: bool,
     /// The current sync state
     pub state: SyncState,
     /// The current sync task
@@ -66,14 +67,15 @@ impl Actor<SyncCommand, SyncBackwash> for SyncManagerMeta {
 }
 
 impl SyncManager {
-    pub fn worker() -> SyncManagerMeta {
+    pub fn worker(peer: TcpStream, backup_peers: Vec<TcpStream>) -> SyncManagerMeta {
         let (tx, rx) = mpsc::channel();
         let (backwash_tx, backwash_rx) = mpsc::channel();
         let mut manager = SyncManager {
+            started: false,
             state: SyncState::Idle,
             task: None,
             error: None,
-            download_manager: DownloadManager::worker(),
+            download_manager: DownloadManager::worker(peer, backup_peers), // TODO: Use PeerManager instead 
             processor: ProcessorManager::worker(),
             verifier: VerifierManager::worker(),
             rx,
@@ -84,6 +86,10 @@ impl SyncManager {
             for command in commands {
                 match command {
                     SyncCommand::Start => {
+                        if manager.started {
+                            manager.backwash_tx.send(SyncBackwash::Error(SyncError::SyncAlreadyStarted)).unwrap();
+                            continue;
+                        } else {
                         manager.state = SyncState::Syncing(
                             SyncTask::Download(SyncDownloadTask::StateDigest),
                             SyncProgress::Starting,
@@ -97,6 +103,8 @@ impl SyncManager {
                                 0,
                             )))
                             .unwrap();
+                            manager.started = true;
+                        }
                     }
                     SyncCommand::GetProgress => {
                         let progress = manager.download_manager.get_progress().unwrap();
