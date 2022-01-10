@@ -1,6 +1,6 @@
 use std::error::Error as StdErrorU;
-
 trait StdError = StdErrorU + Send + Sync;
+
 #[derive(Debug)]
 pub enum SyncState {
     Idle,                            // Nothing happening
@@ -34,7 +34,7 @@ pub enum SyncProcessTask {
     Blocks,        // processing blocks for a downloaded chunk
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub enum SyncDataType {
     StateDigest,
     ShardList,
@@ -43,14 +43,47 @@ pub enum SyncDataType {
     Chunk,
     Block,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SyncError {
     UnexpectedMessageType(u8, u8), // Unexpected message type (tuple 0: expected, 1: got)
-    FailedToParseData(String, SyncDataType, Box<dyn StdError>), // Failed to parse recieved data (tuple 0: Data, 1: datra type (eg block), 2: the error recieved)
-    NoCommonChain,                                              // Unable to rectify chain with peer
-    FailedToSave(String, SyncDataType, Box<dyn StdError>), // Failed to save data (tuple 0: identifer,1: the data type (eg block), 2: the error recieved)
-    FailedToEnact(String, SyncDataType, Box<dyn StdError>), // Failed to enact data (tuple 0: identifer,1: the data type (eg block), 2: the error recieved)
+    FailedToParseData(String, SyncDataType, std::sync::Arc<Box<dyn StdError>>), // Failed to parse recieved data (tuple 0: Data, 1: datra type (eg block), 2: the error recieved)
+    NoCommonChain, // Unable to rectify chain with peer
+    FailedToSave(String, SyncDataType, std::sync::Arc<Box<dyn StdError>>), // Failed to save data (tuple 0: identifer,1: the data type (eg block), 2: the error recieved)
+    FailedToEnact(String, SyncDataType, std::sync::Arc<Box<dyn StdError>>), // Failed to enact data (tuple 0: identifer,1: the data type (eg block), 2: the error recieved)
+    SyncAlreadyStarted,
+    P2pReadError(String, SyncDataType, std::sync::Arc<Box<dyn StdError>>),
+    P2pSendError(String, SyncDataType, std::sync::Arc<Box<dyn StdError>>),
+
 }
+
+impl PartialEq for SyncError {
+    fn eq(&self, other: &Self) -> bool {
+        use SyncError::*;
+        match (self, other) {
+            (SyncAlreadyStarted, SyncAlreadyStarted) => true,
+            (NoCommonChain, NoCommonChain) => true,
+            (FailedToEnact(a_m, a_t, _), FailedToEnact(b_m, b_t, _)) => {
+                (a_m == b_m) && (a_t == b_t)
+            }
+            (FailedToSave(a_m, a_t, _), FailedToSave(b_m, b_t, _)) => (a_m == b_m) && (a_t == b_t),
+            (FailedToParseData(a_m, a_t, _), FailedToParseData(b_m, b_t, _)) => {
+                (a_m == b_m) && (a_t == b_t)
+            }
+            (P2pReadError(a_m, a_t, _), P2pReadError(b_m, b_t, _)) => {
+                (a_m == b_m) && (a_t == b_t)
+            }
+            (P2pSendError(a_m, a_t, _), P2pSendError(b_m, b_t, _)) => {
+                (a_m == b_m) && (a_t == b_t)
+            }
+            (UnexpectedMessageType(a_1, a_2), UnexpectedMessageType(b_1, b_2)) => {
+                (a_1 == b_1) && (a_2 == b_2)
+            }
+
+            _ => false,
+        }
+    }
+}
+
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
 pub enum SyncProgress {
     Starting,             // Starting sync
