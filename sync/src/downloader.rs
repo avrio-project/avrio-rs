@@ -1,8 +1,19 @@
+use crate::{
+    types::{SyncDataType, SyncError, SyncProgress},
+    Actor, Command,
+};
+use avrio_core::block::{from_compact, Block};
 use avrio_crypto::raw_hash;
-use std::{collections::HashMap, sync::mpsc, thread::JoinHandle};
-
-use crate::{types::SyncProgress, Actor, Command};
-
+use avrio_p2p::{
+    format::P2pData,
+    io::{read, send},
+};
+use std::{
+    collections::HashMap,
+    net::TcpStream,
+    sync::{mpsc, Arc},
+    thread::JoinHandle,
+};
 #[derive(Debug, Clone)]
 pub enum DownloadType {
     Block,
@@ -12,6 +23,18 @@ pub enum DownloadType {
     ShardTip,
     StateDigest,
     ShardList,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DownloadGoal {
+    download_id: String,
+    backwash: DownloadBackwash,
+}
+
+impl DownloadGoal {
+    pub fn execute(&self, backash_tx: &mpsc::Sender<DownloadBackwash>) {
+        let _ = backash_tx.send(self.backwash.clone());
+    }
 }
 
 impl DownloadType {
@@ -58,10 +81,11 @@ pub enum DownloadCommand {
     Shutdown,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DownloadBackwash {
     Data(Option<(String, String)>),
     Progress(SyncProgress),
+    Error(SyncError),
     None,
 }
 
@@ -74,6 +98,9 @@ pub struct DownloadManager {
     cache: HashMap<String, String>,
     rx: mpsc::Receiver<DownloadCommand>,
     backwash_tx: mpsc::Sender<DownloadBackwash>,
+    goals: Vec<DownloadGoal>,
+    peer: TcpStream,
+    backup_peers: Vec<TcpStream>,
 }
 
 pub struct DownloadManagerMeta {
@@ -93,15 +120,18 @@ impl Download {
 }
 
 impl DownloadManager {
-    pub fn worker() -> DownloadManagerMeta {
+    pub fn worker(peer: TcpStream, backup_peers: Vec<TcpStream>) -> DownloadManagerMeta {
         let (tx, rx) = mpsc::channel();
         let (backwash_tx, backwash_rx) = mpsc::channel();
         let mut manager = DownloadManager {
             rx,
             backwash_tx,
             downloads: vec![],
-            completed_downloads: vec![],
+            goals: vec![],
             cache: HashMap::new(),
+            completed_downloads: vec![],
+            peer,
+            backup_peers,
         };
         let join_handle = std::thread::spawn(move || {
             loop {
@@ -168,72 +198,178 @@ impl DownloadManager {
                         .sort_by(|a, b| a.priority.cmp(&b.priority));
                     let mut completed_downloads = manager.completed_downloads.clone();
                     let mut cache = manager.cache.clone();
+                    let mut goals = manager.goals.clone();
+                    let backwash_tx_clone = manager.backwash_tx.clone();
+                    let mut peer = manager.peer.try_clone().unwrap();
                     manager.downloads.retain(|download| {
-                        match download.resorce_type {
+                        let downloaded: bool = match download.resorce_type {
                             DownloadType::Block => {
                                 if cache.contains_key(&download.resorce) {
                                     completed_downloads.push(download.clone());
                                     return false;
                                 } else {
-                                    // TODO: main function to download the block
-                                    return true;
+                                    // send a peer a message asking for the block
+                                    if let Err(p2p_error) = send(
+                                        download.resorce.clone(),
+                                        &mut peer,
+                                        0x05,
+                                        true,
+                                        None,
+                                    ) {
+                                        log::error!(
+                                            "Asking peer for block: {}, gave error: {}",
+                                            download.resorce,
+                                            p2p_error
+                                        );
+                                        let _ = send(
+                                            "".to_string(),
+                                            &mut peer,
+                                            0x23,
+                                            true,
+                                            None,
+                                        );
+                                        backwash_tx_clone
+                                            .send(DownloadBackwash::Error(SyncError::P2pSendError(
+                                                download.resorce.clone(),
+                                                SyncDataType::Block,
+                                                Arc::new(
+                                                    Err::<
+                                                        (),
+                                                        Box<dyn std::error::Error + Send + Sync>,
+                                                    >(
+                                                        format!("{}", p2p_error).into()
+                                                    )
+                                                    .unwrap_err(),
+                                                ),
+                                            )))
+                                            .unwrap();
+                                        true
+                                    } else {
+                                        let mut no_read: bool = true;
+                                        let mut buf = [0; 2048];
+                                        while no_read {
+                                            if let Ok(a) = peer.peek(&mut buf) {
+                                                if a == 0 {
+                                                } else {
+                                                    no_read = false;
+                                                }
+                                            }
+                                        }
+
+                                        // There are now bytes waiting in the stream
+                                        let deformed: P2pData = read(&mut peer, Some(1000), None)
+                                            .unwrap_or_else(|p2p_read_error| {
+                                                log::error!(
+                                                    "Failed to read p2pdata: {}",
+                                                    p2p_read_error
+                                                );
+                                                backwash_tx_clone
+                                                    .send(DownloadBackwash::Error(
+                                                        SyncError::P2pReadError(
+                                                            download.resorce.clone(),
+                                                            SyncDataType::Block,
+                                                            Arc::new(
+                                                                Err::<
+                                                                    (),
+                                                                    Box<
+                                                                        dyn std::error::Error
+                                                                            + Send
+                                                                            + Sync,
+                                                                    >,
+                                                                >(
+                                                                    format!("{}", p2p_read_error)
+                                                                        .into(),
+                                                                )
+                                                                .unwrap_err(),
+                                                            ),
+                                                        ),
+                                                    ))
+                                                    .unwrap();
+                                                P2pData::default()
+                                            });
+
+                                        log::trace!("got block: {:#?}", deformed);
+
+                                        if deformed.message_type == 0x04 {
+                                            let block_encoded: String = deformed.message.clone();
+
+                                            // add this block to the cache
+                                            cache.insert(
+                                                download.resorce.clone(),
+                                                block_encoded.clone(),
+                                            );
+                                            false
+                                        } else {
+                                            true
+                                        }
+                                    }
                                 }
                             }
                             DownloadType::BlockChunk => {
                                 if cache.contains_key(&download.resorce) {
                                     completed_downloads.push(download.clone());
-                                    return false;
+                                    false
                                     // TODO: main function to download block chunks
                                 } else {
-                                    return true;
+                                    true
                                 }
                             }
                             DownloadType::Transaction => {
                                 if cache.contains_key(&download.resorce) {
                                     completed_downloads.push(download.clone());
-                                    return false;
+                                    false
                                 } else {
                                     // TODO: main function to download transaction
-                                    return true;
+                                    true
                                 }
                             }
                             DownloadType::ShardMetadata => {
                                 if cache.contains_key(&download.resorce) {
                                     completed_downloads.push(download.clone());
-                                    return false;
+                                    false
                                 } else {
                                     // TODO: main function to download shardMetadata
-                                    return true;
+                                    true
                                 }
                             }
                             DownloadType::ShardTip => {
                                 if cache.contains_key(&download.resorce) {
                                     completed_downloads.push(download.clone());
-                                    return false;
+                                    false
                                 } else {
                                     // TODO: main function to download shardMetadata
-                                    return true;
+                                    true
                                 }
                             }
                             DownloadType::StateDigest => {
                                 if cache.contains_key(&download.resorce) {
                                     completed_downloads.push(download.clone());
-                                    return false;
+                                    false
                                 } else {
                                     // TODO: main function to download shardMetadata
-                                    return true;
+                                    true
                                 }
                             }
                             DownloadType::ShardList => {
                                 if cache.contains_key(&download.resorce) {
                                     completed_downloads.push(download.clone());
-                                    return false;
+                                    false
                                 } else {
                                     // TODO: main function to download shardMetadata
-                                    return true;
+                                    true
                                 }
                             }
+                        };
+                        if downloaded {
+                            goals.retain(|goal| {
+                                if goal.download_id == download.id() {
+                                    goal.execute(&backwash_tx_clone);
+                                    return false;
+                                }
+                                return true;
+                            });
                         }
+                        downloaded
                     });
                     manager.completed_downloads = completed_downloads;
                     manager.cache = cache;
@@ -308,6 +444,7 @@ impl DownloadManagerMeta {
                 //self.tx.send(DownloadCommand::ReportProgress(progress))?;
             }
             DownloadBackwash::None => todo!(),
+            DownloadBackwash::Error(_e) => todo!(),
         }
     }
 }
