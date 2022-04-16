@@ -1212,7 +1212,7 @@ pub fn create_wallet() -> Result<Wallet, Box<dyn Error>> {
     let name: String = trim_newline(&mut read!());
     info!("Enter password:");
     let password: String = rpassword::read_password()?;
-    if get_data(config().db_path + &"/wallets/".to_owned() + &name, "pubkey") != "-1" {
+    if get_data("wallets/".to_owned() + &name, "pubkey") != "-1" {
         error!("Wallet already exists");
         return Err("Wallet path taken".into());
     } else {
@@ -1233,7 +1233,7 @@ fn import_wallet() -> Result<Wallet, Box<dyn Error>> {
     let private_key: String = trim_newline(&mut read!());
     info!("Please enter name of new wallet");
     let name: String = trim_newline(&mut read!());
-    if get_data(config().db_path + &"/wallets/".to_owned() + &name, "pubkey") != "-1" {
+    if get_data("wallets/".to_owned() + &name, "pubkey") != "-1" {
         error!("Wallet with name={} already exists", name);
         return Err("wallet with name already exists".into());
     }
@@ -1264,7 +1264,7 @@ pub fn save_wallet(
     name: String,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let conf = config();
-    let path = conf.db_path.clone() + &"/wallets/".to_owned() + &name;
+    let path = "wallets/".to_owned() + &name;
     let mut padded = password.as_bytes().to_vec();
     while padded.len() != 32 && padded.len() < 33 {
         padded.push(b"n"[0]);
@@ -1320,7 +1320,7 @@ pub fn open_wallet(wallet_name: String, password: String) -> Wallet {
     let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
     trace!("nonce: {}", padded_string);
     let ciphertext = hex::decode(get_data(
-        config().db_path + &"/wallets/".to_owned() + &wallet_name,
+        "wallets/".to_owned() + &wallet_name,
         &"privkey".to_owned(),
     ))
     .expect("failed to parse hex");

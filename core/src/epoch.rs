@@ -93,12 +93,7 @@ impl Epoch {
     pub fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.hash();
         let serialized = serde_json::to_string(self)?;
-        if save_data(
-            &serialized,
-            &(config().db_path + "/epochdata"),
-            self.epoch_number.to_string(),
-        ) == 1
-        {
+        if save_data(&serialized, "epochdata", self.epoch_number.to_string()) == 1 {
             return Ok(());
         } else {
             return Err("Failed to save data".into());
@@ -112,7 +107,7 @@ impl Epoch {
         self.save()?;
         if save_data(
             &self.epoch_number.to_string(),
-            &(config().db_path + "/epochdata"),
+            "epochdata",
             "topepoch".to_string(),
         ) == 1
         {
@@ -122,7 +117,7 @@ impl Epoch {
         }
     }
     pub fn get(epoch_number: u64) -> Result<Epoch, Box<dyn std::error::Error>> {
-        let got_data = get_data(config().db_path + "/epochdata", &epoch_number.to_string());
+        let got_data = get_data("epochdata".to_owned(), &epoch_number.to_string());
         if got_data != "-1" {
             return Ok(serde_json::from_str(&got_data)?);
         } else {
@@ -131,7 +126,7 @@ impl Epoch {
     }
 }
 pub fn get_top_epoch() -> Result<Epoch, Box<dyn std::error::Error>> {
-    let got_data = get_data(config().db_path + "/epochdata", "topepoch");
+    let got_data = get_data("epochdata".to_owned(), "topepoch");
     if got_data != "-1" {
         return Epoch::get(got_data.parse()?);
     } else {

@@ -48,7 +48,7 @@ pub fn sync_needed() -> Result<bool, Box<dyn Error>> {
         // we got at least one chain digest
         // find the most common chain digest
         let mode: String = get_mode(chain_digests.clone());
-        let ours = get_data(config().db_path + &"/chaindigest".to_owned(), &"master");
+        let ours = get_data("chaindigest".to_owned(), &"master");
         debug!(
             "Chain digests: {:#?}, mode: {}, ours: {}",
             chain_digests, mode, ours
@@ -294,7 +294,7 @@ pub fn sync() -> Result<u64, String> {
     }
 
     info!("Synced all chains, checking chain digest with peers");
-    let cd = form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
+    let cd = form_state_digest("chaindigest".to_owned()).unwrap(); //  recalculate our state digest
     if cd != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
         error!("Our CD: {}, expected: {}", cd, mode_hash);
@@ -423,8 +423,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
 
                     let mut top_block_hash: String;
                     let peer = &mut peer_to_use_unwraped;
-                    top_block_hash =
-                        get_data(config().db_path + "/globalindex", "globaltopblockhash");
+                    top_block_hash = get_data("globalindex".to_owned(), "globaltopblockhash");
                     if top_block_hash == "-1" {
                         top_block_hash = "0".to_string();
                         if let Err(e) = send(serde_json::to_string(&0)?, peer, 0x7f, true, None) {
@@ -534,8 +533,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
 
                         let top_block_hash: String;
 
-                        top_block_hash =
-                            get_data(config().db_path + "/globalindex", "globaltopblockhash");
+                        top_block_hash = get_data("globalindex".to_owned(), "globaltopblockhash");
 
                         trace!("Asking peer for blocks above hash: {}", top_block_hash);
 
@@ -572,7 +570,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
                         }
                     }
                     info!("Synced all blocks, checking chain digest with peers");
-                    let cd = form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
+                    let cd = form_state_digest("chaindigest".to_owned()).unwrap(); //  recalculate our state digest
                     if cd != mode_hash {
                         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or register_username etc) then ignore this. If not please delete your data dir and resync");
                         error!("Our CD: {}, expected: {}", cd, mode_hash);
@@ -592,7 +590,7 @@ pub fn sync_in_order() -> Result<u64, Box<dyn std::error::Error>> {
     }
 
     info!("Synced all chains, checking chain digest with peers");
-    let cd = form_state_digest(config().db_path + "/chaindigest").unwrap(); //  recalculate our state digest
+    let cd = form_state_digest("chaindigest".to_owned()).unwrap(); //  recalculate our state digest
     if cd != mode_hash {
         error!("Synced blocks do not result in mode block hash, if you have appended blocks (using send_txn or generate etc) then ignore this. If not please delete your data dir and resync");
         error!("Our SD: {}, expected: {}", cd, mode_hash);
@@ -661,7 +659,7 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
     let top_block_hash: String;
     // let opened_db: rocksdb::DB;
     top_block_hash = get_data(
-        config().db_path + "/chains/" + &chain + "-chainindex",
+        "chains/".to_owned() + &chain + "-chainindex",
         "topblockhash",
     );
 
@@ -780,7 +778,7 @@ pub fn sync_chain(chain: String, peer: &mut TcpStream) -> Result<u64, Box<dyn st
         let top_block_hash: String;
 
         top_block_hash = get_data(
-            config().db_path + "/chains/" + &chain + "-chainindex",
+            "chains/".to_owned() + &chain + "-chainindex",
             "topblockhash",
         );
 

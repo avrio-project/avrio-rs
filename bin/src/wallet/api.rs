@@ -268,7 +268,7 @@ pub fn open_wallet(walletname: String, password: String) -> String {
                 let nonce = GenericArray::from_slice(padded_string.as_bytes()); // 96-bits; unique per message
                 trace!("nonce: {}", padded_string);
                 let ciphertext = hex::decode(get_data(
-                    config().db_path + &"/wallets/".to_owned() + &walletname,
+                    "wallets/".to_owned() + &walletname,
                     &"privkey".to_owned(),
                 ))
                 .expect("failed to parse hex");
@@ -338,7 +338,7 @@ pub fn create_wallet(
     authkey: String,
 ) -> String {
     if avrio_database::get_data(
-        config().db_path + &"/wallets/".to_owned() + &walletname,
+        "wallets/".to_owned() + &walletname,
         "pubkey",
     ) != "-1"
     {

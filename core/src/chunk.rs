@@ -90,7 +90,7 @@ impl Verifiable for BlockChunk {
                                     return Err("Failed to write publickey bytes to buffer".into());
                                 } else {
                                     let ecdsa_publickey = get_data(
-                                        config().db_path + "/blslookup",
+                                        "blslookup".to_owned(),
                                         &bs58::encode(&buffer).into_string(),
                                     );
                                     if ecdsa_publickey == "-1" {
@@ -137,19 +137,14 @@ impl Verifiable for BlockChunk {
 
     fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let serialized = self.encode()?;
-        if save_data(
-            &serialized,
-            &(config().db_path + "/blockchunks"),
-            self.hash.clone(),
-        ) == 1
-        {
+        if save_data(&serialized, "blockchunks", self.hash.clone()) == 1 {
             return Ok(());
         } else {
             return Err("Failed to save data".into());
         }
     }
     fn get(hash: String) -> Result<Box<BlockChunk>, Box<dyn std::error::Error>> {
-        let got_data = get_data(config().db_path + "/blockchunks", &hash);
+        let got_data = get_data("blockchunks".to_owned(), &hash);
         if got_data != "-1" {
             return Ok(Box::new(BlockChunk::decode(got_data)?));
         } else {
@@ -162,14 +157,14 @@ impl Verifiable for BlockChunk {
         // increase current round for committee
         if save_data(
             &self.round.to_string(),
-            &(config().db_path + "/blockchunks"),
+            "blockchunks",
             self.committee.to_string() + "-round-" + &top_epoch.epoch_number.to_string(),
         ) == 1
         {
             // save indexes
             if save_data(
                 &self.hash,
-                &(config().db_path + "/blockchunks"),
+                "blockchunks",
                 self.round.to_string()
                     + "-"
                     + &top_epoch.epoch_number.to_string()
@@ -226,10 +221,8 @@ impl Verifiable for BlockChunk {
                         );
                         return Err("Failed to write publickey bytes to buffer".into());
                     } else {
-                        let ecdsa_publickey = get_data(
-                            config().db_path + "/blslookup",
-                            &bs58::encode(&buffer).into_string(),
-                        );
+                        let ecdsa_publickey =
+                            get_data("blslookup".to_owned(), &bs58::encode(&buffer).into_string());
                         if ecdsa_publickey == "-1" {
                             error!(
                                 "Cannot find corrosponding ECDSA publickey for BLS signer {}",
@@ -309,7 +302,7 @@ impl BlockChunk {
     pub fn empty(committee: u64) -> Result<Box<BlockChunk>, Box<dyn std::error::Error>> {
         let top_epoch = get_top_epoch()?;
         let top_round_index: u64 = get_data(
-            config().db_path + "/blockchunks",
+            "blockchunks".to_owned(),
             &(committee.to_string() + "-round-" + &top_epoch.epoch_number.to_string()),
         )
         .parse()?;
@@ -332,10 +325,8 @@ impl BlockChunk {
             );
             return Err("Failed to write publickey bytes to buffer".into());
         } else {
-            let ecdsa_publickey = get_data(
-                config().db_path + "/blslookup",
-                &bs58::encode(&buffer).into_string(),
-            );
+            let ecdsa_publickey =
+                get_data("blslookup".to_owned(), &bs58::encode(&buffer).into_string());
             if ecdsa_publickey == "-1" {
                 error!(
                     "Cannot find corrosponding ECDSA publickey for BLS signer {}",
@@ -360,10 +351,8 @@ impl BlockChunk {
                 );
                 return Err("Failed to write publickey bytes to buffer".into());
             } else {
-                let ecdsa_publickey = get_data(
-                    config().db_path + "/blslookup",
-                    &bs58::encode(&buffer).into_string(),
-                );
+                let ecdsa_publickey =
+                    get_data("blslookup".to_owned(), &bs58::encode(&buffer).into_string());
                 if ecdsa_publickey == "-1" {
                     error!(
                         "Cannot find corrosponding ECDSA publickey for BLS signer {}",
@@ -386,7 +375,7 @@ impl BlockChunk {
     ) -> Result<Box<BlockChunk>, Box<dyn std::error::Error>> {
         let top_epoch = get_top_epoch()?;
         let top_round_index: u64 = get_data(
-            config().db_path + "/blockchunks",
+            "blockchunks".to_owned(),
             &(committee.to_string() + "-round-" + &top_epoch.epoch_number.to_string()),
         )
         .parse()
@@ -463,7 +452,7 @@ impl BlockChunk {
         committee: u64,
     ) -> Result<Box<BlockChunk>, Box<dyn std::error::Error>> {
         let got_data = get_data(
-            config().db_path + "/blockchunks",
+            "blockchunks".to_owned(),
             &(round.to_string() + "-" + &epoch.to_string() + "-" + &committee.to_string()),
         );
         if got_data != "-1" {

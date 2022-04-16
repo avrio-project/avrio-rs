@@ -167,7 +167,7 @@ impl Comitee {
     pub fn round(&self) -> Result<u64, Box<dyn std::error::Error>> {
         let top_epoch = get_top_epoch()?;
         let read = get_data(
-            avrio_config::config().db_path + "/blockchunks",
+            "blockchunks".to_owned(),
             &(self.index.to_string() + "-round-" + &top_epoch.epoch_number.to_string()),
         );
         if read == "-1" {

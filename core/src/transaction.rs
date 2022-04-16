@@ -193,16 +193,13 @@ impl Verifiable for Transaction {
             return Err(Box::new(TransactionValidationErrors::BadHash));
         }
         let account_nonce = get_data(
-            config().db_path
-                + &"/chains/".to_owned()
-                + &self.sender_key
-                + &"-chainindex".to_owned(),
+            "chains/".to_owned() + &self.sender_key + &"-chainindex".to_owned(),
             &"txncount".to_owned(),
         );
         if self.nonce.to_string() != account_nonce && account_nonce != "-1" {
             return Err(Box::new(TransactionValidationErrors::BadNonce));
         }
-        let block_txn_is_in = get_data(config().db_path + &"/transactions".to_owned(), &self.hash);
+        let block_txn_is_in = get_data("transactions".to_owned(), &self.hash);
         if block_txn_is_in != *"-1" {
             error!(
                 "Transaction {} already in block {}",
@@ -415,12 +412,12 @@ impl Verifiable for Transaction {
                     return Err(Box::new(TransactionValidationErrors::ExtraTooLarge));
                 }
                 // check if the sender is a fullnode
-                if get_data(config().db_path + "/candidates", &self.sender_key) != "f" {
+                if get_data("candidates".to_owned(), &self.sender_key) != "f" {
                     error!("Non fullnode {} tried to create a invite", self.sender_key);
                     return Err(Box::new(TransactionValidationErrors::NotFullNode));
                 }
                 // check the invite does not already exist
-                if get_data(config().db_path + &"/invites".to_owned(), &self.extra) != "-1" {
+                if get_data("invites".to_owned(), &self.extra) != "-1" {
                     error!(
                         "Fullnode {} tried creating an invite that already exists ({})",
                         self.sender_key, self.extra
@@ -446,7 +443,7 @@ impl Verifiable for Transaction {
                     return Err(Box::new(TransactionValidationErrors::ExtraTooLarge));
                 }
                 // check if the sender is a fullnode
-                if get_data(config().db_path + "/candidates", &self.sender_key) != "f" {
+                if get_data("candidates".to_owned(), &self.sender_key) != "f" {
                     error!(
                         "Non fullnode {} tried to toggle participation",
                         self.sender_key
@@ -464,7 +461,7 @@ impl Verifiable for Transaction {
                     return Err(Box::new(TransactionValidationErrors::ExtraTooLarge));
                 }
                 // check if the sender is a fullnode
-                if get_data(config().db_path + "/candidates", &self.sender_key) != "f" {
+                if get_data("candidates".to_owned(), &self.sender_key) != "f" {
                     error!(
                         "Non fullnode {} tried to report {}",
                         self.sender_key, self.receive_key
@@ -472,7 +469,7 @@ impl Verifiable for Transaction {
                     return Err(Box::new(TransactionValidationErrors::NotFullNode));
                 }
                 // check if the reciever (node being reported) is a fullnode
-                if get_data(config().db_path + "/candidates", &self.receive_key) != "f" {
+                if get_data("candidates".to_owned(), &self.receive_key) != "f" {
                     error!(
                         "Non fullnode {} reported by {}",
                         self.receive_key, self.sender_key
@@ -777,12 +774,12 @@ impl Verifiable for Transaction {
                     ));
                 }
                 // check if the sender is a fullnode candidate
-                if get_data(config().db_path + "/candidates", &self.sender_key) != "c" {
+                if get_data("candidates".to_owned(), &self.sender_key) != "c" {
                     error!(
                         "Non candidate={} sent VRF lotto ticket, in transaction={}, sender_type={}",
                         self.sender_key,
                         self.hash,
-                        get_data(config().db_path + "/candidates", &self.sender_key)
+                        get_data("candidates".to_owned(), &self.sender_key)
                     );
                     return Err(Box::new(TransactionValidationErrors::NotCandidate));
                 }
@@ -1190,9 +1187,7 @@ impl Verifiable for Transaction {
                             // eclose a candidate
                             fullnodes_hashset.insert(delta.0.clone());
                             // now update their on disk flag to validator, from candidate
-                            if save_data("f", &(config().db_path + "/candidates"), delta.0.clone())
-                                != 1
-                            {
+                            if save_data("f", "candidates", delta.0.clone()) != 1 {
                                 return Err("failed to save new fullnode candidate".into());
                             }
                             new_fullnodes += 1;
@@ -1312,7 +1307,7 @@ impl Transaction {
         }
     }
     pub fn update_nonce(&self) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let chain_index_db = config().db_path + "/chains/" + &self.sender_key + "-chainindex";
+        let chain_index_db = "chains/".to_owned() + &self.sender_key + "-chainindex";
         let txn_count: u64 =
             avrio_database::get_data(chain_index_db.to_owned(), &"txncount").parse()?;
         trace!("Setting txn count");

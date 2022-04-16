@@ -35,10 +35,11 @@ pub struct Balances {
 pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
     let mut base_config = fern::Dispatch::new();
     base_config = match verbosity {
-        0 => {
-            // Let's say we depend on something which whose "info" level messages are too
-            // verbose to include in end-user output. If we don't need them,
-            // let's not include them.
+        0 =>
+        // Let's say we depend on something which whose "info" level messages are too
+        // verbose to include in end-user output. If we don't need them,
+        // let's not include them.
+        {
             base_config
                 .level(log::LevelFilter::Error)
                 .level_for("avrio_database", log::LevelFilter::Error)
@@ -49,7 +50,9 @@ pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
                 .level_for("avrio_rpc", log::LevelFilter::Error)
                 .level_for("avrio_p2p", log::LevelFilter::Error)
                 .level_for("avrio_wallet_service", log::LevelFilter::Error)
+                .level_for("avrio_daemon", log::LevelFilter::Error)
         }
+
         1 => base_config
             .level(log::LevelFilter::Warn)
             .level(log::LevelFilter::Error)
@@ -61,7 +64,8 @@ pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_wallet", log::LevelFilter::Warn)
             .level_for("avrio_p2p", log::LevelFilter::Warn)
             .level_for("avrio_rpc", log::LevelFilter::Warn)
-            .level_for("avrio_wallet_service", log::LevelFilter::Warn),
+            .level_for("avrio_wallet_service", log::LevelFilter::Warn)
+            .level_for("avrio_daemon", log::LevelFilter::Warn),
 
         2 => base_config
             .level(log::LevelFilter::Warn)
@@ -73,7 +77,9 @@ pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_p2p", log::LevelFilter::Info)
             .level_for("avrio_wallet", log::LevelFilter::Info)
             .level_for("avrio_rpc", log::LevelFilter::Info)
-            .level_for("avrio_wallet_service", log::LevelFilter::Info),
+            .level_for("avrio_wallet_service", log::LevelFilter::Info)
+            .level_for("avrio_daemon", log::LevelFilter::Info),
+
         3 => base_config
             .level(log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Debug)
@@ -84,7 +90,9 @@ pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_p2p", log::LevelFilter::Debug)
             .level_for("avrio_wallet", log::LevelFilter::Debug)
             .level_for("avrio_rpc", log::LevelFilter::Debug)
-            .level_for("avrio_wallet_service", log::LevelFilter::Debug),
+            .level_for("avrio_wallet_service", log::LevelFilter::Debug)
+            .level_for("avrio_daemon", log::LevelFilter::Debug),
+
         _ => base_config
             .level(log::LevelFilter::Warn)
             .level_for("avrio_database", log::LevelFilter::Trace)
@@ -95,7 +103,8 @@ pub fn setup_logging(verbosity: u64) -> Result<(), fern::InitError> {
             .level_for("avrio_p2p", log::LevelFilter::Trace)
             .level_for("avrio_crypto", log::LevelFilter::Trace)
             .level_for("avrio_rpc", log::LevelFilter::Trace)
-            .level_for("avrio_wallet_service", log::LevelFilter::Trace),
+            .level_for("avrio_wallet_service", log::LevelFilter::Trace)
+            .level_for("avrio_daemon", log::LevelFilter::Trace),
     };
 
     // Separate file config so we can include year, month and day in file logs

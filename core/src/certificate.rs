@@ -77,16 +77,12 @@ pub struct Certificate {
 }
 
 pub fn get_fullnode_count() -> u64 {
-    return get_data(config().db_path + "/candidates", "count")
+    return get_data("candidates".to_owned(), "count")
         .parse::<u64>()
         .unwrap_or(0);
 }
 pub fn set_fullnode_count(count: u64) -> u8 {
-    save_data(
-        &count.to_string(),
-        &(config().db_path + "/candidates"),
-        "count".to_string(),
-    )
+    save_data(&count.to_string(), "candidates", "count".to_string())
 }
 
 pub fn generate_certificate(
@@ -136,7 +132,7 @@ pub fn generate_certificate(
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_millis() as u64;
-        let block_hash = get_data(config().db_path + "/transactions", &cert.txn_hash);
+        let block_hash = get_data("transactions".to_owned(), &cert.txn_hash);
         let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
         let mut txn: Transaction = Default::default();
 
@@ -195,7 +191,7 @@ impl Verifiable for Certificate {
         {
             return Err(Box::new(CertificateErrors::TimestampHigh));
         }
-        let block_hash = get_data(config().db_path + "/transactions", &cert.txn_hash);
+        let block_hash = get_data("transactions".to_owned(), &cert.txn_hash);
         let blk = get_block_from_raw(block_hash); // get the txn to check if it is correct
         let mut txn: Transaction = Default::default();
 
@@ -252,7 +248,7 @@ impl Verifiable for Certificate {
 
     fn get(public_key: String) -> Result<Box<Self>, Box<dyn std::error::Error>> {
         let got_data = get_data(
-            config().db_path + &"/fn-certificates".to_owned(),
+            "fn-certificates".to_owned(),
             &(public_key + &"-cert".to_owned()),
         );
         if got_data != "-1" {
@@ -266,7 +262,7 @@ impl Verifiable for Certificate {
     fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         if save_data(
             &serde_json::to_string(self)?,
-            &(config().db_path + &"/fn-certificates".to_owned()),
+            "fn-certificates",
             self.public_key.clone() + &"-cert".to_owned(),
         ) == 1
         {
@@ -279,12 +275,7 @@ impl Verifiable for Certificate {
     fn enact(&self) -> Result<(), Box<dyn std::error::Error>> {
         mark_spent(&self.invite)?;
         // now save the BLS publickey to the ECDSA key lookup table
-        if save_data(
-            &self.public_key,
-            &(config().db_path + "/blslookup"),
-            self.bls_public_key.clone(),
-        ) != 1
-        {
+        if save_data(&self.public_key, "blslookup", self.bls_public_key.clone()) != 1 {
             return Err("failed to save ECDSA-BLS looukup entry".into());
         }
         let candidate_count = get_fullnode_count();
@@ -292,12 +283,7 @@ impl Verifiable for Certificate {
         if candidate_count == 0 {
             // there are no candidates registered, this must be the god address (TODO: check this was sent by config().god_account)
             // ecolse this candidate fully
-            if save_data(
-                "f",
-                &(config().db_path + "/candidates"),
-                self.public_key.clone(),
-            ) != 1
-            {
+            if save_data("f", "candidates", self.public_key.clone()) != 1 {
                 return Err("failed to save new fullnode candidate".into());
             }
             let mut top_epoch = get_top_epoch()?;
@@ -311,12 +297,7 @@ impl Verifiable for Certificate {
                 public_key_to_address(&self.public_key)
             );
         } else {
-            if save_data(
-                "c",
-                &(config().db_path + "/candidates"),
-                self.public_key.clone(),
-            ) != 1
-            {
+            if save_data("c", "candidates", self.public_key.clone()) != 1 {
                 return Err("failed to save new fullnode candidate".into());
             }
 

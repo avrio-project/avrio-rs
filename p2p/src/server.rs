@@ -103,7 +103,7 @@ impl P2pServer {
                 for stream in listener.incoming() {
                     match stream {
                         Ok(mut stream) => {
-                            log::trace!("New incoming stream");
+                            log::trace!("New incoming stream from {}", stream.peer_addr()?);
                             let read_store = read(
                                 &mut stream,
                                 Some(10000),

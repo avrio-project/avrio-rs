@@ -75,6 +75,7 @@ pub fn safe_exit() {
         .shutdown()
         .unwrap();
     *(MEMPOOL.lock().unwrap()) = None;
+    avrio_database::close_db();
     std::process::exit(0);
 }
 fn trim_newline(s: &mut String) -> String {
@@ -88,14 +89,21 @@ fn trim_newline(s: &mut String) -> String {
 }
 
 fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
-    for block in genesis_blocks() {
+    let genesis_blocks = genesis_blocks();
+    info!(
+        "Generating chains (from {} genesis blocks)",
+        genesis_blocks.len()
+    );
+    for block in genesis_blocks {
         info!(
-            "addr: {}",
+            "Genesis block with hash {} from chain {}",
+            block.hash,
             Wallet::new(block.header.chain_key.clone(), "".to_owned()).address()
         );
         if get_block_from_raw(block.hash.clone()) != block {
             save_block(block.clone())?;
             block.enact()?;
+            debug!("Block {} was not saved, saved and enacted", block.hash);
         }
     }
     // Create the seed invites
@@ -115,15 +123,13 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn database_present() -> bool {
-    let get_res = get_data(
-        config().db_path + &"/chains/masterchainindex".to_owned(),
-        &"digest".to_owned(),
-    );
+    let get_res = get_data("chaindigest".to_owned(), &"master".to_owned());
     !(get_res == *"-1" || get_res == *"0")
 }
 
 fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>> {
     info!("Creating datadir folder structure");
+    //TODO: evaluate which are no longer needed
     create_dir_all(config().db_path + &"/blocks".to_string())?;
     create_dir_all(config().db_path + &"/chains".to_string())?;
     create_dir_all(config().db_path + &"/wallets".to_string())?;
@@ -349,7 +355,6 @@ fn main() {
     if !database_present() {
         create_file_structure().unwrap();
     }
-    avrio_database::init_cache(10000000).expect("Failed to init db cache"); // 10mb db cache // TODO: Move this number (cache size) to config
     info!("Launching API server");
     let _api_server_handle = thread::spawn(|| {
         start_server();
@@ -365,12 +370,12 @@ fn main() {
     let _ = mempool.save_to_disk(&(config().db_path + "/mempool")); // create files
     *(MEMPOOL.lock().unwrap()) = Some(mempool);
     info!("Avrio Daemon successfully launched");
-    let mut statedigest = get_data(config().db_path + &"/chaindigest".to_owned(), "master");
+    let mut statedigest = get_data("chaindigest".to_owned(), "master");
     if statedigest == *"-1" {
         generate_chains().unwrap();
         statedigest =
-            form_state_digest(config().db_path + &"/chaindigest".to_owned()).unwrap_or_default();
-        info!("State digest: {}", statedigest);
+            form_state_digest("chaindigest".to_owned()).unwrap_or_default();
+        info!("State digest (regenerated): {}", statedigest);
     } else {
         info!("State digest: {}", statedigest);
     }
@@ -474,6 +479,7 @@ fn main() {
         // Now we loop until shutdown
         let _ = io::stdout().flush();
         let read: String = read!("{}\n");
+        trace!("Read: {}", read);
         if read == "exit" {
             safe_exit();
             process::exit(0);
@@ -487,10 +493,7 @@ fn main() {
                         *param = "";
                     }
                 }
-                info!(
-                    "Got data: {}",
-                    get_data(config().db_path + "/" + params[1], params[2])
-                );
+                info!("Got data: {}", get_data(params[1].to_owned(), params[2]));
             }
         } else if read == "address_details" {
             info!("Enter the address of the account.");
@@ -534,7 +537,7 @@ fn main() {
         } else if read == "get_transaction" {
             info!("Enter the transaction hash:");
             let hash: String = read!("{}\n");
-            let block_txn_is_in = get_data(config().db_path + &"/transactions".to_owned(), &hash);
+            let block_txn_is_in = get_data("transactions".to_owned(), &hash);
             if block_txn_is_in == *"-1" {
                 error!("Can not find that txn in db");
             } else {
@@ -593,8 +596,7 @@ fn main() {
             info!("Enter lock commitment: (tip you get this from locking funds in the wallet!)");
             let commitment: String = read!();
             // the commitment should be a valid txn hash, check it
-            let block_txn_is_in =
-                get_data(config().db_path + &"/transactions".to_owned(), &commitment);
+            let block_txn_is_in = get_data("transactions".to_owned(), &commitment);
             let mut commitment_txn: Transaction = Transaction::default();
             if block_txn_is_in == *"-1" {
                 error!("Can not find comitment");
@@ -705,10 +707,7 @@ pub fn register_fullnode(
             gas_price: 20,
             max_gas: u64::MAX,
             nonce: get_data(
-                config().db_path
-                    + &"/chains/".to_owned()
-                    + &wallet.public_key
-                    + &"-chainindex".to_owned(),
+                "chains/".to_owned() + &wallet.public_key + &"-chainindex".to_owned(),
                 &"txncount".to_owned(),
             )
             .parse()
@@ -720,10 +719,7 @@ pub fn register_fullnode(
         };
         txn.hash();
         let prev_block = get_block_from_raw(get_data(
-            config().db_path
-                + &"/chains/".to_owned()
-                + &wallet.public_key
-                + &"-chainindex".to_owned(),
+            "chains/".to_owned() + &wallet.public_key + &"-chainindex".to_owned(),
             "topblockhash",
         ));
         let mut send_block = Block {

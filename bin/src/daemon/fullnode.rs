@@ -436,7 +436,7 @@ pub fn handle_vrf_submitted(txn: Transaction) {
                     vrf_ticket_bigint < BigDecimal::from(1)
                 );
                 // check if the sender is a candidate
-                let fullnode_status = get_data(config().db_path + "/candiadates", &txn.sender_key);
+                let fullnode_status = get_data("candiadates".to_owned(), &txn.sender_key);
                 if fullnode_status != "c" {
                     error!(
                         "VRF ticket={} sent by={} is not a candidate, fullnode status {}",

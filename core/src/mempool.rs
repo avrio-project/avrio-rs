@@ -348,14 +348,14 @@ impl Mempool {
                         );
                     }
                     if bypass_chunks {
-                        let mut existing = get_data(config().db_path + "/sync", "prechunk-blocks");
+                        let mut existing = get_data("sync".to_owned(), "prechunk-blocks");
                         if existing == "-1" {
                             existing = String::from("[]")
                         }
                         let mut hashes: Vec<String> = serde_json::from_str(&existing)?;
                         hashes.push(block.hash.clone());
                         let hashes_str = serde_json::to_string(&hashes)?;
-                        save_data(&(config().db_path + "/sync"), "prechunk-blocks", hashes_str);
+                        save_data("sync", "prechunk-blocks", hashes_str);
                     }
                     to_remove.push((k.clone(), "enacted".to_owned()));
                     if let Some(callback) = &map[k].2 {

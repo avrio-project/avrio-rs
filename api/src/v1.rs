@@ -13,7 +13,7 @@ use avrio_core::{
     validate::Verifiable,
 };
 use avrio_crypto::public_key_to_address;
-use avrio_database::{get_data, open_database};
+use avrio_database::{get_data, iter_database};
 use avrio_p2p::helper::prop_block;
 use avrio_rpc::block_announce;
 use log::*;
@@ -32,7 +32,7 @@ fn must_provide_method() -> &'static str {
 #[get("/blockcount/<chain>")]
 pub fn get_blockcount_v1(chain: String) -> String {
     let our_height_string = get_data(
-        config().db_path + &"/chains/".to_owned() + &chain + &"-chainindex".to_owned(),
+        "chains/".to_owned() + &chain + &"-chainindex".to_owned(),
         &"blockcount".to_owned(),
     );
     if our_height_string == "-1" {
@@ -56,7 +56,7 @@ pub fn get_blockcount_v1(chain: String) -> String {
 #[get("/transactioncount/<chain>")]
 pub fn transaction_count(chain: String) -> String {
     let txn_count_string = get_data(
-        config().db_path + &"/chains/".to_owned() + &chain + &"-chainindex".to_owned(),
+        "chains/".to_owned() + &chain + &"-chainindex".to_owned(),
         &"txncount".to_owned(),
     );
     if txn_count_string == "-1" {
@@ -159,7 +159,7 @@ pub fn publickey_to_address(publickey: String) -> String {
 
 #[get("/chainlist")]
 pub fn chainlist() -> String {
-    let open_attempt = open_database(config().db_path + &"/chainlist".to_owned());
+    let open_attempt = iter_database("chainlist".to_owned());
     if let Ok(db) = open_attempt {
         let mut chains: Vec<String> = vec![];
 
