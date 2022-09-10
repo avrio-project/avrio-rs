@@ -12,13 +12,13 @@ extern crate log;
 use avrio_config::config;
 use serde::{Deserialize, Serialize};
 use sled::{open, Db as SledDb, Iter};
-use std::lazy::SyncLazy;
+use std::sync::LazyLock;
 use std::mem::size_of_val;
 use std::net::SocketAddr;
 
 // SledDb's operations are threadsafe and (mostly) non-blocking, this means we do not need a mutex! (yay)
-static DATABASE_LOCK: SyncLazy<SledDb> =
-    SyncLazy::new(|| open(config().db_path + "/database").unwrap());
+static DATABASE_LOCK: LazyLock<SledDb> =
+LazyLock::new(|| open(config().db_path + "/database").unwrap());
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PeerlistSave {
