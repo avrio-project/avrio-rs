@@ -1,4 +1,4 @@
-use crate::*;
+
 
 
 #[test]
@@ -15,7 +15,7 @@ fn find_average_lambda() {
                     get_vrf(wall.private_key.clone(), "epochrandomnesshere".to_string()).unwrap();
                 let int_vrf = vrf_hash_to_u64(hash).unwrap();
                 let val_vrf = normalize(int_vrf);
-                entries.push(int_vrf.clone());
+                entries.push(int_vrf);
                 if val_vrf < r_target as f64 / n as f64 {
                     // (BigDecimal::from(r_target) / BigDecimal::from(n)) {
                     /*println!(
@@ -51,7 +51,7 @@ fn test_max() {
 fn test_len() {
     let wall: Wallet = Wallet::gen();
     let (proof, hash) =
-        get_vrf(wall.private_key.clone(), "epochrandomnesshere".to_string()).unwrap();
+        get_vrf(wall.private_key, "epochrandomnesshere".to_string()).unwrap();
     println!(
         "Proof: {}, Hash: {}; len: {}, {}",
         proof,

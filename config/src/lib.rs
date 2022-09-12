@@ -159,9 +159,9 @@ impl Default for ConfigSave {
         let mut path: String = dir_str.to_string();
         if cfg!(target_os = "windows") {
             log::debug!("Detected a windows system, using {}", path);
-            path = path + "\\.avrio-datadir";
+            path += "\\.avrio-datadir";
         } else {
-            path = path + "/.avrio-datadir";
+            path += "/.avrio-datadir";
         }
         ConfigSave {
             db_path: path,

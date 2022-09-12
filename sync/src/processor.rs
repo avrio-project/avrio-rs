@@ -111,7 +111,7 @@ impl ProcessorManager {
                                     backwash_tx.send(ProcessorBackwash::Download(DownloadCommand::AddMulti(downloads_to_add))).unwrap();
                                     break
                                 }
-                                return false;
+                                false
                             
                         }
                         ProcessorType::PShardMetadata(_shard_metadata) => {

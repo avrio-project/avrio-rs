@@ -12,7 +12,7 @@ lazy_static! {
     pub static ref LOCAL_CALLBACKS: Mutex<Vec<Caller<'static>>> = Mutex::new(vec![]);
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone)]
 pub struct Announcement {
     pub m_type: String,
     pub content: String,
@@ -237,7 +237,7 @@ pub fn launch_client(
         error!("Failed to connect to server");
         return Err("Failed to connect to server".into());
     }
-    return Err("reached end of function".into());
+    Err("reached end of function".into())
 }
 
 pub fn launch(port: u64) {
@@ -277,7 +277,7 @@ pub fn launch(port: u64) {
                                             }
                                         }
                                     }
-                                    if registered_services.len() == 0 {
+                                    if registered_services.is_empty() {
                                         let _ = stream.write(b"end");
                                         return;
                                     } else {

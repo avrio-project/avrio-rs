@@ -191,7 +191,7 @@ impl DownloadManager {
                         }
                     }
                 }
-                if manager.downloads.len() != 0 {
+                if !manager.downloads.is_empty() {
                     // sort the downloads list via their priority
                     manager
                         .downloads
@@ -291,12 +291,12 @@ impl DownloadManager {
                                         log::trace!("got block: {:#?}", deformed);
 
                                         if deformed.message_type == 0x04 {
-                                            let block_encoded: String = deformed.message.clone();
+                                            let block_encoded: String = deformed.message;
 
                                             // add this block to the cache
                                             cache.insert(
                                                 download.resorce.clone(),
-                                                block_encoded.clone(),
+                                                block_encoded,
                                             );
                                             false
                                         } else {
@@ -366,7 +366,7 @@ impl DownloadManager {
                                     goal.execute(&backwash_tx_clone);
                                     return false;
                                 }
-                                return true;
+                                true
                             });
                         }
                         downloaded
