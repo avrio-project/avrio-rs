@@ -786,7 +786,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                         );
                                         return;
                                     }
-                                    add_block(block, CallerM::blank());
+                                    let _ = add_block(block, CallerM::blank());
                                 }
                                 // form a block chunk containing the shuffle bits block and the shuffle bits block rec
                                 let mut block_chunk = *BlockChunk::form(&blocks, 0).unwrap();

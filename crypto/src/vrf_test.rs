@@ -1,4 +1,4 @@
-
+use crate::*;
 
 
 #[test]
@@ -83,7 +83,7 @@ fn test_vrf_keys() {
 
     let derived_public_key = vrf.derive_public_key(seckey.as_ref()).unwrap();
     assert_eq!(
-        _pubkey.to_hex(),
-        PublicKey::from_slice(&derived_public_key).unwrap().to_hex()
+        secp256k1::bitcoin_hashes::hex::ToHex::to_hex(&_pubkey),
+        secp256k1::bitcoin_hashes::hex::ToHex::to_hex(&PublicKey::from_slice(&derived_public_key).unwrap())
     );
 }
