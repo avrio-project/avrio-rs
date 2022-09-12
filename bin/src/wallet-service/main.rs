@@ -700,6 +700,8 @@ fn main() {
         .expect("FATAL: Failed to setup logging");
     // Load the global config from disk
     info!("Avrio wallet service version 1.0.0");
+    avrio_database::init_db(config().db_path + "/wallet").unwrap();
+
 
     let api_config_string = load_from_disk(String::from("wa.conf"), true).unwrap();
     let mut api_config = ApiConfig::new();
