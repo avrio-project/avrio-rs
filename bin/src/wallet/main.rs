@@ -351,6 +351,7 @@ async fn main() {
     .expect("Failed to setup logging");
     info!("Avrio Wallet Testnet v0.1.0 (alpha)");
     let config_ = config();
+    avrio_database::init_db(config().db_path + "/wallet").unwrap();
     let _ = config_.save();
     if let Some(addr) = matches.value_of("apiaddr") {
         *(SERVER_ADDR.lock().unwrap()) = format!("http://{}", addr);

@@ -3,35 +3,48 @@ extern crate avrio_config;
 extern crate num_cpus;
 use std::collections::HashMap;
 use std::sync::{
-    mpsc::{Receiver, Sender},
-    Mutex, MutexGuard,
+    RwLock
 };
 
 #[macro_use]
 extern crate log;
 use avrio_config::config;
 use serde::{Deserialize, Serialize};
-use sled::{open, Db as SledDb, Iter};
-use std::sync::LazyLock;
-use std::mem::size_of_val;
+use sled::{open, Db as SledDb};
 use std::net::SocketAddr;
 
 // SledDb's operations are threadsafe and (mostly) non-blocking, this means we do not need a mutex! (yay)
-static DATABASE_LOCK: LazyLock<SledDb> =
-LazyLock::new(|| open(config().db_path + "/database").unwrap());
+static DATABASE_LOCK: RwLock<Option<SledDb>> =
+RwLock::new(None); // open(config().db_path + "/database").unwrap()
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PeerlistSave {
     peers: Vec<String>,
 }
 
+pub fn is_db_open() -> bool {
+    return DATABASE_LOCK.read().unwrap().is_some();
+}
+
+
+/// # Init DB
+/// Open the master DB
+pub fn init_db(db_path: String) -> Result<(), Box<dyn std::error::Error>>  { // Db path should normally be config().db_path + "/database" (for deamon)
+    let mut writer = DATABASE_LOCK.write()?;
+    *writer = Some(open(db_path).unwrap());
+    return Ok(());
+}
+
 /// # Close DB
 /// Closes the open mater DB, flushing all pending changes to disk
 /// Returns Result((), Error)
 pub fn close_db() -> Result<(), Box<dyn std::error::Error>> {
-    trace!("Got lock on db lock cache, closing");
+    if !is_db_open() { 
+        error!("Tried to close DB while in non open (None) state");
+        return Err("DB already closed".into());
+    }
     let mut count = 0;
-    let bytes_flushed = DATABASE_LOCK.flush()?;
+    let bytes_flushed = DATABASE_LOCK.read().unwrap().as_ref().unwrap().flush()?;
     debug!("Closed Master DB, flushed {} bytes", bytes_flushed);
 
     return Ok(());
@@ -42,7 +55,11 @@ pub fn close_db() -> Result<(), Box<dyn std::error::Error>> {
 /// Returns Result<Vec<String>, Error>
 /// If the master DB is not open, an error will be returned
 pub fn trees() -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let open_trees = DATABASE_LOCK.tree_names();
+    if !is_db_open() { 
+        error!("Tried to get tree list while in non open (None) state");
+        return Err("DB not open".into());
+    }
+    let open_trees = DATABASE_LOCK.read().unwrap().as_ref().unwrap().tree_names();
     let mut trees: Vec<String> = vec![];
     for tree_ivec in open_trees {
         let tree_bytes = tree_ivec.to_vec();
@@ -59,7 +76,11 @@ pub fn trees() -> Result<Vec<String>, Box<dyn std::error::Error>> {
 /// Returns Result<Tree, std::error::Error>
 pub fn open_tree(tree_name: String) -> Result<sled::Tree, Box<dyn std::error::Error>> {
     // open this DB and add to the cache
-    if let Ok(tree) = DATABASE_LOCK.open_tree(tree_name.clone()) {
+    if !is_db_open() { 
+        error!("Tried to open tree while in non open (None) state");
+        return Err("DB not open".into());
+    }
+    if let Ok(tree) = DATABASE_LOCK.read().unwrap().as_ref().unwrap().open_tree(tree_name.clone()) {
         debug!("Opened DB tree {}", tree_name);
         return Ok(tree);
     } else {

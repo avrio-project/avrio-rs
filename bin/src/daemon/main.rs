@@ -227,6 +227,7 @@ fn main() {
     println!("{}", art);
     info!("Avrio Daemon Testnet v0.1.0 (alpha)");
     warn!("Warning, this software is not stable");
+    avrio_database::init_db(config().db_path + "/database").unwrap();
     if matches.is_present("generate_bls_keypair") {
         info!("Generating keypair...");
         let mut rng = thread_rng();
@@ -431,7 +432,7 @@ fn main() {
     for peer in pl_u {
         let _ = new_connection(&peer.to_string());
     }
-    if !matches.is_present("no-sync") {
+    if !matches.is_present("no-sync") { 
         let syncneed = sync_needed();
 
         match syncneed {
@@ -444,7 +445,7 @@ fn main() {
                         synced = true;
                     } else {
                         error!("Syncing failed");
-                        process::exit(1);
+                        process::exit(1); // TODO: We really shouldnt exit here, rather we should continue trying to sync
                     }
                 }
                 false => {
