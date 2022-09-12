@@ -5,17 +5,16 @@
 
     This file handles the JSON API of the headless wallet.
 */
-use aead::{generic_array::GenericArray, Aead, NewAead};
-use aes_gcm::Aes256Gcm; // Or `Aes128Gcm`
-use avrio_config::config;
-use avrio_core::block::{get_block, get_block_from_raw, save_block, Block, BlockType, Header};
+use aead::{NewAead};
+ // Or `Aes128Gcm`
+
+use avrio_core::block::{Block, BlockType, Header};
 use avrio_core::{
-    account::{get_account, to_atomic},
     transaction::Transaction,
 };
-use avrio_database::{get_data, save_data};
+
 use log::*;
-use rocket::config::{Config, Environment, LoggingLevel};
+
 use rocket::{routes, Route};
 use std::io::prelude::*;
 extern crate avrio_p2p;
@@ -60,7 +59,7 @@ struct Transactioncount {
 }
 
 fn generate_token() -> String {
-    let mut rng = rand::thread_rng();
+    let rng = rand::thread_rng();
     let token: String = rng
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(32)
@@ -255,7 +254,7 @@ pub fn open_wallet(walletname: String, password: String, auth: String) -> String
         if let Ok(wall) = OpenedWallet::open(walletname.clone(), password) {
             debug!("Opened wallet {}", walletname);
             // add to the users auth lust + global wallet details
-            if let Err(e) = wall.add_to_locks(&auth) {
+            if let Err(_e) = wall.add_to_locks(&auth) {
                 return ("{ \"success\": false, \"error\": \"internal error: failed to add wallet to mutexes\" }").to_string();
             } else {
                 return ("{ \"success\": true, \"wallet\": ".to_owned() + &walletname + &"}")
@@ -272,18 +271,18 @@ pub fn open_wallet(walletname: String, password: String, auth: String) -> String
 #[get("/createwallet/<walletname>/<password>/<authkey>")]
 pub fn create_wallet(walletname: String, password: String, authkey: String) -> String {
     // check if this user is authenticated
-    if let Err(e) = user_auth_level(authkey.clone()) {
+    if let Err(_e) = user_auth_level(authkey.clone()) {
         return ("{ \"success\": false, \"error\": \"not authenticated\" }").to_string();
     }
     // create a new wallet
     let keys = Wallet::gen();
-    let mut wall = OpenedWallet::create_wallet(
+    let wall = OpenedWallet::create_wallet(
         walletname.clone(),
         password.clone(),
         keys.private_key,
         authkey.clone(),
     );
-    if let Err(e) = wall {
+    if let Err(_e) = wall {
         return ("{ \"success\": false, \"error\": \"internal error: failed to create wallet\" }")
             .to_string();
     } else {
@@ -299,7 +298,7 @@ pub fn get_wallet_with_publickey(
     public_key: String,
 ) -> std::result::Result<OpenedWallet, Box<dyn std::error::Error>> {
     let mut wallets = OPEN_WALLETS.lock()?;
-    for (key, wallet) in wallets.iter_mut() {
+    for (_key, wallet) in wallets.iter_mut() {
         if wallet.wallet.public_key == public_key {
             return Ok(wallet.clone());
         }

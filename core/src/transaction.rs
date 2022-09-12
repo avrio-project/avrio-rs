@@ -1335,8 +1335,8 @@ impl Transaction {
                 TX_GAS as u64 + ((GAS_PER_EXTRA_BYTE_NORMAL / 2) as u64 * self.extra.len() as u64)
             }
 
-            'b' => (TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64)),
-            'l' => (TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64)),
+            'b' => TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64),
+            'l' => TX_GAS as u64 + (GAS_PER_EXTRA_BYTE_NORMAL as u64 * self.extra.len() as u64),
             'i' => {
                 TX_GAS as u64 + ((GAS_PER_EXTRA_BYTE_NORMAL / 2) as u64 * self.extra.len() as u64)
             }

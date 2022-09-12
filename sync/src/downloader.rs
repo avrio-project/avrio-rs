@@ -2,7 +2,7 @@ use crate::{
     types::{SyncDataType, SyncError, SyncProgress},
     Actor, Command,
 };
-use avrio_core::block::{from_compact, Block};
+
 use avrio_crypto::raw_hash;
 use avrio_p2p::{
     format::P2pData,
@@ -436,11 +436,11 @@ impl DownloadManagerMeta {
     pub fn process_backwash(&self, backwash: DownloadBackwash) {
         match backwash {
             // TODO
-            DownloadBackwash::Data(Some((id, data))) => {
+            DownloadBackwash::Data(Some((_id, _data))) => {
                 //self.cache.insert(id, data);
             }
             DownloadBackwash::Data(None) => {}
-            DownloadBackwash::Progress(progress) => {
+            DownloadBackwash::Progress(_progress) => {
                 //self.tx.send(DownloadCommand::ReportProgress(progress))?;
             }
             DownloadBackwash::None => todo!(),

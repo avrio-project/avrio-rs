@@ -1,17 +1,17 @@
 use crate::{
-    account::{get_account, set_account, to_atomic, Account},
+    account::{get_account, set_account, to_atomic},
     block::Block,
     epoch::get_top_epoch,
     validate::Verifiable,
 };
-use avrio_config::config;
+
 use avrio_crypto::Hashable;
 use avrio_database::{get_data, save_data};
 use bls_signatures::{
-    aggregate, verify, verify_messages, PrivateKey, PublicKey, Serialize, Signature,
+    aggregate, verify_messages, PrivateKey, PublicKey, Serialize, Signature,
 };
-use lazy_static::lazy_static;
-use std::{convert::TryInto, sync::Mutex, time::SystemTime};
+
+use std::{convert::TryInto, time::SystemTime};
 #[derive(Debug, Clone, Default)]
 pub struct BlockChunk {
     pub hash: String,

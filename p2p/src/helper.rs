@@ -4,7 +4,7 @@ use crate::{
     peer::{get_peers_addr, lock, locked, unlock_peer},
     utils::*,
 };
-use avrio_config::config;
+
 use avrio_core::{
     block::{from_compact, get_block_from_raw, save_block, Block},
     chunk::BlockChunk,

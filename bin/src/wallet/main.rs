@@ -25,7 +25,7 @@ use common::*;
 use lazy_static::*;
 use log::{debug, error, info, trace, warn};
 use reqwest::Client;
-use serde::Deserialize;
+
 use serde_json;
 use std::{default::Default, sync::Mutex};
 use std::{
@@ -955,9 +955,9 @@ async fn main() {
                             if read_split.len() == 3 {
                                 let amount: u64 = read_split[1].parse().unwrap_or(1);
                                 let txn_per_block: u64 = read_split[2].parse().unwrap_or(1);
-                                let mut blocks: Vec<Block> = vec![];
+                                let _blocks: Vec<Block> = vec![];
                                 if txn_per_block <= 10 && amount < 200 {
-                                    let mut failed = false;
+                                    let failed = false;
                                     let request_url = format!(
                                         "{}/api/v1/balances/{}",
                                         SERVER_ADDR.lock().unwrap().to_string(),
@@ -981,7 +981,7 @@ async fn main() {
                                                 .await
                                                 {
                                                     info!("Generation complete");
-                                                    for block in blocks {
+                                                    for _block in blocks {
                                                         /*if let Err(e) =
                                                             send_block(block, wall.clone())
                                                                 .await
@@ -1264,7 +1264,7 @@ pub fn save_wallet(
     password: String,
     name: String,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let conf = config();
+    let _conf = config();
     let path = "wallets/".to_owned() + &name;
     let mut padded = password.as_bytes().to_vec();
     while padded.len() != 32 && padded.len() < 33 {

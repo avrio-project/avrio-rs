@@ -1,5 +1,5 @@
 use fern::colors::{Color, ColoredLevelConfig};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[derive(Clone, Deserialize, Debug)]
 pub struct Blockcount {

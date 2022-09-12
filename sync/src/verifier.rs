@@ -46,7 +46,7 @@ impl VerifierManager {
     pub fn worker() -> VerifierManagerMeta {
         let (tx, rx) = mpsc::channel();
         let (backwash_tx, backwash_rx) = mpsc::channel();
-        let manager = VerifierManager {
+        let _manager = VerifierManager {
             rx,
             tasks: vec![],
             backwash_tx,

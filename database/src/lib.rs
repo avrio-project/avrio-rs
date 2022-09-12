@@ -8,7 +8,7 @@ use std::sync::{
 
 #[macro_use]
 extern crate log;
-use avrio_config::config;
+
 use serde::{Deserialize, Serialize};
 use sled::{open, Db as SledDb};
 use std::net::SocketAddr;
@@ -43,7 +43,7 @@ pub fn close_db() -> Result<(), Box<dyn std::error::Error>> {
         error!("Tried to close DB while in non open (None) state");
         return Err("DB already closed".into());
     }
-    let mut count = 0;
+    let _count = 0;
     let bytes_flushed = DATABASE_LOCK.read().unwrap().as_ref().unwrap().flush()?;
     debug!("Closed Master DB, flushed {} bytes", bytes_flushed);
 

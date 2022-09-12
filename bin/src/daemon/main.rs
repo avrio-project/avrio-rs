@@ -16,7 +16,7 @@ use avrio_rpc::*;
 use bls_signatures::{PrivateKey, Serialize};
 use fullnode::*;
 use rand::thread_rng;
-use std::panic;
+
 use std::{fs::File, io::Read, thread, time::Duration};
 use std::{
     io::{self, Write},

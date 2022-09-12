@@ -5,13 +5,13 @@ extern crate avrio_config;
 
 extern crate rand;
 
-use avrio_config::config;
+
 use avrio_crypto::Hashable;
 use avrio_database::{get_data, save_data};
 use serde::{Deserialize, Serialize};
 
 use crate::commitee::Comitee;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 extern crate bs58;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]

@@ -11,7 +11,7 @@ extern crate avrio_database;
 use avrio_database::{get_data, save_data};
 
 extern crate avrio_config;
-use avrio_config::config;
+
 
 pub fn per_epoch_limit(nodes: u64) -> u64 {
     ((1.0 / 3.0) * (nodes / 2) as f64) as u64

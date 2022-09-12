@@ -11,7 +11,7 @@ use avrio_core::block::genesis::{generate_genesis_block, get_genesis_block, Gene
 use avrio_core::block::{Block, BlockType, Header};
 use avrio_core::transaction::Transaction;
 use avrio_crypto::{raw_hash, Wallet};
-use avrio_rpc::{launch_client, Announcement, Caller};
+
 use clap::{App, Arg, ArgMatches};
 use common::*;
 use lazy_static::lazy_static;
@@ -27,7 +27,7 @@ use std::{
     sync::Mutex,
 };
 
-use rocket::config::{Config, Environment, LoggingLevel};
+use rocket::config::{Environment, LoggingLevel};
 
 #[macro_use]
 extern crate rocket;
@@ -531,7 +531,7 @@ impl OpenedWallet {
     }
     /// # Disk Flush
     /// Flush the wallet & metadata to disk
-    pub fn disk_flush(&self, create_if_missing: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn disk_flush(&self, _create_if_missing: bool) -> Result<(), Box<dyn std::error::Error>> {
         let conf = avrio_config::config();
         let path = conf.db_path.clone() + &"/wallets/".to_owned() + &self.path;
         let mut padded = self.password.as_bytes().to_vec();

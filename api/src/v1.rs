@@ -6,7 +6,6 @@
     This file handles the JSON API version 1 of the Daemon.
 */
 
-use avrio_config::config;
 use avrio_core::{
     account::get_account,
     block::{get_block, get_block_from_raw, save_block, Block},

@@ -1,6 +1,6 @@
-use secp256k1::bitcoin_hashes::hex::ToHex;
 
-use crate::*;
+
+
 #[test]
 fn find_average_lambda() {
     let n = 500; // total number of candidates
@@ -9,7 +9,7 @@ fn find_average_lambda() {
         loop {
             let mut entries: Vec<u64> = vec![];
             let mut amount_this_try = 0;
-            for attempt in 0..n {
+            for _attempt in 0..n {
                 let wall: Wallet = Wallet::gen();
                 let (_, hash) =
                     get_vrf(wall.private_key.clone(), "epochrandomnesshere".to_string()).unwrap();

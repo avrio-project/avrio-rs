@@ -68,7 +68,7 @@ impl ProcessorManager {
             manager.tasks.retain(|task| match task {
                 ProcessorCommand::Valid(Ctype) => {
                     match Ctype {
-                        ProcessorType::PBlock(block) => {
+                        ProcessorType::PBlock(_block) => {
                             true
                             // TODO
                         }
@@ -114,21 +114,21 @@ impl ProcessorManager {
                                 return false;
                             
                         }
-                        ProcessorType::PShardMetadata(shard_metadata) => {
+                        ProcessorType::PShardMetadata(_shard_metadata) => {
                             true
                         }
-                        ProcessorType::PShardTip(shard_tip) => {
+                        ProcessorType::PShardTip(_shard_tip) => {
                             true
                         }
-                        ProcessorType::PStateDigest(state_digest) => {
+                        ProcessorType::PStateDigest(_state_digest) => {
                             true
                         }
-                        ProcessorType::PShardList(shard_list) => {
+                        ProcessorType::PShardList(_shard_list) => {
                             true
                         }
                     }
                 },
-                ProcessorCommand::Invalid(Ctype) => true,
+                ProcessorCommand::Invalid(_Ctype) => true,
                 ProcessorCommand::Shutdown => false,
             });
         });

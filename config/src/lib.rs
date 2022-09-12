@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 extern crate log;
-use dirs::*;
+
 
 use sha2::{Digest, Sha256};
 #[macro_use]
@@ -155,7 +155,7 @@ fn hash_id(id: u64) -> String {
 impl Default for ConfigSave {
     fn default() -> ConfigSave {
         let dir = home_dir().unwrap();
-        let mut dir_str = dir.to_str().unwrap();
+        let dir_str = dir.to_str().unwrap();
         let mut path: String = dir_str.to_string();
         if cfg!(target_os = "windows") {
             log::debug!("Detected a windows system, using {}", path);

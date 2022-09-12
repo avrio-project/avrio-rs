@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 use std::time::SystemTime;
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap};
 use std::{net::SocketAddr, sync::Mutex};
 extern crate avrio_config;
 use crate::validate::Verifiable;

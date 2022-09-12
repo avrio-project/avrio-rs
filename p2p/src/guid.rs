@@ -1,13 +1,12 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::{Mutex, MutexGuard},
+    sync::{Mutex},
 };
 
 use crate::{
     core::new_connection,
     format::P2pData,
-    guid,
     io::{read as read_from_peer, send},
     peer::{in_peers, lock, unlock_peer},
 };

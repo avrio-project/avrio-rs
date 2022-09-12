@@ -2,9 +2,9 @@ use std::{sync::mpsc, thread::JoinHandle, net::TcpStream};
 
 use crate::{
     downloader::{DownloadCommand, DownloadManager, DownloadManagerMeta, Download, DownloadType},
-    processor::{ProcessorCommand, ProcessorManager, ProcessorManagerMeta},
+    processor::{ProcessorManager, ProcessorManagerMeta},
     types::{SyncDownloadTask, SyncError, SyncProgress, SyncState, SyncTask},
-    verifier::{VerifierCommand, VerifierManager, VerifierManagerMeta},
+    verifier::{VerifierManager, VerifierManagerMeta},
     Actor, Command,
 };
 
