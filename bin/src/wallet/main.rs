@@ -26,7 +26,7 @@ use lazy_static::*;
 use log::{debug, error, info, trace, warn};
 use reqwest::Client;
 
-use serde_json;
+
 use std::{default::Default, sync::Mutex};
 use std::{
     error::Error,
@@ -86,11 +86,11 @@ async fn form_receive_block(blk: &Block, for_chain: &String) -> Result<Block, Bo
         blk_clone.header.prev_hash = blk.hash.clone();
         blk_clone.hash();
         blk_clone.signature = "".to_string();
-        return Ok(blk_clone);
+        Ok(blk_clone)
     } else {
         let request_url = format!(
             "{}/api/v1/blockcount/{}",
-            SERVER_ADDR.lock().unwrap().to_owned(),
+            SERVER_ADDR.lock().unwrap(),
             for_chain.clone()
         );
         let response = reqwest::get(&request_url).await?;
@@ -99,7 +99,7 @@ async fn form_receive_block(blk: &Block, for_chain: &String) -> Result<Block, Bo
         let height = response_decoded.blockcount;
         let request_url = format!(
             "{}/api/v1/hash_at_height/{}/{}",
-            SERVER_ADDR.lock().unwrap().to_owned(),
+            SERVER_ADDR.lock().unwrap(),
             for_chain.clone(),
             height - 1
         );
@@ -111,7 +111,7 @@ async fn form_receive_block(blk: &Block, for_chain: &String) -> Result<Block, Bo
         blk_clone.header.prev_hash = response_decoded.hash;
         blk_clone.hash();
         blk_clone.signature = "".to_string();
-        return Ok(blk_clone);
+        Ok(blk_clone)
     }
 }
 
@@ -120,12 +120,12 @@ fn get_choice() -> u8 {
     info!("[2] Create a wallet");
     info!("[3] Import private keys");
     let ans: u8 = trim_newline(&mut read!()).parse::<u8>().unwrap();
-    return ans;
+    ans
 }
 pub fn new_ann(ann: Announcement) {
     if let Ok(mut locked) = WALLET_DETAILS.lock() {
         debug!("Gained lock on WALLET_DETAILS");
-        if ann.m_type == "block".to_string() {
+        if ann.m_type == *"block" {
             // ann.msg contains a block in json format
             if let Ok(blk) = serde_json::from_str::<Block>(&ann.content) {
                 if locked.proccessed_anns.contains(&blk.hash) {
@@ -200,7 +200,7 @@ pub fn new_ann(ann: Announcement) {
 async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn Error>> {
     let request_url = format!(
         "{}/api/v1/blockcount/{}",
-        SERVER_ADDR.lock().unwrap().to_owned(),
+        SERVER_ADDR.lock().unwrap(),
         wall.public_key.clone()
     );
     let response = reqwest::get(&request_url).await?;
@@ -209,7 +209,7 @@ async fn send_transaction(txn: Transaction, wall: Wallet) -> Result<(), Box<dyn 
     let height = response_decoded.blockcount;
     let request_url = format!(
         "{}/api/v1/hash_at_height/{}/{}",
-        SERVER_ADDR.lock().unwrap().to_owned(),
+        SERVER_ADDR.lock().unwrap(),
         wall.public_key.clone(),
         height - 1
     );
@@ -385,7 +385,7 @@ async fn main() {
             drop(locked_ls);
             let request_url = format!(
                 "{}/api/v1/blockcount/{}",
-                SERVER_ADDR.lock().unwrap().to_string(),
+                SERVER_ADDR.lock().unwrap(),
                 wall.public_key
             );
             let try_get_response = reqwest::get(&request_url).await;
@@ -500,7 +500,7 @@ async fn main() {
                     }
                     let request_url = format!(
                         "{}/api/v1/balances/{}",
-                        SERVER_ADDR.lock().unwrap().to_string(),
+                        SERVER_ADDR.lock().unwrap(),
                         wall.public_key
                     );
                     if let Ok(response_undec) = reqwest::get(&request_url).await {
@@ -527,7 +527,7 @@ async fn main() {
                     }
                     let request_url = format!(
                         "{}/api/v1/transactioncount/{}",
-                        SERVER_ADDR.lock().unwrap().to_string(),
+                        SERVER_ADDR.lock().unwrap(),
                         wall.public_key
                     );
                     if let Ok(response) = reqwest::get(&request_url).await {
@@ -629,7 +629,7 @@ async fn main() {
                                 };
                                 let request_url = format!(
                                     "{}/api/v1/balances/{}",
-                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                    SERVER_ADDR.lock().unwrap(),
                                     wall.public_key
                                 );
                                 if let Ok(response_undec) = reqwest::get(&request_url).await {
@@ -647,7 +647,7 @@ async fn main() {
                                     );
                                                 let request_url = format!(
                                                     "{}/api/v1/publickey_for_username/{}",
-                                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                                    SERVER_ADDR.lock().unwrap(),
                                                     addr
                                                 );
                                                 if let Ok(response) =
@@ -664,7 +664,7 @@ async fn main() {
                                             }
                                             let request_url = format!(
                                                 "{}/api/v1/transactioncount/{}",
-                                                SERVER_ADDR.lock().unwrap().to_string(),
+                                                SERVER_ADDR.lock().unwrap(),
                                                 wall.public_key
                                             );
                                             if let Ok(response) = reqwest::get(&request_url).await {
@@ -731,7 +731,7 @@ async fn main() {
                             };
                             let request_url = format!(
                                 "{}/api/v1/transactioncount/{}",
-                                SERVER_ADDR.lock().unwrap().to_string(),
+                                SERVER_ADDR.lock().unwrap(),
                                 wall.public_key
                             );
                             if let Ok(response) = reqwest::get(&request_url).await {
@@ -762,7 +762,7 @@ async fn main() {
                             }
                         } else if read == *"register_username" {
                             if let Ok(lock) = WALLET_DETAILS.lock() {
-                                if lock.username == "" {
+                                if lock.username.is_empty() {
                                     info!("Enter desired_username:");
                                     let desired_username: String = trim_newline(&mut read!());
                                     if !desired_username.chars().all(char::is_alphanumeric) {
@@ -770,14 +770,14 @@ async fn main() {
                                     } else {
                                         let request_url = format!(
                                             "{}/api/v1/publickey_for_username/{}",
-                                            SERVER_ADDR.lock().unwrap().to_string(),
+                                            SERVER_ADDR.lock().unwrap(),
                                             desired_username
                                         );
                                         if let Ok(response) = reqwest::get(&request_url).await {
                                             if let Ok(publickey_for_username) =
                                                 response.json::<PublickeyForUsername>().await
                                             {
-                                                if publickey_for_username.publickey != "" {
+                                                if !publickey_for_username.publickey.is_empty() {
                                                     error!("Username {} is taken, try another (rerun register_username)", desired_username);
                                                 } else {
                                                     let mut txn = Transaction {
@@ -800,7 +800,7 @@ async fn main() {
                                                     };
                                                     let request_url = format!(
                                                         "{}/api/v1/balances/{}",
-                                                        SERVER_ADDR.lock().unwrap().to_string(),
+                                                        SERVER_ADDR.lock().unwrap(),
                                                         wall.public_key
                                                     );
                                                     if let Ok(response_undec) =
@@ -818,8 +818,7 @@ async fn main() {
                                                                     "{}/api/v1/transactioncount/{}",
                                                                     SERVER_ADDR
                                                                         .lock()
-                                                                        .unwrap()
-                                                                        .to_string(),
+                                                                        .unwrap(),
                                                                     wall.public_key
                                                                 );
                                                                 if let Ok(response) =
@@ -908,7 +907,7 @@ async fn main() {
                             };
                             let request_url = format!(
                                 "{}/api/v1/balances/{}",
-                                SERVER_ADDR.lock().unwrap().to_string(),
+                                SERVER_ADDR.lock().unwrap(),
                                 wall.public_key
                             );
                             if let Ok(response_undec) = reqwest::get(&request_url).await {
@@ -918,7 +917,7 @@ async fn main() {
                                     } else {
                                         let request_url = format!(
                                             "{}/api/v1/transactioncount/{}",
-                                            SERVER_ADDR.lock().unwrap().to_string(),
+                                            SERVER_ADDR.lock().unwrap(),
                                             wall.public_key
                                         );
                                         if let Ok(response) = reqwest::get(&request_url).await {
@@ -960,7 +959,7 @@ async fn main() {
                                     let failed = false;
                                     let request_url = format!(
                                         "{}/api/v1/balances/{}",
-                                        SERVER_ADDR.lock().unwrap().to_string(),
+                                        SERVER_ADDR.lock().unwrap(),
                                         wall.public_key
                                     );
                                     if let Ok(response_undec) = reqwest::get(&request_url).await {
@@ -1028,7 +1027,7 @@ async fn main() {
                                 };
                                 let request_url = format!(
                                     "{}/api/v1/transactioncount/{}",
-                                    SERVER_ADDR.lock().unwrap().to_string(),
+                                    SERVER_ADDR.lock().unwrap(),
                                     wall.public_key
                                 );
                                 if let Ok(response) = reqwest::get(&request_url).await {
@@ -1039,7 +1038,7 @@ async fn main() {
 
                                         let request_url = format!(
                                             "{}/api/v1/balances/{}",
-                                            SERVER_ADDR.lock().unwrap().to_string(),
+                                            SERVER_ADDR.lock().unwrap(),
                                             wall.public_key
                                         );
                                         if let Ok(response_undec) = reqwest::get(&request_url).await
@@ -1115,7 +1114,7 @@ pub async fn generate_blocks(
     let account_nonce: u64;
     let request_url = format!(
         "{}/api/v1/transactioncount/{}",
-        SERVER_ADDR.lock().unwrap().to_string(),
+        SERVER_ADDR.lock().unwrap(),
         wallet.public_key
     );
     if let Ok(response) = reqwest::get(&request_url).await {
@@ -1131,7 +1130,7 @@ pub async fn generate_blocks(
     }
     let request_url = format!(
         "{}/api/v1/blockcount/{}",
-        SERVER_ADDR.lock().unwrap().to_owned(),
+        SERVER_ADDR.lock().unwrap(),
         wallet.public_key.clone()
     );
     if let Ok(response) = reqwest::get(&request_url).await {
@@ -1139,7 +1138,7 @@ pub async fn generate_blocks(
             height = response_decoded.blockcount;
             let request_url = format!(
                 "{}/api/v1/hash_at_height/{}/{}",
-                SERVER_ADDR.lock().unwrap().to_owned(),
+                SERVER_ADDR.lock().unwrap(),
                 wallet.public_key.clone(),
                 height - 1
             );
@@ -1150,7 +1149,7 @@ pub async fn generate_blocks(
             }
         }
     }
-    if last_hash == "" {
+    if last_hash.is_empty() {
         error!("Failed to get last hash");
         return Err("Failed to get last hash".into());
     }
@@ -1215,16 +1214,16 @@ pub fn create_wallet() -> Result<Wallet, Box<dyn Error>> {
     let password: String = rpassword::read_password()?;
     if get_data("wallets/".to_owned() + &name, "pubkey") != "-1" {
         error!("Wallet already exists");
-        return Err("Wallet path taken".into());
+        Err("Wallet path taken".into())
     } else {
         let mut keypair: Vec<String> = vec![];
         generate_keypair(&mut keypair);
         if let Err(e) = save_wallet(&keypair, password, name) {
             error!("Failed to save new wallet, gave error={}", e);
-            return Err(e);
+            Err(e)
         } else {
             info!("Created and saved wallet with public key: {}", keypair[0]);
-            return Ok(Wallet::from_private_key(keypair[1].clone()));
+            Ok(Wallet::from_private_key(keypair[1].clone()))
         }
     }
 }
@@ -1322,7 +1321,7 @@ pub fn open_wallet(wallet_name: String, password: String) -> Wallet {
     trace!("nonce: {}", padded_string);
     let ciphertext = hex::decode(get_data(
         "wallets/".to_owned() + &wallet_name,
-        &"privkey".to_owned(),
+        "privkey",
     ))
     .expect("failed to parse hex");
     let privkey = String::from_utf8(

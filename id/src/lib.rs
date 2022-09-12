@@ -14,7 +14,7 @@ pub struct HashParams {
     pub memory: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq, Clone)]
 pub struct IdDetails {
     pub hash: String,
     pub signed: String,
@@ -28,7 +28,7 @@ pub fn difficulty_bytes_as_u128(v: &[u8]) -> u128 {
 }
 
 pub fn check_difficulty(hash: &str, difficulty: u128) -> bool {
-    difficulty > difficulty_bytes_as_u128(&hash.as_bytes().to_vec())
+    difficulty > difficulty_bytes_as_u128(hash.as_bytes())
 }
 
 fn _calculate_hash_params(seed: String) -> HashParams {
@@ -51,7 +51,7 @@ fn hash_string(params: &HashParams, s: &String) -> String {
     for _ in 0..params.iterations {
         out = raw_hash(&out);
     }
-    return out;
+    out
 }
 
 pub fn generate_id(

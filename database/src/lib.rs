@@ -32,7 +32,7 @@ pub fn is_db_open() -> bool {
 pub fn init_db(db_path: String) -> Result<(), Box<dyn std::error::Error>>  { // Db path should normally be config().db_path + "/database" (for deamon)
     let mut writer = DATABASE_LOCK.write()?;
     *writer = Some(open(db_path).unwrap());
-    return Ok(());
+    Ok(())
 }
 
 /// # Close DB
@@ -47,7 +47,7 @@ pub fn close_db() -> Result<(), Box<dyn std::error::Error>> {
     let bytes_flushed = DATABASE_LOCK.read().unwrap().as_ref().unwrap().flush()?;
     debug!("Closed Master DB, flushed {} bytes", bytes_flushed);
 
-    return Ok(());
+    Ok(())
 }
 
 /// # Trees
@@ -68,7 +68,7 @@ pub fn trees() -> Result<Vec<String>, Box<dyn std::error::Error>> {
             Err(e) => error!("Failed to decode tree name from bytes, gave error={}", e),
         }
     }
-    return Ok(trees);
+    Ok(trees)
 }
 
 /// # Open Tree
@@ -82,10 +82,10 @@ pub fn open_tree(tree_name: String) -> Result<sled::Tree, Box<dyn std::error::Er
     }
     if let Ok(tree) = DATABASE_LOCK.read().unwrap().as_ref().unwrap().open_tree(tree_name.clone()) {
         debug!("Opened DB tree {}", tree_name);
-        return Ok(tree);
+        Ok(tree)
     } else {
         error!("Failed to open db tree: {}", tree_name);
-        return Err("Failed to open db tree".into());
+        Err("Failed to open db tree".into())
     }
 }
 /// # Iter Database
@@ -127,7 +127,7 @@ pub fn save_data(serialized: &str, tree_name: &str, key: String) -> u8 {
             // safe to get the value
             // write to our local copy of the lazy_static
             if let Err(e) =
-                tree.insert(key.to_string().as_bytes(), serialized.to_owned().as_bytes())
+                tree.insert(key.as_bytes(), serialized.to_owned().as_bytes())
             {
                 error!("Failed to write to database, error={}", e);
                 return 0;
@@ -151,7 +151,7 @@ pub fn save_data(serialized: &str, tree_name: &str, key: String) -> u8 {
 }
 
 pub fn get_peerlist() -> std::result::Result<Vec<SocketAddr>, Box<dyn std::error::Error>> {
-    let s = get_data("peers".to_string(), &"white");
+    let s = get_data("peers".to_string(), "white");
 
     if s == *"-1" {
         Err("peerlist not found".into())

@@ -93,7 +93,7 @@ fn validator_loop(commitee: Comitee) -> Result<(u64, u64), Box<dyn std::error::E
                             }
                         }
                     }
-                    if bc_blocks.len() == 0 {
+                    if bc_blocks.is_empty() {
                         debug!("Collected no blocks for chunk, retrying");
                         sleep(Duration::from_millis(5000))
                     } else {
@@ -159,11 +159,11 @@ pub fn create_salt_seed() -> Result<String, Box<dyn std::error::Error>> {
                 return Err("epoch salt seed invalid".into());
             }
             trace!("Created seed={}", proof);
-            return Ok(proof);
+            Ok(proof)
         }
         Err(e) => {
             error!("Failed to get lock on fullnode keys{}", e);
-            return Err("Failed to get lock on fullnode keys".into());
+            Err("Failed to get lock on fullnode keys".into())
         }
     }
 }
@@ -228,29 +228,29 @@ pub fn propose_premade_chunk(
                 bc_sigs.len()
             );
             // check if we got enough signatures
-            if bc_sigs.len() < (current_epoch.committees[0].members.len() * 1 / 3) {
+            if bc_sigs.len() < (current_epoch.committees[0].members.len() / 3) {
                 error!(
                     "Failed to get enough signatures from peers, got={} required={}",
                     bc_sigs.len(),
-                    current_epoch.committees[0].members.len() * 1 / 3
+                    current_epoch.committees[0].members.len() / 3
                 );
             }
             // we have enough signatures, add them to the block chunk
             block_chunk.add_signatures(&bc_sigs, bc_signers).unwrap();
             if let Err(e) = block_chunk.valid() {
                 error!("Invalid block chunk, error {}", e);
-                return Err(e.into());
+                return Err(e);
             }
             // now we have a block chunk with enough signatures, we can propagate it
             trace!("Propagating block chunk={:#?}", block_chunk);
-            prop_block_chunk(&block_chunk).unwrap();
+            prop_block_chunk(block_chunk).unwrap();
             block_chunk.enact()?;
             // Done
-            return Ok(());
+            Ok(())
         }
         Err(e) => {
             error!("Failed to send block chunk to all peers, error={}", e);
-            return Err(format!("Failed to send block chunk to all peers, error={}", e).into());
+            Err(format!("Failed to send block chunk to all peers, error={}", e).into())
         }
     }
 }
@@ -345,11 +345,11 @@ pub fn handle_proposed_chunk(
                 "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
                 lock_error
             );
-            return Err(format!(
+            Err(format!(
                 "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
                 lock_error
             )
-            .into());
+            .into())
         }
     }
 }
@@ -376,7 +376,7 @@ pub fn should_handle_chunk(chunk: BlockChunk) -> bool {
                 "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
                 lock_error
             );
-            return false;
+            false
         }
     }
 }
@@ -390,11 +390,11 @@ pub fn get_keys() -> Result<Vec<String>, Box<dyn std::error::Error>> {
                 "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
                 lock_error
             );
-            return Err(format!(
+            Err(format!(
                 "Failed to get mutex lock on FULLNODE_KEYS lazy static error={}",
                 lock_error
             )
-            .into());
+            .into())
         }
     }
 }
@@ -446,7 +446,7 @@ pub fn handle_vrf_submitted(txn: Transaction) {
                 }
                 match VRF_LOTTO_ENTRIES.lock() {
                     Ok(mut lock) => {
-                        lock.push((txn.sender_key.clone(), txn.extra.clone()));
+                        lock.push((txn.sender_key.clone(), txn.extra));
                     }
                     Err(lock_error) => {
                         error!(
@@ -563,13 +563,13 @@ pub fn resume_operation() -> Result<bool, Box<dyn std::error::Error>> {
             create_timer(
                 Duration::from_millis(time_left),
                 Box::new(|()| {
-                    let _ = start_vrf_lotto(());
+                    start_vrf_lotto(());
                 }),
                 (),
             );
         } else {
             info!("Starting VRF lottery now");
-            let _ = start_vrf_lotto(());
+            start_vrf_lotto(());
             return Ok(false);
         }
     } else {
@@ -670,13 +670,13 @@ pub fn start_vrf_lotto(_null: ()) {
                         }
                         // check if we got enough salts
                         if salt_proofs.len()
-                            < ((current_epoch.committees[0].members.len() - 1) * 1 / 3)
+                            < ((current_epoch.committees[0].members.len() - 1) / 3)
                         {
                             // len() - 1 accounts from our salt not being present
                             error!(
                                 "Failed to get enough salts from peers, got={} required={}",
                                 salt_proofs.len(),
-                                ((current_epoch.committees[0].members.len() - 1) * 1 / 3)
+                                ((current_epoch.committees[0].members.len() - 1) / 3)
                             );
                             //TODO: retry
                             return;
@@ -720,7 +720,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                 let mut seed_block_rec = seed_block
                                     .form_receive_block(Some(String::from("0")))
                                     .unwrap();
-                                let _ = seed_block_rec.sign(&lock[1]).unwrap();
+                                seed_block_rec.sign(&lock[1]).unwrap();
                                 trace!("Created block={}", seed_block_rec.hash);
 
                                 let blocks = vec![seed_block, seed_block_rec];
@@ -775,7 +775,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                 let mut shuffle_bits_block_rec = shuffle_bits_block
                                     .form_receive_block(Some(String::from("0")))
                                     .unwrap();
-                                let _ = shuffle_bits_block_rec.sign(&lock[1]).unwrap();
+                                shuffle_bits_block_rec.sign(&lock[1]).unwrap();
                                 let blocks = vec![shuffle_bits_block, shuffle_bits_block_rec];
                                 for block in &blocks {
                                     trace!("Sending {} to peers", block.hash);
@@ -913,7 +913,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                 let mut delta_list_block_rec = delta_list_block
                                     .form_receive_block(Some(String::from("0")))
                                     .unwrap();
-                                let _ = delta_list_block_rec.sign(&lock[1]).unwrap();
+                                delta_list_block_rec.sign(&lock[1]).unwrap();
                                 let blocks = vec![delta_list_block, delta_list_block_rec];
                                 for block in &blocks {
                                     trace!("Sending {} to peers", block.hash);
@@ -936,7 +936,7 @@ pub fn start_vrf_lotto(_null: ()) {
                             Err(error) => {
                                 error!("Failed to create salt seed, error={}", error);
                                 //TODO: handle this more gracefully
-                                return;
+                                
                             }
                         }
                     }

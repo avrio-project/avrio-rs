@@ -123,19 +123,19 @@ fn generate_chains() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn database_present() -> bool {
-    let get_res = get_data("chaindigest".to_owned(), &"master".to_owned());
+    let get_res = get_data("chaindigest".to_owned(), "master");
     !(get_res == *"-1" || get_res == *"0")
 }
 
 fn create_file_structure() -> std::result::Result<(), Box<dyn std::error::Error>> {
     info!("Creating datadir folder structure");
     //TODO: evaluate which are no longer needed
-    create_dir_all(config().db_path + &"/blocks".to_string())?;
-    create_dir_all(config().db_path + &"/chains".to_string())?;
-    create_dir_all(config().db_path + &"/wallets".to_string())?;
-    create_dir_all(config().db_path + &"/keystore".to_string())?;
-    create_dir_all(config().db_path + &"/accounts".to_string())?;
-    create_dir_all(config().db_path + &"/usernames".to_string())?;
+    create_dir_all(config().db_path + "/blocks")?;
+    create_dir_all(config().db_path + "/chains")?;
+    create_dir_all(config().db_path + "/wallets")?;
+    create_dir_all(config().db_path + "/keystore")?;
+    create_dir_all(config().db_path + "/accounts")?;
+    create_dir_all(config().db_path + "/usernames")?;
     info!("Created datadir folder structure");
     Ok(())
 }
@@ -307,7 +307,7 @@ fn main() {
                         .as_millis();
                     let mut conf = config();
                     conf.node_type = 'f';
-                    let _ = conf.create().unwrap();
+                    conf.create().unwrap();
 
                     if now > config().first_epoch_time as u128 {
                         warn!(
@@ -615,38 +615,36 @@ fn main() {
             }
             if commitment_txn == Transaction::default() {
                 error!("Block did not contain commitment as expected");
+            } else if commitment_txn.flag != 'l' {
+                error!(
+                    "Comitment transaction type wrong, expected flag=l, got={}",
+                    commitment_txn.flag
+                );
+            } else if commitment_txn.amount != config().fullnode_lock_amount {
+                error!("Commitment transaction has insufficent amount, expected={} AIO, got={} AIO", to_dec(config().fullnode_lock_amount), to_dec(commitment_txn.amount));
             } else {
-                if commitment_txn.flag != 'l' {
-                    error!(
-                        "Comitment transaction type wrong, expected flag=l, got={}",
-                        commitment_txn.flag
-                    );
-                } else if commitment_txn.amount != config().fullnode_lock_amount {
-                    error!("Commitment transaction has insufficent amount, expected={} AIO, got={} AIO", to_dec(config().fullnode_lock_amount), to_dec(commitment_txn.amount));
-                } else {
-                    debug!("Found valid comitment, proceeding");
-                    info!("Please enter the private key of the wallet you wish to register as a fullnode:");
-                    let private_key_string: String = trim_newline(&mut read!());
-                    let wallet = Wallet::from_private_key(private_key_string);
-                    info!("Please enter the invite:");
-                    let invite: String = read!();
-                    info!(
-                        "Registering as fullnode with publickey={}? (y/n)",
-                        wallet.public_key
-                    );
-                    let confirm: String = read!();
-                    if confirm.to_ascii_uppercase() == "N" {
-                        error!("Aborting...");
-                    } else if confirm.to_ascii_uppercase() == "Y" {
-                        if let Ok(_) = register_fullnode(wallet, invite, commitment) {
-                            info!("Please restart your node for changes to take place");
-                            safe_exit();
-                        } else {
-                            error!("Fullnode registration failed")
-                        }
+                debug!("Found valid comitment, proceeding");
+                info!("Please enter the private key of the wallet you wish to register as a fullnode:");
+                let private_key_string: String = trim_newline(&mut read!());
+                let wallet = Wallet::from_private_key(private_key_string);
+                info!("Please enter the invite:");
+                let invite: String = read!();
+                info!(
+                    "Registering as fullnode with publickey={}? (y/n)",
+                    wallet.public_key
+                );
+                let confirm: String = read!();
+                if confirm.to_ascii_uppercase() == "N" {
+                    error!("Aborting...");
+                } else if confirm.to_ascii_uppercase() == "Y" {
+                    if let Ok(_) = register_fullnode(wallet, invite, commitment) {
+                        info!("Please restart your node for changes to take place");
+                        safe_exit();
                     } else {
-                        error!("Unknown response: {}", confirm);
+                        error!("Fullnode registration failed")
                     }
+                } else {
+                    error!("Unknown response: {}", confirm);
                 }
             }
         } else if read == "generate_invite" {
@@ -708,8 +706,8 @@ pub fn register_fullnode(
             gas_price: 20,
             max_gas: u64::MAX,
             nonce: get_data(
-                "chains/".to_owned() + &wallet.public_key + &"-chainindex".to_owned(),
-                &"txncount".to_owned(),
+                "chains/".to_owned() + &wallet.public_key + "-chainindex",
+                "txncount",
             )
             .parse()
             .unwrap_or(0),
@@ -720,7 +718,7 @@ pub fn register_fullnode(
         };
         txn.hash();
         let prev_block = get_block_from_raw(get_data(
-            "chains/".to_owned() + &wallet.public_key + &"-chainindex".to_owned(),
+            "chains/".to_owned() + &wallet.public_key + "-chainindex",
             "topblockhash",
         ));
         let mut send_block = Block {
@@ -761,73 +759,63 @@ pub fn register_fullnode(
                             "Created send block {} invalid, reason={}",
                             send_block.hash, e
                         );
+                    } else if let Err(e) = send_block.save() {
+                        error!("Failed to save send block {}, error={}", send_block.hash, e);
                     } else {
-                        if let Err(e) = send_block.save() {
-                            error!("Failed to save send block {}, error={}", send_block.hash, e);
+                        debug!("Saved blocks, enacting");
+                        if let Err(e) = send_block.enact() {
+                            error!(
+                                "Failed to enact send block {}, error={}",
+                                send_block.hash, e
+                            );
+                        } else if let Err(e) = rec_block.valid() {
+                            error!(
+                                "Created rec block {} invalid, reason={}",
+                                rec_block.hash, e
+                            );
+                        } else if let Err(e) = rec_block.save() {
+                            error!(
+                                "Failed to save rec block {}, error={}",
+                                rec_block.hash, e
+                            );
+                        } else if let Err(e) = rec_block.enact() {
+                            error!(
+                                "Failed to enact rec block {}, error={}",
+                                rec_block.hash, e
+                            );
                         } else {
-                            debug!("Saved blocks, enacting");
-                            if let Err(e) = send_block.enact() {
+                            debug!("Enacted blocks, sending to rpc and peers");
+                            let _ = block_announce(send_block.clone());
+                            let _ = block_announce(rec_block.clone());
+                            if let Err(e) = prop_block(&send_block) {
                                 error!(
                                     "Failed to enact send block {}, error={}",
                                     send_block.hash, e
                                 );
+                            } else if let Err(e) = prop_block(&rec_block) {
+                                error!(
+                                    "Failed to enact rec block {}, error={}",
+                                    rec_block.hash, e
+                                );
                             } else {
-                                if let Err(e) = rec_block.valid() {
-                                    error!(
-                                        "Created rec block {} invalid, reason={}",
-                                        rec_block.hash, e
-                                    );
+                                info!("Done! Registered as new fullnode candidate");
+                                let mut current_config = config();
+                                current_config.node_type = 'c'; // set node type to candidate
+                                current_config.chain_key =
+                                    wallet.public_key.clone();
+                                if let Err(e) = current_config.create() {
+                                    error!("Failed to save new config to disk, gave error={}",e );
+                                }
+                                // Save the keyfile to disk
+                                if let Err(e) = save_keyfile(&[
+                                    wallet.private_key,
+                                    bs58::encode(bls_private_key.as_bytes())
+                                        .into_string(),
+                                    secp_keypair[0].clone(),
+                                ]) {
+                                    error!("Failed to save keypair to disk; error={}", e);
                                 } else {
-                                    if let Err(e) = rec_block.save() {
-                                        error!(
-                                            "Failed to save rec block {}, error={}",
-                                            rec_block.hash, e
-                                        );
-                                    } else {
-                                        if let Err(e) = rec_block.enact() {
-                                            error!(
-                                                "Failed to enact rec block {}, error={}",
-                                                rec_block.hash, e
-                                            );
-                                        } else {
-                                            debug!("Enacted blocks, sending to rpc and peers");
-                                            let _ = block_announce(send_block.clone());
-                                            let _ = block_announce(rec_block.clone());
-                                            if let Err(e) = prop_block(&send_block) {
-                                                error!(
-                                                    "Failed to enact send block {}, error={}",
-                                                    send_block.hash, e
-                                                );
-                                            } else {
-                                                if let Err(e) = prop_block(&rec_block) {
-                                                    error!(
-                                                        "Failed to enact rec block {}, error={}",
-                                                        rec_block.hash, e
-                                                    );
-                                                } else {
-                                                    info!("Done! Registered as new fullnode candidate");
-                                                    let mut current_config = config();
-                                                    current_config.node_type = 'c'; // set node type to candidate
-                                                    current_config.chain_key =
-                                                        wallet.public_key.clone();
-                                                    if let Err(e) = current_config.create() {
-                                                        error!("Failed to save new config to disk, gave error={}",e );
-                                                    }
-                                                    // Save the keyfile to disk
-                                                    if let Err(e) = save_keyfile(&[
-                                                        wallet.private_key,
-                                                        bs58::encode(bls_private_key.as_bytes())
-                                                            .into_string(),
-                                                        secp_keypair[0].clone(),
-                                                    ]) {
-                                                        error!("Failed to save keypair to disk; error={}", e);
-                                                    } else {
-                                                        return Ok(());
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                                    return Ok(());
                                 }
                             }
                         }
@@ -844,7 +832,7 @@ pub fn register_fullnode(
 
 pub fn save_keyfile(keypair: &[String]) -> io::Result<()> {
     let conf = config();
-    let path = conf.db_path.clone() + &"/keystore/nodekey".to_owned();
+    let path = conf.db_path + "/keystore/nodekey";
     let mut file = File::create(path)?;
     file.write_all(serde_json::to_string(keypair).unwrap().as_bytes())?;
     Ok(())
@@ -853,13 +841,13 @@ pub fn save_keyfile(keypair: &[String]) -> io::Result<()> {
 pub fn open_keypair() -> Vec<String> {
     log::trace!("Reading keypair from disk");
     let conf = config();
-    let path = conf.db_path.clone() + &"/keystore/nodekey".to_owned();
+    let path = conf.db_path + "/keystore/nodekey";
     if let Ok(mut file) = File::open(path) {
         let mut data: String = String::from("");
 
         if file.read_to_string(&mut data).is_err() {
             error!("Failed to read keypair from disk");
-            return vec![];
+            vec![]
         } else {
             let privkeys: Vec<String> = serde_json::from_str(&data).unwrap_or_default();
             if privkeys.len() != 3 {
@@ -873,17 +861,17 @@ pub fn open_keypair() -> Vec<String> {
             let bls_priv =
                 PrivateKey::from_bytes(&bs58::decode(&privkeys[1]).into_vec().unwrap()).unwrap();
             let secp_pub = private_to_public_secp256k1(&privkeys[2]).unwrap_or_default();
-            return vec![
+            vec![
                 wallet.public_key,
                 wallet.private_key,
                 bs58::encode(bls_priv.public_key().as_bytes()).into_string(),
                 privkeys[1].clone(),
                 secp_pub,
                 privkeys[2].clone(),
-            ];
+            ]
         }
     } else {
         error!("Failed to read keypair from disk");
-        return vec![];
+        vec![]
     }
 }

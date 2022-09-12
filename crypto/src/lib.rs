@@ -152,7 +152,7 @@ impl Hashable for StringHash {
         self.s.as_bytes().to_vec()
     }
 }
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Wallet {
     pub public_key: Publickey,
     pub private_key: Privatekey,
@@ -174,12 +174,12 @@ pub fn generate_secp256k1_keypair() -> Vec<String> {
         let secp = Secp256k1::new();
         let seckey = SecretKey::new(&mut rng);
         let _pubkey = PublicKey::from_secret_key(&secp, &seckey);
-        return vec![
+        vec![
             bs58::encode(seckey.as_ref()).into_string(),
             bs58::encode(_pubkey.serialize()).into_string(),
-        ];
+        ]
     } else {
-        return vec![];
+        vec![]
     }
 }
 
@@ -223,7 +223,7 @@ pub fn valid_signature_secp256k1(
 
 pub fn commitee_from_address(address: &str) -> u64 {
     let decoded: Vec<u8> = bs58::decode(address).into_vec().unwrap_or_else(|_| vec![]);
-    if decoded.len() == 0 {
+    if decoded.is_empty() {
         return 0;
     }
     // TODO
@@ -241,9 +241,9 @@ pub fn get_vrf(
     let message: &[u8] = message.as_bytes();
 
     // VRF proof and hash output
-    let proof = vrf.prove(&secret_key, &message).unwrap();
+    let proof = vrf.prove(&secret_key, message).unwrap();
     let hash = vrf.proof_to_hash(&proof).unwrap();
-    return Ok((hex::encode(proof), hex::encode(hash)));
+    Ok((hex::encode(proof), hex::encode(hash)))
 }
 pub fn proof_to_hash(proof: &String) -> Result<String, Box<dyn std::error::Error>> {
     trace!("Turning VRF proof: {} into hash", proof);
@@ -257,7 +257,7 @@ pub fn proof_to_hash(proof: &String) -> Result<String, Box<dyn std::error::Error
             proof,
             proof_to_hash_result.unwrap_err()
         );
-        return Err("failed to turn vrf proof into hash".into());
+        Err("failed to turn vrf proof into hash".into())
     }
 }
 
@@ -267,7 +267,7 @@ pub fn validate_vrf(public_key: String, proof: String, message: String) -> bool 
             let msg_vec = message.as_bytes().to_vec();
             if let Ok(publickey_bytes) = bs58::decode(public_key).into_vec() {
                 if let Ok(publickey) = PublicKey::from_slice(&publickey_bytes) {
-                    if let Ok(_) = vrf.verify(&publickey.serialize_uncompressed(), &pi, &msg_vec) {
+                    if vrf.verify(&publickey.serialize_uncompressed(), &pi, &msg_vec).is_ok() {
                         return true;
                     } else {
                         trace!("vrf invalid");
@@ -321,7 +321,7 @@ fn binary_to_u512(s: String) -> U512 {
         }
         binary_digit -= 1;
     }
-    return real_num;
+    real_num
 }
 
 pub fn valid_address(address: &str) -> bool {
@@ -501,12 +501,12 @@ mod tests {
         }
 
         let mut wtr = Writer::from_path("culmulative_addr_freq.csv")?;
-        wtr.write_record(&["value", "freq"])?;
+        wtr.write_record(["value", "freq"])?;
         let mut cou: u128 = 0;
         for (val, freq) in &freq {
             cou += 1;
 
-            wtr.write_record(&[val, freq])?;
+            wtr.write_record([val, freq])?;
             println!("{},{}", val, freq);
         }
         println!("COU: {}", cou);
@@ -515,4 +515,4 @@ mod tests {
     }
 }
 
-mod vrf_test;
+//mod vrf_test;
