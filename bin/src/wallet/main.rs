@@ -694,7 +694,7 @@ async fn main() {
                         } else if read == *"address" {
                             info!("Our address: {}", wall.address());
                         } else if read_split[0] == "claim" {
-                            let mut amount: f64 = 0.0;
+                            let amount: f64;
                             match read_split.len() {
                                 2 => {
                                     if let Ok(amount_parsed) = read_split[1].parse::<f64>() {
@@ -1112,7 +1112,7 @@ pub async fn generate_blocks(
     let mut last_hash = String::from("");
     // get top block hash from the api
     let mut height = 0;
-    let mut account_nonce: u64 = 0;
+    let account_nonce: u64;
     let request_url = format!(
         "{}/api/v1/transactioncount/{}",
         SERVER_ADDR.lock().unwrap().to_string(),

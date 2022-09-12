@@ -924,7 +924,7 @@ pub fn start_vrf_lotto(_null: ()) {
                                         );
                                         return;
                                     }
-                                    add_block(block, CallerM::blank());
+                                    let _ = add_block(block, CallerM::blank());
                                 }
                                 // form a block chunk containing the delta list blocks
                                 let mut dl_chunk = BlockChunk::form(&blocks, 0).unwrap();

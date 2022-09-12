@@ -5,8 +5,6 @@
 
     This file handles the JSON API of the headless wallet.
 */
-use aead::{NewAead};
- // Or `Aes128Gcm`
 
 use avrio_core::block::{Block, BlockType, Header};
 use avrio_core::{
@@ -16,7 +14,6 @@ use avrio_core::{
 use log::*;
 
 use rocket::{routes, Route};
-use std::io::prelude::*;
 extern crate avrio_p2p;
 use crate::{user_auth_level, OpenedWallet, CONFIG, OPEN_WALLETS, USERS};
 use avrio_crypto::Wallet;

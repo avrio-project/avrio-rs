@@ -75,7 +75,7 @@ pub fn safe_exit() {
         .shutdown()
         .unwrap();
     *(MEMPOOL.lock().unwrap()) = None;
-    avrio_database::close_db();
+    avrio_database::close_db().unwrap();
     std::process::exit(0);
 }
 fn trim_newline(s: &mut String) -> String {
